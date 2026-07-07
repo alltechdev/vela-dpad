@@ -174,7 +174,7 @@ object EnNavStrings : NavStrings {
         // sometimes" bug. Runs AFTER I-/US- so those keep their spoken forms (US- is already de-hyphenated).
         s = Regex("\\b[A-Z]{2}-(\\d+)").replace(s) { "State Route ${it.groupValues[1]}" }
         EN_SPEECH_WORDS.forEach { (re, rep) -> s = re.replace(s, rep) }
-        s = SpeechText.spokenNumbers(s) // "120th" → "one twentieth", not a mangled "one hundred and 28th"
+        s = SpeechText.spokenNumbers(s) // "120th" → "one twentieth" (space, not hyphen — the compound got a mushy -ty), not a mangled "one hundred and 28th"
         return s
     }
 }
