@@ -1,9 +1,9 @@
 name: CI
 
-# Builds + tests the APK on every push to main and on PRs. Each push to main is
-# published as a normal, versioned GitHub release (v0.1.<run>) so update trackers
-# like Obtainium "just work" — no pre-releases, no "include prereleases" toggle,
-# plain-semver versionName. The APK is also uploaded as a workflow artifact.
+# Builds + tests both the debug and release APKs on every push to main and on PRs. Each push to
+# main is published as a normal, versioned GitHub release (v0.1.<run>) so update trackers like
+# Obtainium "just work" — no pre-releases, no "include prereleases" toggle, plain-semver
+# versionName. Both APKs are uploaded as workflow artifacts.
 on:
   push:
     branches: [ main ]
@@ -63,17 +63,14 @@ jobs:
 
       - name: Derive build version
         id: ver
-        # versionName is plain semver (0.3.<run>) so Obtainium can compare it;
-        # versionCode is 2000+run — monotonic and safely above earlier builds.
-        # NOTE: bumped from 0.1.<run> / 1000+run on 2026-06-18 — local dev builds
-        # had been hand-set with -PappVersionCode in the 1000s (up to 1117) and got
-        # installed on a test phone, leaving it *ahead* of the release line so
-        # Obtainium would reject the next release as a downgrade. 0.2 + 2000-base
-        # steps the release line decisively over that pollution. Keep local dev
-        # builds BELOW 1000 (e.g. -PappVersionCode=1) so this can't recur.
+        # Fresh fork version line, started over at 0.0.x (this repo is independent of upstream's
+        # 0.3.x). versionName is plain semver (0.0.<run>) so Obtainium can compare it; versionCode is
+        # the GitHub run number — monotonic per repo. NOTE: run_number does not reset, so the first
+        # build here is 0.0.<current run>, not literally 0.0.1; and any earlier 0.3.x releases on this
+        # repo must be deleted or their higher versionCode blocks these as a "downgrade".
         run: |
-          echo "name=0.3.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "code=$(( 2000 + ${{ github.run_number }} ))" >> "$GITHUB_OUTPUT"
+          echo "name=0.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch TTS runtime AAR
         # sherpa-onnx neural-TTS runtime (Kokoro voice). It's a 57 MB prebuilt AAR (no Maven
@@ -89,6 +86,14 @@ jobs:
           || curl -fSL -o app/libs/sherpa-onnx-1.13.3.aar \
             "https://github.com/PimpinPumpkin/Vela/releases/download/tts-runtime/sherpa-onnx-1.13.3.aar"
           test "$(stat -c%s app/libs/sherpa-onnx-1.13.3.aar)" -gt 50000000
+
+      - name: Build debug APK
+        # The debug variant is now R8-minified + debuggable (smooth on-device dev build with Timber
+        # /StrictMode/ANR-watchdog), so it exercises its own proguard rules — build it in CI too so a
+        # debug-only R8/keep regression can't slip through. No signing/version props needed.
+        run: >
+          ./gradlew :app:assembleDebug --no-daemon
+          -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
 
       - name: Build release APK
         env:
@@ -106,6 +111,13 @@ jobs:
         with:
           name: vela-maps-apk
           path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vela-maps-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Publish nightly (prerelease)
