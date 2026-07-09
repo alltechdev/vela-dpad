@@ -136,7 +136,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VER="0.3.${{ github.run_number }}"
+          VER="${{ steps.ver.outputs.name }}"
           cp app/build/outputs/apk/release/app-release.apk "vela-maps-v${VER}.apk"
           # Build the changelog from the commit subjects since the previous release. Our commit
           # subjects are written as plain-language changelog lines, so this reads as real release
