@@ -98,6 +98,12 @@ android {
                 "proguard-rules.pro",
                 "proguard-rules-debug.pro",
             )
+            // Distinct applicationId (app.vela.debug) so the debuggable diagnosis build installs
+            // SIDE BY SIDE with a normal release install instead of replacing it. The FileProvider
+            // authority is ${applicationId}.fileprovider (manifest) / packageName + ".fileprovider"
+            // (code), so it follows the suffix automatically; nothing hardcodes app.vela.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
         }
         release {
             // Always ship release: R8 here is what keeps map scroll/nav smooth
