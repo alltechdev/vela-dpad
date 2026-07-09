@@ -26,6 +26,13 @@ jobs:
           # commits since the previous release.
           fetch-depth: 0
 
+      - name: D-pad static audit
+        # Host-side source scan (no device): every clickable has a focus ring, no bare
+        # DropdownMenu/AlertDialog, every gesture has a key path, no isSystemInDarkTheme. Fails the
+        # build on any structural D-pad regression. The on-device suites need a real device and run
+        # locally (adding an emulator here is the flaky download dropped below).
+        run: bash dpad_test_suite/audit_static.sh
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
