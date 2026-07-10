@@ -10,16 +10,23 @@ A degoogled maps and navigation client for Android. Runs on GrapheneOS and other
 
 ## Phone status
 
-D-pad + screen-size compatibility, verified on-device with screenshots (see [`tests/devices/`](tests/devices/)).
+Tested at each phone's **screen geometry emulated** on a test device (`wm size` / `wm density`) -
+**not yet on the physical hardware**. Covers the first-run flow (Welcome + dialogs), bare map, search,
+place sheet, directions, and Settings, verified by screenshot (see [`tests/devices/`](tests/devices/));
+not every flow (turn-by-turn cards, transit, offline downloads, every sub-screen) is exhaustively
+driven yet.
 
-| Phone | Screen | D-pad + fit | Status |
-|---|---|---|---|
-| Kyocera e4810 | 2.6", 240x320 | full first-run + core surfaces, no clipping | VERIFIED |
-| TCL Flip 2 | 2.8", 240x320 | same 240x320 geometry as Kyocera | VERIFIED |
-| Sonim XP3 (XP3800) | 2.6", 240x320 | same 240x320 geometry as Kyocera | VERIFIED |
-| Sonim X320 (XP3 Plus 5G) | 2.95", 480x854 | driven at native res; adaptive density generalizes | VERIFIED |
+| Phone | Screen | Status (emulated geometry) |
+|---|---|---|
+| Kyocera e4810 | 2.6", 240x320 | driven: core surfaces fit + D-pad-navigable, no clipping |
+| Sonim X320 (XP3 Plus 5G) | 2.95", 480x854 | driven: adaptive density generalizes to the higher res |
+| TCL Flip 2 | 2.8", 240x320 | covered by equivalence (identical 240x320 geometry to Kyocera) |
+| Sonim XP3 (XP3800) | 2.6", 240x320 | covered by equivalence (identical 240x320 geometry to Kyocera) |
 
-More models drop straight into the matrix. To request one, open an issue with the model + screen size and resolution.
+"Driven" = actually exercised at that geometry. "Covered by equivalence" = same emulated
+`wm size`/`density` as a driven device, so the same result is expected but not separately run. Real
+hardware confirmation is the open item. New models drop straight into the matrix - open an issue with
+the model + screen size and resolution.
 
 - **D-pad first.** Fully operable with a 5-key D-pad (arrows + OK) and hardware BACK on a
   device with **no touchscreen**. Touch is a bonus.
