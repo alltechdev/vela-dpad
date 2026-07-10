@@ -2,7 +2,14 @@
 
 This fork's reason to exist is 100% D-pad operation on real feature phones. This folder tracks
 every device we commit to supporting, with the exact screen geometry to test against and the
-per-device findings (with screenshots) from driving the app as a real user.
+per-device findings (with screenshots).
+
+**Scope caveat (read this):** all results here are from **SIMULATING** the screen size (`wm size` /
+`wm density`) on a test device - **nothing has run on the actual phones**, so real-hardware quirks are
+unconfirmed. And "verified" below means the **core surfaces** (first-run flow, bare map, search, place
+sheet, directions, Settings) fit and are D-pad-navigable at that simulated size - NOT full D-pad
+coverage of every screen. Targets collapse to two sizes (240x320 and 480x854), so a phone's status is
+its size's status.
 
 ## How to test a device (as a REAL user, verified VISUALLY)
 
