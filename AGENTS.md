@@ -52,6 +52,30 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
 - **No UI change lands on the word of a script.** If you have not looked at a screenshot of
   the affected surface behaving correctly, the change is not verified. Ship the frames.
 
+## Feature-phone display size (HARD RULE, NO EXCEPTIONS)
+
+D-pad-first means feature-phone-first, and feature phones are SMALL. "Works with a D-pad" must hold
+at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-negotiable:
+
+- **Every screen opens focused AND stays D-pad-navigable at a SMALL display, not just native.**
+  Verify at a shrunk display - `adb shell wm size 360x640; adb shell wm density 200` - by SCREENSHOT:
+  the screen lands a visible focus ring on open and arrows move it. A screen that opens focused at
+  native but is UNfocusable when small is still broken (device-found: Settings auto-focused fine at
+  native but not at 360x640@200 - the weak `rememberDpadAutoFocus` "succeeded" without focus landing).
+  Restore with `wm size reset; wm density reset`.
+- **Auditors must FAIL, never silently SKIP/PASS, when a core surface can't be reached or focused.**
+  A SKIP that doesn't count as a failure is a FALSE PASS: `audit_smallscreen.sh` SKIPped Settings (a
+  no-network surface that must always open) and still printed PASS, hiding that Settings was
+  unfocusable. Rules the auditors now enforce, and that you must preserve: a core no-network surface
+  (bare map, search, Settings) that can't be reached is a FAIL; a full D-pad walk that never focuses
+  ANYTHING (`seen==0`) is a FAIL. Only deep/NETWORK-bound surfaces may legitimately skip.
+- **Prefer the robust `dpadAutoFocus()` / `dpadAutoFocus(requester)` over the weak
+  `rememberDpadAutoFocus()`** for any screen whose focus target sits in a scroll container or attaches
+  a frame or two late. The weak helper bails the instant `requestFocus()` doesn't throw, even when
+  focus never landed; the robust one re-requests until `onFocusEvent` confirms it truly landed, then
+  stops (so it never fights the user). `audit_static.sh` surfaces every weak use for triage - each must
+  be screenshot-verified to actually focus on a small screen, or converted.
+
 ## Porting from upstream (hard rules)
 
 This is a fork of PimpinPumpkin/Vela and periodically ports fixes from it. Two

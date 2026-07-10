@@ -85,7 +85,7 @@ import app.vela.ui.theme.ThemeMode
 import app.vela.ui.dpadHighlight // D-pad-only operation (docs/dpad.md)
 import app.vela.ui.dpadFieldEscape
 import app.vela.ui.dpadSwallowHorizontal
-import app.vela.ui.rememberDpadAutoFocus
+import app.vela.ui.dpadAutoFocus
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusEvent
@@ -123,15 +123,21 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
     }
     // D-pad-first (docs/dpad.md): Settings must open already focused - land on the back
     // button (top of screen) so the first arrow press enters the content, never a wasted
-    // "wake up focus" press. No-op under touch.
-    val settingsAutoFocus = rememberDpadAutoFocus()
+    // "wake up focus" press. Uses the ROBUST dpadAutoFocus() (confirms focus actually LANDED
+    // via onFocusEvent, re-requesting up to ~2s) not the weak rememberDpadAutoFocus() (which
+    // bails the instant requestFocus() doesn't throw, even when focus never landed): device-
+    // verified that the weak version left Back UNfocused on open (the first arrow was wasted
+    // establishing focus instead of navigating), the robust one lands it. The requester is
+    // caller-owned because the top row routes its UP back to Back via
+    // settingsAutoFocus.requestFocus() (below). No-op under touch.
+    val settingsAutoFocus = remember { FocusRequester() }
     var atTopItem by remember { mutableStateOf(false) }   // top content row focused? (routes its UP to Back)
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.focusRequester(settingsAutoFocus).dpadSwallowHorizontal()) {
+                    IconButton(onClick = onBack, modifier = Modifier.dpadAutoFocus(settingsAutoFocus).dpadSwallowHorizontal()) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                     }
                 },

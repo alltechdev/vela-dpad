@@ -5,8 +5,15 @@
 # dismiss_onboarding - OK through the one-time onboarding dialogs. Each VelaDialog auto-focuses its
 # "Not now" button, so a single OK dismisses it; repeat for the chain (voice / offline / …).
 dismiss_onboarding() {
-  for _ in 1 2 3 4 5; do
-    if on_screen "Not now"; then key "$K_OK" 1.2; else break; fi
+  # POLL with settles - don't break on the first absence. The diagnostics consent card ("Help
+  # improve Vela?") and some prompts appear a BEAT LATE (SPA-style), so breaking the instant
+  # "Not now" isn't yet on screen let a late card slip through and block later navigation (the
+  # "could not open Settings" false-fail). Keep OK-ing "Not now" whenever it shows; stop only
+  # after two consecutive settled misses.
+  local misses=0
+  for _ in $(seq 1 8); do
+    if on_screen "Not now"; then key "$K_OK" 1.2; misses=0
+    else misses=$((misses + 1)); [ "$misses" -ge 2 ] && break; sleep 0.6; fi
   done
 }
 

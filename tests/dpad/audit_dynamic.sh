@@ -42,7 +42,11 @@ bash "$D/setup.sh"
 
 echo "== bare map (ambient: unfocused on open, first arrow -> search bar) =="
 goto_map
-[ -z "$(focused)" ] && ok "opens ambient (nothing focused)" || bad "bare map should open unfocused, got '$(focused)'"
+# The bare map opens AMBIENT (nothing focused). A sample right after cold launch can catch a transient
+# focus mid-load, so if focus shows, re-check after a settle - only a PERSISTENT focus is a real
+# violation (avoids the inconsistent "opened focused" false-fail seen across identical fresh runs).
+f="$(focused)"; [ -n "$f" ] && { sleep 0.8; f="$(focused)"; }
+[ -z "$f" ] && ok "opens ambient (nothing focused)" || bad "bare map should open unfocused, got '$f'"
 key "$K_DOWN"
 [ -n "$(focused)" ] && ok "first arrow lands focus (search bar)" || bad "first arrow did not land focus"
 # every bare-map chrome control (search bar, chips, zoom, FABs, map target) must be traversable
@@ -60,13 +64,18 @@ if [ "$sback" -eq 1 ]; then ok "BACK exits to map"; else bad "BACK did not exit 
 
 echo "== Settings (opens on back button; deep traversal; BACK exits) =="
 goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
-if on_screen "Appearance"; then
-  [ -n "$(focused)" ] && ok "opens focused (back button)" || bad "Settings opened unfocused"
+# Settings needs NO network, so it must ALWAYS open. Give a slow config a moment to render before
+# judging (an early sample raced the transition = the "could not open Settings" false-fail); a real
+# failure-to-reach stays a FAIL (never a skip - a core no-network surface must be reachable).
+reached=0; for _ in 1 2 3; do on_screen "Appearance" && { reached=1; break; }; sleep 0.8; done
+if [ "$reached" = 1 ]; then
+  # opens-focused: confirm-with-settle (auto-focus lands a frame or two late on a slow layout).
+  { [ -n "$(focused)" ] || focused_stable; } && ok "opens focused (back button)" || bad "Settings opened unfocused (auto-focus never landed - not D-pad operable)"
   integrity "Settings traversal" 24
   for _ in $(seq 1 26); do key "$K_UP"; done
   key "$K_OK" 1
   if on_screen "Restaurants" || on_screen "Search"; then ok "back-button exits Settings"; else key "$K_BACK" 1; ok "exited Settings"; fi
-else bad "could not open Settings"; fi
+else bad "could not open Settings (search bar -> gear -> OK did not reach it)"; fi
 
 echo "== Settings sub-screens (voice library / saved places / offline) =="
 goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5

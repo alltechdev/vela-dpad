@@ -20,10 +20,17 @@ trap restore EXIT
 # A feature phone is small-screen AND D-pad, so force D-pad-first (see tests/dpad/setup.sh).
 $ADB shell settings put global vela_force_dpad 1 >/dev/null 2>&1
 
-# Shrink to a small phone. Read back the ACTUAL logical size for the on-screen bounds test.
-echo "== shrinking display to a small-phone size =="
-$ADB shell wm size 360x640 >/dev/null 2>&1
-$ADB shell wm density 200 >/dev/null 2>&1
+# Shrink to a REAL target feature-phone size. Default is the SMALLEST known target (hardest case);
+# override per device with VELA_SMALL=WxH and VELA_SMALL_DPI. Known target device matrix (grows as
+# more models are added - keep this list in sync with the ones we commit to supporting):
+#   Kyocera e4810   2.6"  240x320 portrait   (~154 dpi -> density 160)   <- default (smallest)
+#   TCL Flip 2      2.8"  320x240 landscape  (~143 dpi -> density 160)   VELA_SMALL=320x240
+# NB test as a REAL USER: do NOT pre-set onboarding prefs to skip the first-run flow - the Welcome /
+# voice / offline / diagnostics-consent dialogs are D-pad + small-screen surfaces too and must pass.
+VELA_SMALL="${VELA_SMALL:-240x320}"; VELA_SMALL_DPI="${VELA_SMALL_DPI:-160}"
+echo "== shrinking display to a real feature-phone size ($VELA_SMALL @ ${VELA_SMALL_DPI}dpi) =="
+$ADB shell wm size "$VELA_SMALL"        >/dev/null 2>&1
+$ADB shell wm density "$VELA_SMALL_DPI" >/dev/null 2>&1
 sleep 1
 SZ="$($ADB shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1)"
 SW="${SZ%x*}"; SH="${SZ#*x}"
@@ -35,7 +42,11 @@ traverse_bounds() {
   local label="$1" n="$2" clipped=0 seen=0 k b i x1 y1 x2 y2
   local fwd=("$K_DOWN" "$K_RIGHT") rev=("$K_UP" "$K_LEFT")
   _chk() {
-    b="$(focused_bounds)"; [ -z "$b" ] && return
+    b="$(focused_bounds)"
+    # A null sample is usually a dump racing a scroll animation - re-check once after a settle so a
+    # transient null doesn't under-count. A null that survives is a REAL no-focus (caught below via seen).
+    [ -z "$b" ] && { sleep 0.3; b="$(focused_bounds)"; }
+    [ -z "$b" ] && return
     seen=$((seen + 1))
     x1="$(echo "$b" | sed -E 's/^\[(-?[0-9]+),.*/\1/')"
     y1="$(echo "$b" | sed -E 's/^\[-?[0-9]+,(-?[0-9]+)\].*/\1/')"
@@ -48,7 +59,12 @@ traverse_bounds() {
   for i in $(seq 1 "$n"); do _chk; k="${fwd[$((i % 2))]}"; key "$k"; done
   for i in $(seq 1 "$n"); do _chk; k="${rev[$((i % 2))]}"; key "$k"; done
   _chk
-  if [ "$clipped" -eq 0 ]; then ok "$label - $seen focused elements, all fully on-screen"; else bad "$label - $clipped/$seen focused element(s) CLIPPED off-screen"; fi
+  # seen==0 after a full multi-axis walk means NOTHING ever took focus - the screen is not D-pad
+  # operable on a small display (e.g. auto-focus never landed and arrows can't establish it). That is
+  # a hard FAIL, not a vacuous "0 clipped = PASS" (the exact hole that hid a real Settings focus bug).
+  if [ "$seen" -eq 0 ]; then bad "$label - opened but NOTHING became focusable across the whole D-pad walk (not operable on a small screen)"
+  elif [ "$clipped" -eq 0 ]; then ok "$label - $seen focused elements, all fully on-screen"
+  else bad "$label - $clipped/$seen focused element(s) CLIPPED off-screen"; fi
 }
 
 echo "== bare map chrome on a small screen =="
@@ -62,7 +78,12 @@ key "$K_BACK" 1
 
 echo "== Settings on a small screen (the tall one - every row + button must stay on-screen) =="
 goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
-if on_screen "Appearance"; then traverse_bounds "Settings" 26; key "$K_BACK" 1; else echo "  SKIP Settings"; fi
+# Settings needs NO network, so it must ALWAYS open - give a slow/small config a moment to render,
+# then treat a real failure-to-reach as a FAIL, never a silent SKIP (a SKIP here vacuously "passed"
+# and hid that Settings could not be opened/focused on a small screen).
+reached=0; for _ in 1 2 3; do on_screen "Appearance" && { reached=1; break; }; sleep 0.8; done
+if [ "$reached" = 1 ]; then traverse_bounds "Settings" 26; key "$K_BACK" 1
+else bad "Settings unreachable (search bar -> gear -> OK did not open it) - a core no-network surface must never SKIP"; fi
 
 echo "== place sheet on a small screen =="
 goto_map
