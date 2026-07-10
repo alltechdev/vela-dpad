@@ -1,10 +1,10 @@
 # Small-screen compatibility test suite
 
-Reproducible, on-device checks that Vela works on a **tiny feature-phone display** — the same class
+Reproducible, on-device checks that Vela works on a **tiny feature-phone display** - the same class
 of device (Qin F21 and friends) that is also D-pad-driven, so this suite is the small-screen twin of
 [`../dpad/`](../dpad/) and reuses its device helpers.
 
-The rule it enforces: on a small screen, **nothing may be clipped off-screen or overflow** — every
+The rule it enforces: on a small screen, **nothing may be clipped off-screen or overflow** - every
 surface's controls, every dialog's buttons, and every menu's options must stay fully visible and
 reachable by D-pad. A control pushed past an edge exists but is unusable.
 
@@ -25,11 +25,11 @@ cd tests/small_screen
 
 ## What's covered
 
-- **`audit_smallscreen.sh`** — shrinks to a small-phone size, then drives every surface with the
+- **`audit_smallscreen.sh`** - shrinks to a small-phone size, then drives every surface with the
   D-pad (bare map, search overlay, Settings, place sheet, directions, Welcome + onboarding dialog)
   and asserts that EVERY focusable element's bounds stay fully within the screen across a full
   multi-axis traversal. Any element clipped off an edge fails.
-- **`audit_dialogs.sh`** — shrinks the screen and verifies each dialog's buttons stay on-screen and
+- **`audit_dialogs.sh`** - shrinks the screen and verifies each dialog's buttons stay on-screen and
   focus-reachable even when the body is tall (the dialog must scroll, not shove its buttons off the
   bottom). Distinguishes the bare-map UpdateCard (not a dialog) from real `VelaDialog`s.
 

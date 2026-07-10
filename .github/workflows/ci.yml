@@ -2,7 +2,7 @@ name: CI
 
 # Builds + tests both the debug and release APKs on every push to main and on PRs. Each push to
 # main is published as a normal, versioned GitHub release (v0.0.<run>) so update trackers like
-# Obtainium "just work" — no pre-releases, no "include prereleases" toggle, plain-semver
+# Obtainium "just work" - no pre-releases, no "include prereleases" toggle, plain-semver
 # versionName. Both APKs are uploaded as workflow artifacts.
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           # Default installs the legacy `tools` package, which drags in the
-          # Android Emulator — a large, flaky download that failed CI at the setup
+          # Android Emulator - a large, flaky download that failed CI at the setup
           # step ("ZipFile unknown archive"). We only build + unit-test, so
           # platform-tools is enough; the Android Gradle Plugin fetches the
           # platform + build-tools it needs on its own.
@@ -59,7 +59,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Decode release keystore (optional)
-        # If the secret isn't set the release APK is debug-signed — still
+        # If the secret isn't set the release APK is debug-signed - still
         # installable for testing. app/build.gradle.kts handles the fallback.
         env:
           KEYSTORE_B64: ${{ secrets.VELA_KEYSTORE_BASE64 }}
@@ -68,7 +68,7 @@ jobs:
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/vela-release.jks"
             echo "Decoded release keystore."
           else
-            echo "No keystore secret — release APK will be debug-signed."
+            echo "No keystore secret - release APK will be debug-signed."
           fi
 
       - name: Unit tests
@@ -78,7 +78,7 @@ jobs:
         id: ver
         # Fresh fork version line, started over at 0.0.x (this repo is independent of upstream's
         # 0.3.x). versionName is plain semver (0.0.<run>) so Obtainium can compare it; versionCode is
-        # the GitHub run number — monotonic per repo. NOTE: run_number does not reset, so the first
+        # the GitHub run number - monotonic per repo. NOTE: run_number does not reset, so the first
         # build here is 0.0.<current run>, not literally 0.0.1; and any earlier 0.3.x releases on this
         # repo must be deleted or their higher versionCode blocks these as a "downgrade".
         run: |
@@ -87,7 +87,7 @@ jobs:
 
       - name: Fetch TTS runtime AAR
         # sherpa-onnx neural-TTS runtime (Kokoro voice). It's a 57 MB prebuilt AAR (no Maven
-        # artifact) hosted on the fixed-tag `tts-runtime` release, gitignored out of the repo —
+        # artifact) hosted on the fixed-tag `tts-runtime` release, gitignored out of the repo -
         # fetch it into app/libs/ so :app can package the arm64 .so. Verify the size so a truncated
         # download fails loud instead of producing a runtime-crashing APK.
         run: |
@@ -112,7 +112,7 @@ jobs:
 
       - name: Build debug APK
         # The debug variant is now R8-minified + debuggable (smooth on-device dev build with Timber
-        # /StrictMode/ANR-watchdog), so it exercises its own proguard rules — build it in CI too so a
+        # /StrictMode/ANR-watchdog), so it exercises its own proguard rules - build it in CI too so a
         # debug-only R8/keep regression can't slip through. No signing/version props needed.
         run: >
           ./gradlew :app:assembleDebug --no-daemon

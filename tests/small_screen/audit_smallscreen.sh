@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/dpad/audit_smallscreen.sh — EXTREME small-screen + D-pad compatibility auditor.
+# tests/dpad/audit_smallscreen.sh - EXTREME small-screen + D-pad compatibility auditor.
 #
 # Feature phones are BOTH tiny-screen AND D-pad-driven, so this ties the two together: it shrinks
 # the display to a feature-phone size, then drives every surface with ONLY the D-pad and asserts
@@ -29,7 +29,7 @@ SZ="$($ADB shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1)"
 SW="${SZ%x*}"; SH="${SZ#*x}"
 echo "  logical screen: ${SW}x${SH}"
 
-# traverse_bounds <label> <n> — multi-axis D-pad walk; every focused element must lie fully within
+# traverse_bounds <label> <n> - multi-axis D-pad walk; every focused element must lie fully within
 # the screen. Reports each clipped element (off an edge = unreachable on a small display).
 traverse_bounds() {
   local label="$1" n="$2" clipped=0 seen=0 k b i x1 y1 x2 y2
@@ -48,7 +48,7 @@ traverse_bounds() {
   for i in $(seq 1 "$n"); do _chk; k="${fwd[$((i % 2))]}"; key "$k"; done
   for i in $(seq 1 "$n"); do _chk; k="${rev[$((i % 2))]}"; key "$k"; done
   _chk
-  if [ "$clipped" -eq 0 ]; then ok "$label — $seen focused elements, all fully on-screen"; else bad "$label — $clipped/$seen focused element(s) CLIPPED off-screen"; fi
+  if [ "$clipped" -eq 0 ]; then ok "$label - $seen focused elements, all fully on-screen"; else bad "$label - $clipped/$seen focused element(s) CLIPPED off-screen"; fi
 }
 
 echo "== bare map chrome on a small screen =="
@@ -60,7 +60,7 @@ goto_map; focus_search_bar; key "$K_OK" 1.5
 traverse_bounds "search overlay" 10
 key "$K_BACK" 1
 
-echo "== Settings on a small screen (the tall one — every row + button must stay on-screen) =="
+echo "== Settings on a small screen (the tall one - every row + button must stay on-screen) =="
 goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
 if on_screen "Appearance"; then traverse_bounds "Settings" 26; key "$K_BACK" 1; else echo "  SKIP Settings"; fi
 
@@ -70,11 +70,11 @@ if run_coffee; then
   open_first_place; key "$K_OK" 1
   traverse_bounds "place sheet" 16
   key "$K_BACK" 1
-else echo "  SKIP place sheet — no results (network)"; fi
+else echo "  SKIP place sheet - no results (network)"; fi
 
 echo "== directions panel on a small screen =="
 goto_map
-if reach_directions; then traverse_bounds "directions" 12; key "$K_BACK" 1; else echo "  SKIP directions — no results (network)"; fi
+if reach_directions; then traverse_bounds "directions" 12; key "$K_BACK" 1; else echo "  SKIP directions - no results (network)"; fi
 
 echo "== onboarding dialog on a small screen (buttons must not fall off) =="
 $ADB shell pm clear "$PKG" >/dev/null 2>&1

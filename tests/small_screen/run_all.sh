@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/small_screen/run_all.sh — run the whole small-screen compatibility suite.
+# tests/small_screen/run_all.sh - run the whole small-screen compatibility suite.
 # Shrinks the display to a feature-phone size and checks that every surface and every dialog shows
 # all its content/controls without clipping anything off-screen, driven by D-pad only. Restores the
 # real screen on exit. Reuses the device helpers in ../tests/dpad (one source of truth).

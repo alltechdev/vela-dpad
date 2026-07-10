@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# tests/dead_code/audit_deadcode.sh — EXHAUSTIVE cross-module dead-code auditor (host-side).
+# tests/dead_code/audit_deadcode.sh - EXHAUSTIVE cross-module dead-code auditor (host-side).
 #
 # This is the WHOLE-TREE half of Vela's dead-code gate. detekt (config/detekt/detekt.yml, run by
-# `./gradlew detekt`) finds per-module dead code that needs a parser — unused imports, unused
-# private members, unreachable code — the things grep gets WRONG (e.g. Compose `by remember`
+# `./gradlew detekt`) finds per-module dead code that needs a parser - unused imports, unused
+# private members, unreachable code - the things grep gets WRONG (e.g. Compose `by remember`
 # delegate imports look unused to grep but are not). This script finds what detekt CANNOT: a
 # public/internal top-level declaration that the ENTIRE source tree (every module, .kt + .xml +
 # .kts) never references, and whole modules that nothing depends on. Together they are the
@@ -80,7 +80,7 @@ DECL = re.compile(
     r'(?P<name>[A-Za-z_][A-Za-z0-9_]*)')
 
 def kept_model_pkg(path):
-    # R8 `-keep`/`-keepnames class app.vela.core.model.**` — reached reflectively, never dead.
+    # R8 `-keep`/`-keepnames class app.vela.core.model.**` - reached reflectively, never dead.
     return "/core/" in path and "/model/" in path
 
 def entry_annotated(lines, idx):
@@ -151,9 +151,9 @@ for p, i, name in sorted(decls):
     n = live_refs(p, i, name)
     rel = os.path.relpath(p, root)
     if n == 0:
-        viol.append(f"ORPHAN  {name}  ({rel}:{i+1}) — declared but referenced nowhere in the tree")
+        viol.append(f"ORPHAN  {name}  ({rel}:{i+1}) - declared but referenced nowhere in the tree")
     elif verbose:
-        print(f"OK  {name}  ({rel}:{i+1}) — {n}+ live refs")
+        print(f"OK  {name}  ({rel}:{i+1}) - {n}+ live refs")
 
 # --- whole-module deadness (advisory) --------------------------------------------------------
 # A module referenced only by its own build script + settings + comments is dead weight. :ghprobe
@@ -174,7 +174,7 @@ def module_live(modname):
 
 for mod in ("ghprobe",):
     if os.path.isdir(os.path.join(root, mod)) and module_live(mod) is None:
-        check.append(f"DEAD MODULE  :{mod}  — nothing outside its own build/settings depends on it "
+        check.append(f"DEAD MODULE  :{mod}  - nothing outside its own build/settings depends on it "
                      f"(documented throwaway; consider removing from settings.gradle.kts)")
 
 if viol:
