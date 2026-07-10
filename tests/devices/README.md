@@ -38,3 +38,25 @@ Every target so far is **240x320 portrait** (the "320x240" written on some spec 
 panel in portrait). So the auditor default (240x320) covers them all; densities differ slightly with
 physical size but all round to ~160. More models will be added as they are named. Goal: perfect D-pad
 + screen-size compatibility across all of them.
+
+## Tooling
+
+- **`bash tests/devices/capture.sh <id>`** - AUTO-captures labeled screenshots of the full first-run
+  flow + core surfaces (Welcome, voice/offline/consent dialogs, bare map, search overlay, Settings) at
+  the device's real geometry, into `<id>/screenshots/auto/`. `--warm` skips the fresh `pm clear`;
+  `capture.sh all` does every device. This is the one-command way to regenerate the visual proof.
+- **`bash tests/small_screen/run_matrix.sh`** - runs `audit_smallscreen.sh` at EVERY target geometry
+  (240x320@160 and 480x854@320) and prints a per-geometry PASS/FAIL summary. Use it to confirm every
+  density level is green in one shot.
+- The auditors auto-detect the installed build (`app.vela` vs `app.vela.debug`), retry the uiautomator
+  dump when it races an animation, verify the app actually reached the foreground, and warm up cold
+  starts - so a passing run means the app, not the harness.
+
+## Adding a target device
+
+1. Add a row to the table above (model, screen, resolution, orientation, ~dpi/density).
+2. Add its geometry to the `DEVICES` table in `capture.sh` and (if a new size) the `GEOMS` list in
+   `tests/small_screen/run_matrix.sh`.
+3. `mkdir tests/devices/<id>` and add a `findings.md` (copy an existing one).
+4. Run `capture.sh <id>` and `run_matrix.sh`, then VERIFY the screenshots by eye and record results in
+   the findings. Same-geometry devices can reference the reference device's findings (see TCL Flip 2).
