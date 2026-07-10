@@ -16,14 +16,20 @@
 - **Settings opens FOCUSED.** The Back button takes focus on open (the robust `dpadAutoFocus`
   fix) - no wasted first keypress. ![settings open](screenshots/02-settings-open-back-focused.png)
 
-### Broken (to fix)
-- **DOWN from the focused Back button CLEARS focus** instead of entering the content list. After one
-  DOWN, nothing is focused (no ring on Back or on "Follow system").
-  ![focus cleared](screenshots/03-settings-down-focus-cleared.png)
-  Compose clears focus on a directional move that finds no in-container target; the Back button lives
-  in the TopAppBar (a separate container from the scrolling content), so DOWN can't reach the first
-  row and clears. Needs an explicit DOWN-from-Back -> first-content-row bridge (mirror of the existing
-  UP-from-top -> Back routing), verified visually at 240x320.
+### Fixed
+- **DOWN from the focused Back button used to CLEAR focus** instead of entering the content list
+  (Compose can't cross from the TopAppBar into the scrolling Column and cleared). Fixed with an
+  explicit DOWN-from-Back -> first-content-row bridge (`topRowFocus.requestFocus()`, mirror of the
+  UP-from-top -> Back routing). Before: ![cleared](screenshots/03-settings-down-focus-cleared.png)
+  After: ![fixed](screenshots/06-down-from-back-fixed.png) - DOWN now lands on "Follow system", next
+  DOWN on "Light". Settings is fully D-pad navigable at 240x320.
+
+### Auditor status (240x320)
+`tests/small_screen/audit_smallscreen.sh` (warm): bare map / search overlay / place sheet / Settings
+all PASS (every element focusable + on-screen). Needed two auditor fixes too: `ui_dump` retries the
+uiautomator dump when it races an animation (returned 1 node), and `open_settings` reaches the gear
+robustly (RIGHT twice) so the nav isn't flaky. Cold-start (right after install) can still flake the
+first surface until the app warms - a warm-up is the remaining auditor hardening.
 
 ### Not yet tested (as a real user, at 240x320)
 - First-run flow: Welcome, voice/offline prompts, the "Help improve Vela?" diagnostics consent.

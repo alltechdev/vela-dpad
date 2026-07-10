@@ -9,8 +9,14 @@
 # Override the device with `ADB="adb -s <serial>"`.
 set -uo pipefail
 
-PKG="${VELA_PKG:-app.vela}"
 ADB="${ADB:-adb}"
+# Package under test. AUTO-DETECT the installed build so the suite works whether you sideloaded the
+# RELEASE (app.vela) or the DEBUG (app.vela.debug - applicationIdSuffix) APK; prefer .debug when both
+# are present (the dev workflow). Override with VELA_PKG. This mismatch was a silent, load-bearing bug:
+# a hardcoded app.vela made launch_fresh force-stop/monkey a NON-EXISTENT package (no-op), so Vela
+# never launched and the auditor drove whatever app was already foreground (the dialer).
+PKG="${VELA_PKG:-$($ADB shell pm list packages 2>/dev/null | grep -oE 'app\.vela(\.debug)?$' | sort | tail -1)}"
+PKG="${PKG:-app.vela}"
 
 # ---- D-pad keycodes -------------------------------------------------------------------------
 K_UP=19; K_DOWN=20; K_LEFT=21; K_RIGHT=22; K_OK=23; K_BACK=4; K_HOME=3
@@ -22,10 +28,19 @@ keys() { for c in "$@"; do key "$c"; done; }
 
 # launch_fresh [settle_seconds]  - force-stop + cold launch.
 launch_fresh() {
-  $ADB shell am force-stop "$PKG" >/dev/null 2>&1
-  sleep 1
-  $ADB shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-  sleep "${1:-3.5}"
+  # VERIFY the app actually reaches the foreground and RETRY if not. A BACK press during a traversal
+  # exits Vela to the home screen; a stray key there can launch a NEIGHBOURING app, and a single
+  # monkey launch doesn't always re-take foreground (device-seen: the auditor ended up driving another
+  # app's About screen). Confirm PKG is the resumed activity before returning.
+  local i
+  for i in 1 2 3; do
+    $ADB shell am force-stop "$PKG" >/dev/null 2>&1
+    sleep 1
+    $ADB shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+    sleep "${1:-3.5}"
+    $ADB shell dumpsys activity activities 2>/dev/null | grep -q "ResumedActivity.*$PKG/" && return 0
+  done
+  return 0   # give up gracefully; the surface checks will fail loudly if it truly never launched
 }
 
 # ---- focus inspection -----------------------------------------------------------------------

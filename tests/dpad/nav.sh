@@ -29,6 +29,23 @@ goto_map() {
 # focus_search_bar - from the bare map (nothing focused), the first DOWN lands on the search bar.
 focus_search_bar() { key "$K_DOWN"; }
 
+# open_settings - robustly open Settings from anywhere. The first DOWN can land on the search FIELD or
+# the gear depending on focus order (and adaptive density shifts it), and RIGHT-from-field only reaches
+# the gear when the field held focus - so a single "DOWN,RIGHT,OK" flakily opened the SEARCH overlay
+# instead (the "Settings unreachable" false-fail). Press RIGHT twice (reaches the rightmost gear from
+# either start), confirm "Appearance", and retry the whole nav (backing out of the overlay) if not.
+open_settings() {
+  local a
+  for a in 1 2 3; do
+    goto_map
+    focus_search_bar; key "$K_RIGHT"; key "$K_RIGHT"   # -> the gear (rightmost of the search row)
+    key "$K_OK" 1.5
+    for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.6; done
+    key "$K_BACK" 1                                     # opened the search overlay instead? back out, retry
+  done
+  return 1
+}
+
 # run_coffee - from the bare map, run the "Coffee" category chip search; waits for results.
 # Leaves focus in the results list. Returns 0 if "N results" appeared.
 run_coffee() {

@@ -79,12 +79,9 @@ traverse_bounds "search overlay" 10
 key "$K_BACK" 1
 
 echo "== Settings on a small screen (the tall one - every row + button must stay on-screen) =="
-goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
-# Settings needs NO network, so it must ALWAYS open - give a slow/small config a moment to render,
-# then treat a real failure-to-reach as a FAIL, never a silent SKIP (a SKIP here vacuously "passed"
-# and hid that Settings could not be opened/focused on a small screen).
-reached=0; for _ in 1 2 3; do on_screen "Appearance" && { reached=1; break; }; sleep 0.8; done
-if [ "$reached" = 1 ]; then traverse_bounds "Settings" 26; key "$K_BACK" 1
+# Settings needs NO network, so it must ALWAYS open; open_settings retries the nav robustly. A real
+# failure-to-reach is a FAIL, never a silent SKIP (a SKIP here vacuously "passed" and hid the bug).
+if open_settings; then traverse_bounds "Settings" 26; key "$K_BACK" 1
 else bad "Settings unreachable (search bar -> gear -> OK did not open it) - a core no-network surface must never SKIP"; fi
 
 echo "== place sheet on a small screen =="

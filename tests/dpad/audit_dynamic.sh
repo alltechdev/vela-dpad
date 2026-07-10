@@ -63,12 +63,10 @@ for _ in 1 2 3 4; do key "$K_BACK" 1; if on_screen "Restaurants"; then sback=1; 
 if [ "$sback" -eq 1 ]; then ok "BACK exits to map"; else bad "BACK did not exit the search overlay"; fi
 
 echo "== Settings (opens on back button; deep traversal; BACK exits) =="
-goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
-# Settings needs NO network, so it must ALWAYS open. Give a slow config a moment to render before
-# judging (an early sample raced the transition = the "could not open Settings" false-fail); a real
-# failure-to-reach stays a FAIL (never a skip - a core no-network surface must be reachable).
-reached=0; for _ in 1 2 3; do on_screen "Appearance" && { reached=1; break; }; sleep 0.8; done
-if [ "$reached" = 1 ]; then
+# Settings needs NO network, so it must ALWAYS open. open_settings retries the nav robustly (RIGHT
+# twice to reach the gear from either start, confirm "Appearance", back out of the search overlay and
+# retry) - fixing the flaky "could not open Settings" false-fail. A real failure-to-reach stays a FAIL.
+if open_settings; then
   # opens-focused: confirm-with-settle (auto-focus lands a frame or two late on a slow layout).
   { [ -n "$(focused)" ] || focused_stable; } && ok "opens focused (back button)" || bad "Settings opened unfocused (auto-focus never landed - not D-pad operable)"
   integrity "Settings traversal" 24
