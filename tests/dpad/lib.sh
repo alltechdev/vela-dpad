@@ -29,9 +29,24 @@ launch_fresh() {
 }
 
 # ---- focus inspection -----------------------------------------------------------------------
+# ui_dump  - dump the current UI to /sdcard/ui.xml, RETRYING when it comes back implausibly small.
+# uiautomator intermittently returns ONLY the root node (nodeCount ~1) when it races an IME / scroll
+# / transition animation - device-verified on the search overlay (1 node mid-transition, 30 once
+# settled). A single dump therefore causes phantom "no focus" / "text not found" false-fails. Retry
+# until the tree is real (>= MIN nodes) or attempts run out. Every dump-based check goes through this.
+ui_dump() {
+  local i cnt
+  for i in 1 2 3 4 5 6; do
+    $ADB shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    cnt="$($ADB shell cat /sdcard/ui.xml 2>/dev/null | grep -oE '<node' | wc -l | tr -d ' ')"
+    [ "${cnt:-0}" -ge 3 ] && return 0
+    sleep 0.4
+  done
+  return 0   # give up gracefully; the caller treats an empty/thin tree as no-match
+}
 # focused  - prints "bounds|text|desc" of the currently-focused node, or empty if none.
 focused() {
-  $ADB shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  ui_dump
   $ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
 import sys, re
 d = sys.stdin.read()
@@ -67,7 +82,7 @@ focus_ytop() {
 
 # find_text <exact>  - bounds of the first node whose text== <exact> (empty if not found).
 find_text() {
-  $ADB shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  ui_dump
   $ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
 import sys, re
 d = sys.stdin.read(); want = sys.argv[1]
@@ -81,7 +96,7 @@ for m in re.finditer(r"<node [^>]*>", d):
 on_screen() { [ -n "$(find_text "$1")" ]; }
 # find_text_contains <substr>  - bounds of the first node whose text CONTAINS <substr>.
 find_text_contains() {
-  $ADB shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  ui_dump
   $ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
 import sys, re
 d = sys.stdin.read(); want = sys.argv[1]

@@ -37,8 +37,7 @@ run_coffee() {
   # land on a chip, then OK. The Coffee chip is the middle one; RIGHT once from the first.
   key "$K_OK" 5            # OK the focused chip -> search
   for _ in 1 2 3 4 5 6; do
-    if $ADB shell cat /sdcard/ui.xml 2>/dev/null | grep -q 'results"'; then :; fi
-    $ADB shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+    ui_dump
     if $ADB shell cat /sdcard/ui.xml 2>/dev/null | grep -qE 'text="[0-9]+ results"'; then return 0; fi
     sleep 1
   done

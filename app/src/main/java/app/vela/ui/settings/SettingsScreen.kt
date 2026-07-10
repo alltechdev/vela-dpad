@@ -131,13 +131,30 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
     // caller-owned because the top row routes its UP back to Back via
     // settingsAutoFocus.requestFocus() (below). No-op under touch.
     val settingsAutoFocus = remember { FocusRequester() }
+    val topRowFocus = remember { FocusRequester() }        // first content row (Back routes its DOWN here)
     var atTopItem by remember { mutableStateOf(false) }   // top content row focused? (routes its UP to Back)
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.dpadAutoFocus(settingsAutoFocus).dpadSwallowHorizontal()) {
+                    IconButton(
+                        onClick = onBack,
+                        // DOWN from Back must ENTER the content list. Compose's directional focus
+                        // search can't cross from the TopAppBar into the scrolling Column and CLEARS
+                        // focus instead (device-verified at 240x320: after one DOWN nothing was
+                        // focused) - the mirror of the UP-from-top trap. So route DOWN straight to the
+                        // first content row via requestFocus (proven to land; never moveFocus, which
+                        // clears at a container edge).
+                        modifier = Modifier
+                            .dpadAutoFocus(settingsAutoFocus)
+                            .onKeyEvent { ev ->
+                                if (ev.key == Key.DirectionDown && ev.type == KeyEventType.KeyDown) {
+                                    runCatching { topRowFocus.requestFocus() }; true
+                                } else false
+                            }
+                            .dpadSwallowHorizontal(),
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.settings_back))
                     }
                 },
@@ -171,8 +188,9 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 label = stringResource(R.string.settings_follow_system),
                 selected = AppTheme.mode.value == ThemeMode.SYSTEM,
                 onClick = { AppTheme.set(context, ThemeMode.SYSTEM) },
-                // The top focusable row: track when it holds focus so the Column routes its UP to Back.
-                modifier = Modifier.onFocusEvent { atTopItem = it.isFocused },
+                // The top focusable row: Back routes its DOWN here (focusRequester), and we track when
+                // it holds focus so the Column routes its UP back to Back.
+                modifier = Modifier.focusRequester(topRowFocus).onFocusEvent { atTopItem = it.isFocused },
             )
             SelectableRow(
                 label = stringResource(R.string.settings_theme_light),
