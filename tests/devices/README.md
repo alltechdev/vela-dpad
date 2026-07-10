@@ -29,7 +29,7 @@ takes `VELA_SMALL=WxH VELA_SMALL_DPI=<dpi>` to sweep each device.
 
 | Model | Screen | Resolution | Orientation | ~dpi (density) | Status | Notes |
 |---|---|---|---|---|---|---|
-| [Kyocera e4810](kyocera-e4810/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | in progress | Back auto-focuses; DOWN from Back clears focus |
+| [Kyocera e4810](kyocera-e4810/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | verified | 6/7 auditor surfaces pass; Settings verified visually; adaptive density fits all chips |
 | [TCL Flip 2](tcl-flip-2/findings.md) | 2.8" | 240x320 | portrait | ~143 (160) | not yet tested | flip phone |
 | [Sonim XP3 (XP3800)](sonim-xp3/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | not yet tested | rugged flip |
 | [Sonim X320 (XP3 Plus 5G)](sonim-x320/findings.md) | 2.95" | 480x854 | portrait | ~332 (320) | not yet tested | rugged flip; high-res but ~240dp wide |
