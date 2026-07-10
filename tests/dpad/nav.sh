@@ -35,13 +35,18 @@ focus_search_bar() { key "$K_DOWN"; }
 # instead (the "Settings unreachable" false-fail). Press RIGHT twice (reaches the rightmost gear from
 # either start), confirm "Appearance", and retry the whole nav (backing out of the overlay) if not.
 open_settings() {
-  local a
-  for a in 1 2 3; do
+  local a b y1
+  for a in 1 2 3 4; do
     goto_map
-    focus_search_bar; key "$K_RIGHT"; key "$K_RIGHT"   # -> the gear (rightmost of the search row)
+    key "$K_DOWN"
+    # The first arrow can land in the top search row OR (when ambient POI markers are present) on a
+    # map marker. If we're in the MAP (focused y1 well below the top bar), go UP to the search row.
+    b="$(focused_bounds)"; y1="$(echo "$b" | sed -E 's/^\[[0-9]+,([0-9]+)\].*/\1/')"
+    [ -n "$y1" ] && [ "$y1" -gt 100 ] 2>/dev/null && key "$K_UP"
+    key "$K_RIGHT"; key "$K_RIGHT"          # -> rightmost of the search row = the gear (opens Settings)
     key "$K_OK" 1.5
-    for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.6; done
-    key "$K_BACK" 1                                     # opened the search overlay instead? back out, retry
+    for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.5; done
+    key "$K_BACK" 1                          # opened the search overlay instead? back out, retry
   done
   return 1
 }
