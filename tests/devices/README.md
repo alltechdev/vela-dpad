@@ -30,7 +30,10 @@ takes `VELA_SMALL=WxH VELA_SMALL_DPI=<dpi>` to sweep each device.
 | Model | Screen | Resolution | Orientation | ~dpi (density) | Status | Notes |
 |---|---|---|---|---|---|---|
 | [Kyocera e4810](kyocera-e4810/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | in progress | Back auto-focuses; DOWN from Back clears focus |
-| [TCL Flip 2](tcl-flip-2/findings.md) | 2.8" | 320x240 | landscape | ~143 (160) | not yet tested | flip phone, landscape main screen |
+| [TCL Flip 2](tcl-flip-2/findings.md) | 2.8" | 240x320 | portrait | ~143 (160) | not yet tested | flip phone |
+| [Sonim XP3 (XP3800)](sonim-xp3/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | not yet tested | rugged flip |
 
-More models will be added as they are named. Goal: perfect D-pad + screen-size compatibility across
-all of them.
+Every target so far is **240x320 portrait** (the "320x240" written on some spec sheets is the same
+panel in portrait). So the auditor default (240x320) covers them all; densities differ slightly with
+physical size but all round to ~160. More models will be added as they are named. Goal: perfect D-pad
++ screen-size compatibility across all of them.

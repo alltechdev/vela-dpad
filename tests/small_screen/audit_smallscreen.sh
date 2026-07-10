@@ -20,11 +20,13 @@ trap restore EXIT
 # A feature phone is small-screen AND D-pad, so force D-pad-first (see tests/dpad/setup.sh).
 $ADB shell settings put global vela_force_dpad 1 >/dev/null 2>&1
 
-# Shrink to a REAL target feature-phone size. Default is the SMALLEST known target (hardest case);
-# override per device with VELA_SMALL=WxH and VELA_SMALL_DPI. Known target device matrix (grows as
-# more models are added - keep this list in sync with the ones we commit to supporting):
-#   Kyocera e4810   2.6"  240x320 portrait   (~154 dpi -> density 160)   <- default (smallest)
-#   TCL Flip 2      2.8"  320x240 landscape  (~143 dpi -> density 160)   VELA_SMALL=320x240
+# Shrink to a REAL target feature-phone size. Default is the common target geometry; override per
+# device with VELA_SMALL=WxH and VELA_SMALL_DPI. Known target device matrix (grows as more models are
+# added - see tests/devices/README.md):
+#   Kyocera e4810   2.6"  240x320 portrait  (~154 dpi -> density 160)   <- default
+#   TCL Flip 2      2.8"  240x320 portrait  (~143 dpi -> density 160)
+#   Sonim XP3       2.6"  240x320 portrait  (~154 dpi -> density 160)
+# All targets so far are 240x320 portrait, so the default covers them.
 # NB test as a REAL USER: do NOT pre-set onboarding prefs to skip the first-run flow - the Welcome /
 # voice / offline / diagnostics-consent dialogs are D-pad + small-screen surfaces too and must pass.
 VELA_SMALL="${VELA_SMALL:-240x320}"; VELA_SMALL_DPI="${VELA_SMALL_DPI:-160}"

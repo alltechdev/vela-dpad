@@ -57,6 +57,15 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
 D-pad-first means feature-phone-first, and feature phones are SMALL. "Works with a D-pad" must hold
 at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-negotiable:
 
+- **The app adapts its own density to the screen (`ui/AdaptiveDensity.kt`).** Standard Material
+  layouts assume ~360dp of logical width; a 240px feature phone is far below that and controls
+  crowd/clip. `AdaptiveDensity.wrap` (chained with `AppLocale.wrap` in both
+  MainActivity/VelaApp.`attachBaseContext`) overrides the effective `densityDpi` so a small screen
+  reports at least `MIN_WIDTH_DP` (360) of width - fixing clipping across EVERY screen in one place.
+  It ONLY shrinks small screens (>= 360dp wide = byte-for-byte no-op), device-verified: at 240x320 all
+  three category chips fit where before only one did. `MIN_WIDTH_DP` is tuned VISUALLY (smaller text is
+  the cost) - re-verify on-screen if you change it. NB density fixes LAYOUT/clipping, not focus - the
+  D-pad focus rules below are separate.
 - **Every screen opens focused AND stays D-pad-navigable at a SMALL display, not just native.**
   Verify at a shrunk display - `adb shell wm size 360x640; adb shell wm density 200` - by SCREENSHOT:
   the screen lands a visible focus ring on open and arrows move it. A screen that opens focused at
