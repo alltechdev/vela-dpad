@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/audit_static.sh — EXHAUSTIVE static D-pad auditor (host-side, no device needed).
+# tests/dpad/audit_static.sh — EXHAUSTIVE static D-pad auditor (host-side, no device needed).
 #
 # Scans EVERY .kt under :app for EVERY known D-pad anti-pattern and fails (exit 1) if any real
 # violation remains. Nothing escapes: every interactive-modifier variant, every gesture modifier,
@@ -11,7 +11,7 @@
 #   ./audit_static.sh -v     # also print every OK site
 # See docs/dpad.md for the rules this encodes.
 set -uo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC="$ROOT/app/src/main/java/app/vela"
 VERBOSE="${1:-}"
 

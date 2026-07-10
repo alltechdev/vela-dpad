@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/audit_smallscreen.sh — EXTREME small-screen + D-pad compatibility auditor.
+# tests/dpad/audit_smallscreen.sh — EXTREME small-screen + D-pad compatibility auditor.
 #
 # Feature phones are BOTH tiny-screen AND D-pad-driven, so this ties the two together: it shrinks
 # the display to a feature-phone size, then drives every surface with ONLY the D-pad and asserts
@@ -9,7 +9,7 @@
 # extends audit_dialogs.sh (which only checked dialog buttons) to the WHOLE app. Strict: any clipped
 # focusable fails. Deep/network surfaces self-skip. Restores the real screen on exit.
 set -uo pipefail
-DPAD="$(cd "$(dirname "${BASH_SOURCE[0]}")/../dpad_test_suite" && pwd)"; source "$DPAD/lib.sh"; source "$DPAD/nav.sh"; D="$DPAD"
+DPAD="$(cd "$(dirname "${BASH_SOURCE[0]}")/../dpad" && pwd)"; source "$DPAD/lib.sh"; source "$DPAD/nav.sh"; D="$DPAD"
 
 if ! $ADB get-state >/dev/null 2>&1; then echo "No device."; exit 2; fi
 FAILS=0
@@ -17,7 +17,7 @@ ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; FAILS=$((FAILS + 1)); }
 restore() { $ADB shell wm size reset >/dev/null 2>&1; $ADB shell wm density reset >/dev/null 2>&1; $ADB shell settings delete global vela_force_dpad >/dev/null 2>&1; }
 trap restore EXIT
-# A feature phone is small-screen AND D-pad, so force D-pad-first (see dpad_test_suite/setup.sh).
+# A feature phone is small-screen AND D-pad, so force D-pad-first (see tests/dpad/setup.sh).
 $ADB shell settings put global vela_force_dpad 1 >/dev/null 2>&1
 
 # Shrink to a small phone. Read back the ACTUAL logical size for the on-screen bounds test.

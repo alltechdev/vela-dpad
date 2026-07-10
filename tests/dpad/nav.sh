@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/nav.sh — Vela-specific D-pad navigation helpers, sourced by tests.
+# tests/dpad/nav.sh — Vela-specific D-pad navigation helpers, sourced by tests.
 # All movement is D-pad-only (the point of the suite). Kept separate from lib.sh (generic).
 
 # dismiss_onboarding — OK through the one-time onboarding dialogs. Each VelaDialog auto-focuses its

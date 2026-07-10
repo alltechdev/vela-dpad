@@ -29,11 +29,26 @@ plain human voice (commit subjects are the user-facing changelog). Use words lik
 
 ## Build
 
-- **Always build release** for anything run on-device — debug builds visibly lag
-  during map scroll/nav. R8 lives in the `release`
-  buildType. Use `./gradlew :app:assembleDebug` only as a compile check.
+- **Build variants (reworked).** `debug` is now R8-minified AND debuggable, so it runs smooth
+  on-device (no more map-scroll/nav lag) while breakpoints, Timber, StrictMode and the ANR
+  watchdog all work; it installs side by side with a release build via `applicationIdSuffix
+  ".debug"` (applicationId `app.vela.debug`, `versionNameSuffix "-debug"`). `release` = R8 +
+  resource-shrink. `staging` = release-optimized but non-debuggable, for true frame profiling.
+  R8 running on `debug` too means slower builds but the old "always ship release" caveat is gone.
 - `./gradlew :core:test` runs the pure-logic unit tests (polyline, nav engine).
-- **D-pad regression suite (`dpad_test_suite/`).** On-device, reproducible. Run after any change
+- **Local diagnostics (crash/ANR/jank, all on-device, no Firebase/Crashlytics).** `Timber` is a
+  thin logging facade: a `DiagTree` forwards WARN/ERROR into an opt-in breadcrumb ring (`DiagLog`,
+  300 entries, gated on the `diag_enabled` pref, default off); a `DebugTree` logs to Logcat in
+  debug builds only. `CrashCatcher` is the uncaught-exception handler that writes `crash-*.txt`
+  (header + stacktrace + breadcrumbs) to `filesDir/diag/crash/`, surfaced in Settings → Diagnostics
+  with export/share. `ExitInfoReader` (API 30+) harvests `ApplicationExitInfo` for ANR/native-crash/
+  SIGNALED/low-memory kills into `crash-exit-*.txt` on the next launch, deduped by a `last_exit_ts`
+  pref. `AnrWatchdog` (debug-only live main-thread stall detector) writes `crash-anr-*.txt` and
+  stands down during crash teardown via `CrashCatcher.crashing` so a crash does not also log a bogus
+  ANR. `StrictMode` (debug-only) catches main-thread disk/network I/O, `penaltyLog` to Logcat plus
+  deduped breadcrumbs into `DiagLog` keyed by violation-type + call-site so startup pref reads can't
+  flood the ring.
+- **D-pad regression suite (`tests/dpad/`).** On-device, reproducible. Run after any change
   that touches focus (see `docs/dpad.md`):
   - `run_all.sh` — per-surface focus assertions (bare map → search bar, Settings/Welcome/dialog/menu
     auto-focus, Choose-on-map engages, Directions pill reachable).
@@ -42,20 +57,21 @@ plain human voice (commit subjects are the user-facing changelog). Use words lik
     no `isSystemInDarkTheme`; fails on any real violation. Wire it into CI.
   - `audit_dynamic.sh` — EXHAUSTIVE on-device tour: every surface opens focused, focus is never lost
     across a full traversal, BACK exits. "Nothing escapes the auditor."
-- **Dead-code gate (two engines, both in CI, `main`).** ACCURACY IS THE CONTRACT: neither may flag
+- **Dead-code gate (three engines, all in CI, `main`).** ACCURACY IS THE CONTRACT: none may flag
   anything actually needed (a false positive is a bug; a false negative is tolerated).
   - `./gradlew :core:detekt :app:detekt` — parser-level dead code detekt finds and grep CANNOT:
     unused imports (delegate-aware, so Compose `by remember` `getValue`/`setValue` imports are not
     false-flagged), unused private members, unreachable code. Scoped to dead-code rules ONLY
     (`config/detekt/detekt.yml`, `buildUponDefaultConfig = false`) on the two shipped modules; NOT a
     style/complexity linter. detekt runs without type resolution, so it needs no compile classpath.
-  - `deadcode_test_suite/audit_deadcode.sh` — the whole-tree half (host-side python, no JDK): fails
+  - `tests/dead_code/audit_deadcode.sh` - the whole-tree half (host-side python, no JDK): fails
     on any public/internal top-level declaration the ENTIRE tree (every module, .kt + .xml + .kts)
     never references, counting a name used ANYWHERE (even only in its own file) as live and skipping
     every reflection/DI/framework ENTRY POINT (`@Composable`/`@Inject`/`@Provides`/`@HiltViewModel`/
     `@AndroidEntryPoint`/`@Module`/`@Serializable`/`@Preview`/`@Test`/`@Keep`/`@JvmStatic`, the
     R8-kept `core/.../model` package, the four manifest entry classes). Also surfaces whole DEAD
     MODULES (`:ghprobe`) as an advisory CHECK, not a hard fail. Mirrors `audit_static.sh` in shape.
+  - Android Lint `UnusedResources` (scoped via the `lint{}` block) for dead drawables/strings/layouts.
 - **Auditing a real drive.** A saved trip stores the navigated route too (`core/replay/TripLog`
   format, shared by `:app`'s `TripStore` writer and the `:core` reader). To diff what the nav
   cards/voice said against the plotted route from a shared trip CSV, call `TripLog.audit(csv)`
@@ -90,23 +106,17 @@ plain human voice (commit subjects are the user-facing changelog). Use words lik
   `stopSimulateLocation()` resumes live GPS. NB search/place-sheet DISTANCES are `near`-relative (off
   `mapCenter`) regardless of this toggle; sim-location is specifically about the dot + route origin.
   **Turn it OFF for real navigation.**
-- CI: **nightly + weekly channels.** `.github/workflows/ci.yml`: every push to
-  `main` builds + tests the APK and publishes a **PRERELEASE** `v0.3.<run>` (versionName
-  `0.3.<run>`, versionCode `2000+run`) — the nightly channel; Obtainium users opt in with
-  "include prereleases". `.github/workflows/promote-stable.yml` (cron Mondays 16:00 UTC +
-  manual dispatch) **promotes the newest nightly to stable**: same tag, same signed APK, no
-  rebuild — it flips `--prerelease=false --latest` and regenerates the notes to span
-  everything since the previous stable. Default Obtainium installs and the in-app updater
-  (which reads `releases/latest` = latest STABLE) therefore move weekly; a nightly user whose
-  versionCode is ahead of stable is not offered anything until stable passes them.
+- CI: **simple stable channel.** `.github/workflows/ci.yml`: every push to `main` builds + tests,
+  then publishes a NORMAL (non-prerelease) release `v0.0.<run>` (versionName `0.0.<run>`,
+  versionCode = the GitHub run number, `<run>`). It builds BOTH the debug and release APKs and
+  attaches both to the release. There is no nightly/prerelease channel and no promote-to-stable
+  workflow (both retired); Obtainium and the in-app updater track `releases/latest` directly.
   **Release notes are a real changelog** built from the commit
   subjects since the previous `v0.[0-9]*` tag (the glob spans minor bumps; checkout is
   `fetch-depth: 0` so the tag history is present; the publish step formats them + a compare link into
   `--notes`). So **commit subjects ARE the user-facing changelog** — write them as plain-language
-  changelog lines (no em-dashes, human voice), not terse hashes. **Keep local dev builds
-  below 1000**, e.g. `-PappVersionCode=1`, so the release line always wins. The versionCode
-  base stays `2000+run` across minor bumps because the run number is global/monotonic, so vc
-  keeps rising; only the versionName's minor changes.
+  changelog lines (no em-dashes, human voice), not terse hashes. **Keep local dev builds below the
+  current run number** (e.g. `-PappVersionCode=1`), so the release line always wins.
   Release signing uses repo secrets `VELA_KEYSTORE_BASE64`,
   `VELA_KEYSTORE_PASSWORD`, `VELA_KEY_ALIAS` (set; keystore at `~/.vela-signing/`,
   outside the repo — back it up). Without them the APK is debug-signed. Version
@@ -216,15 +226,14 @@ plain human voice (commit subjects are the user-facing changelog). Use words lik
   pill/row, the Street View pano and the Book/Reserve/Order action in `PlaceSheet`. No restricted build
   flavor / LockableToggle machinery; keep holders in the plain `ShowReviews` shape. Gate any new
   external-link surface on a place page behind this holder.
-- **In-app updater (`app/update/SelfUpdater.kt`).** GitHub releases/latest → tag
-  `v0.<minor>.<run>` → versionCode `2000+run` compared to BuildConfig; newer → `MapUiState.updateInfo`
-  card on the bare map. Download = no-call-timeout client (~80 MB APK) + zip-magic check →
-  `filesDir/updates/` (FileProvider `updates` path) → ACTION_VIEW package-archive; the OS verifies
-  same package + signature. Launch check ~daily behind `self_update_check` (Settings → Version,
-  default on); manual Check-for-updates button there too. "Not now" stores `update_dismissed_code`
-  (only a NEWER release re-offers). The tag parse is **minor-agnostic** (`^v0\.\d+\.(\d+)$` — it
-  survived the 0.2→0.3 bump untouched), taking only the run number for the versionCode; it still
-  assumes the `2000+run` base, so update `SelfUpdater.check` if the versionCode base ever changes.
+- **In-app updater (`app/update/SelfUpdater.kt`).** Reads `releases/latest` from
+  `alltechdev/vela-dpad` → tag `v0.0.<run>` → versionCode = `<run>` compared to BuildConfig; newer →
+  `MapUiState.updateInfo` card on the bare map. Download = no-call-timeout client (~80 MB APK) +
+  zip-magic check → `filesDir/updates/` (FileProvider `updates` path) → ACTION_VIEW package-archive;
+  the OS verifies same package + signature. Launch check ~daily behind `self_update_check`
+  (Settings → Version, default on); manual Check-for-updates button there too. "Not now" stores
+  `update_dismissed_code` (only a NEWER release re-offers). The tag parse takes the run number for the
+  versionCode; update `SelfUpdater.check` if the versionCode scheme ever changes.
 - **Zoomed-in pan perf:** (1) `reportScale` (fires per camera-move FRAME) only pushes
   to compose when mpp moved >1% — an unconditional write recomposed the scale bar every pan frame;
   keep the gate. (2) Both house-number layers (`vela-housenumber` basemap + `vela-addr-N` overlay)
@@ -259,7 +268,7 @@ plain human voice (commit subjects are the user-facing changelog). Use words lik
   Vela must be **100% operable with a 5-key D-pad (↑ ↓ ← → + OK) and hardware BACK, on a device with
   NO touchscreen** (a Qin F21 / feature phone). Touch is a *bonus*, never a requirement. A change that
   regresses it is a **release blocker**. Every rule below is MANDATORY for any new or edited UI and is
-  **enforced by `dpad_test_suite/` — run the auditors before every UI commit, wire `audit_static.sh`
+  **enforced by `tests/dpad/` - run the auditors before every UI commit, wire `audit_static.sh`
   into CI**:
   1. **Opens already focused.** Every screen / overlay / sheet / dialog / menu lands focus on a
      primary element the instant it appears. Attach `rememberDpadAutoFocus()`. The bare map is the ONE
@@ -291,10 +300,10 @@ plain human voice (commit subjects are the user-facing changelog). Use words lik
      (`DpadFocus.kt`/`VelaMenu.kt`/`VelaDialog.kt`/`MapDpadController.kt`), shared-file edits as small
      anchored insertions, one commented D-pad import block per file. **Reuse the helpers — do not
      reinvent** `dpadHighlight`/`dpadAutoFocus`/`dpadSwallowHorizontal`/`dpadFieldEscape`.
-  9. **Enforcement (two suites):** `dpad_test_suite/` — `audit_static.sh` (no device; every rule above
+  9. **Enforcement (two suites):** `tests/dpad/` - `audit_static.sh` (no device; every rule above
      as a source scan; **must be 0 violations**, CI-ready), `audit_dynamic.sh` (every surface opens
      focused, multi-axis traversal never loses focus + reaches all distinct elements, BACK exits),
-     `run_all.sh` (per-surface). `smallscreen_test_suite/` — the feature-phone twin:
+     `run_all.sh` (per-surface). `tests/small_screen/` - the feature-phone twin:
      `audit_smallscreen.sh` (shrinks the display; nothing clipped off-screen) + `audit_dialogs.sh`
      (dialogs/menus scroll and keep buttons on-screen). A UI PR that fails ANY of these does not merge.
 - **D-pad-only operation implementation (`docs/dpad.md`).** Helpers in

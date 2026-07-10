@@ -1,7 +1,7 @@
 name: CI
 
 # Builds + tests both the debug and release APKs on every push to main and on PRs. Each push to
-# main is published as a normal, versioned GitHub release (v0.1.<run>) so update trackers like
+# main is published as a normal, versioned GitHub release (v0.0.<run>) so update trackers like
 # Obtainium "just work" — no pre-releases, no "include prereleases" toggle, plain-semver
 # versionName. Both APKs are uploaded as workflow artifacts.
 on:
@@ -31,13 +31,13 @@ jobs:
         # DropdownMenu/AlertDialog, every gesture has a key path, no isSystemInDarkTheme. Fails the
         # build on any structural D-pad regression. The on-device suites need a real device and run
         # locally (adding an emulator here is the flaky download dropped below).
-        run: bash dpad_test_suite/audit_static.sh
+        run: bash tests/dpad/audit_static.sh
 
       - name: Dead-code audit (structural)
         # Host-side, no JDK/device: fails the build on any public/internal top-level declaration
         # the whole tree never references (entry points excluded). The per-module parser-level half
         # (unused imports / private members / unreachable code) runs as the detekt step below.
-        run: bash deadcode_test_suite/audit_deadcode.sh
+        run: bash tests/dead_code/audit_deadcode.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -92,12 +92,9 @@ jobs:
         # download fails loud instead of producing a runtime-crashing APK.
         run: |
           mkdir -p app/libs
-          # The `tts-runtime` release only lives on the upstream repo, so a FORK's CI (github.repository
-          # = the fork) 404s. Try this repo first, then fall back to the upstream release.
+          # Hosted on this repo's fixed-tag `tts-runtime` release (a one-time manual upload).
           curl -fSL -o app/libs/sherpa-onnx-1.13.3.aar \
-            "https://github.com/${{ github.repository }}/releases/download/tts-runtime/sherpa-onnx-1.13.3.aar" \
-          || curl -fSL -o app/libs/sherpa-onnx-1.13.3.aar \
-            "https://github.com/PimpinPumpkin/Vela/releases/download/tts-runtime/sherpa-onnx-1.13.3.aar"
+            "https://github.com/${{ github.repository }}/releases/download/tts-runtime/sherpa-onnx-1.13.3.aar"
           test "$(stat -c%s app/libs/sherpa-onnx-1.13.3.aar)" -gt 50000000
 
       - name: Dead-code analysis (detekt)
@@ -146,11 +143,10 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Publish nightly (prerelease)
-        # Every push to main → a PRERELEASE (the nightly channel). Obtainium users who
-        # want nightlies turn on "include prereleases"; everyone else keeps tracking the
-        # latest stable release, which the weekly promote-stable workflow produces by
-        # flipping the newest healthy nightly to a full release (same APK, no rebuild).
+      - name: Publish release
+        # Every push to main publishes a normal (non-prerelease) v0.0.<run> release. Obtainium and
+        # the in-app updater read releases/latest (= latest non-prerelease), so they just work with
+        # no "include prereleases" toggle and no separate promote-to-stable step.
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -176,7 +172,7 @@ jobs:
           gh release create "v${VER}" \
             --title "Vela $VER" \
             --target "$GITHUB_SHA" \
-            --prerelease \
+            --latest \
             --notes "$NOTES" \
             "vela-maps-v${VER}.apk" \
             "vela-maps-v${VER}-debug.apk"

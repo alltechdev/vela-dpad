@@ -17,7 +17,7 @@ element** (read from `uiautomator dump`), so it catches the two things that matt
 ## Run
 
 ```sh
-cd dpad_test_suite
+cd tests/dpad
 ./run_all.sh                      # setup + all tests, prints a pass/fail summary
 ./run_all.sh 01 02                # only tests whose name starts 01 / 02
 ADB="adb -s emulator-5554" ./run_all.sh   # pick a device

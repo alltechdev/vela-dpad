@@ -186,7 +186,7 @@ primary element:
 Results after a search keep focus on the search field (Google-style — you can refine or press
 DOWN into the list); that's "already focused", so it's left as-is.
 
-**Reproducible verification: [`../dpad_test_suite/`](../dpad_test_suite/).** The manual `adb`
+**Reproducible verification: [`../tests/dpad/`](../tests/dpad/).** The manual `adb`
 focus-dump checks used throughout this doc are scripted there. Run all three after any change that
 touches focus (`audit_static.sh` needs no device):
 - **`run_all.sh`** — per-surface assertions (bare map → search bar, Settings back button,

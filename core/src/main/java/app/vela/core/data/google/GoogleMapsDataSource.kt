@@ -508,7 +508,7 @@ class GoogleMapsDataSource @Inject constructor(
     private fun getNominatim(url: String): String {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/PimpinPumpkin/Vela)")
+            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/alltechdev/vela-dpad)")
             .header("Accept-Language", "en")
             .build()
         http.newCall(req).execute().use { resp -> return resp.body?.string().orEmpty() }

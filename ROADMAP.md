@@ -7,6 +7,16 @@
 Last updated: 2026-07-08.
 
 ## Recently shipped
+- **Build variants + local diagnostics + dead-code gate + simple-stable releases.** `debug` is now
+  R8-minified AND debuggable (smooth on-device, installs side by side via `applicationIdSuffix
+  ".debug"`), `release` = R8 + resource-shrink, `staging` = release-optimized non-debuggable for
+  profiling; the old "always ship release" caveat is gone. Local degoogled crash/ANR/jank diagnostics
+  (Timber facade + breadcrumb ring, `CrashCatcher`, `ExitInfoReader` for ApplicationExitInfo, a
+  debug-only `AnrWatchdog` + `StrictMode`), all on-device, no Firebase/Crashlytics. An accuracy-first
+  dead-code CI gate (detekt scoped to dead-code rules + `tests/dead_code/audit_deadcode.sh` +
+  Android Lint `UnusedResources`). And CI switched to a simple stable channel: every push to `main`
+  publishes a normal `v0.0.<run>` release (versionCode = run number) with debug + release APKs; the
+  nightly/prerelease + promote-to-stable workflows were retired.
 - **Whole-state offline place packs + self-updating packs.** Downloading a state pulls a
   CI-baked SQLite of the entire region's OSM POIs/addresses/streets, so offline search works
   Organic-Maps-style anywhere in the state. Packs rebuild monthly from fresh OSM and installed ones

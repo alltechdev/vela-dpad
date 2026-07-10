@@ -538,8 +538,8 @@ handed — no filesystem, network, or device access.
 ## 7. Build, release, signing
 
 **In-app updater** (`app/update/SelfUpdater.kt`): checks
-`api.github.com/repos/PimpinPumpkin/Vela/releases/latest`, derives versionCode from the
-`v0.3.<run>` tag (`2000 + run`), and when newer offers a card on the map
+`api.github.com/repos/alltechdev/vela-dpad/releases/latest`, derives versionCode from the
+`v0.0.<run>` tag (versionCode = `<run>`), and when newer offers a card on the map
 (`MapUiState.updateInfo`). Download uses a no-call-timeout client (the APK is ~80 MB),
 zip-magic-checks the body, then hands the file to the system installer via the app
 FileProvider (`filesDir/updates/`, same plumbing as the voice-engine installer) — the OS
@@ -548,13 +548,28 @@ enforces same-package/same-signature. Launch check throttled to ~daily behind th
 `update_dismissed_code` so only a newer release re-offers.
 
 - Toolchain: **AGP 8.7.3, Kotlin 2.1.0, Gradle 8.11.1,
-  compileSdk 35, minSdk 26, Java 17**, Compose + Hilt + version catalog. **R8 in the
-  `release` buildType** — always build release for on-device (debug lags the map).
-- **CI** (`.github/workflows/ci.yml`): every push to `main` builds + tests + signs the
-  APK and publishes a nightly PRERELEASE **`v0.3.<run>`** (versionName
-  `0.3.<run>`, versionCode `2000+run`); a weekly workflow promotes the newest
-  nightly to the stable release (same APK). Obtainium tracks stable by default,
-  nightlies via its prerelease toggle; the in-app updater follows stable.
+  compileSdk 35, minSdk 26, Java 17**, Compose + Hilt + version catalog. **Build variants:**
+  `debug` is R8-minified AND debuggable (smooth on-device, installs side by side via
+  `applicationIdSuffix ".debug"`), `release` = R8 + resource-shrink, `staging` = release-optimized
+  but non-debuggable for frame profiling. R8 runs on all three, so debug no longer lags the map.
+- **CI** (`.github/workflows/ci.yml`): every push to `main` builds + tests + signs, then publishes a
+  NORMAL (non-prerelease) release **`v0.0.<run>`** (versionName `0.0.<run>`, versionCode = `<run>`)
+  with both the debug and release APKs attached. No nightly/prerelease channel and no promote-to-stable
+  workflow; Obtainium and the in-app updater track `releases/latest` directly.
+- **Local diagnostics** (degoogled, no Firebase/Crashlytics): `Timber` facade → a `DiagTree` feeds an
+  opt-in breadcrumb ring `DiagLog` (pref `diag_enabled`, default off) and a debug-only `DebugTree` logs
+  to Logcat. `CrashCatcher` writes `crash-*.txt` (header + trace + breadcrumbs) to `filesDir/diag/crash/`,
+  exported from Settings → Diagnostics. `ExitInfoReader` (API 30+) harvests `ApplicationExitInfo`
+  (ANR/native/SIGNALED/low-memory) into `crash-exit-*.txt` next launch, deduped by `last_exit_ts`.
+  `AnrWatchdog` (debug-only) writes `crash-anr-*.txt` and stands down during crash teardown via
+  `CrashCatcher.crashing`. `StrictMode` (debug-only) flags main-thread I/O, penaltyLog + deduped
+  breadcrumbs.
+- **Dead-code CI gate** (accuracy-first, three engines): detekt scoped to dead-code rules only
+  (`config/detekt/detekt.yml`: unused imports, unused private members, unreachable code);
+  `tests/dead_code/audit_deadcode.sh` (host-side python - fails on any public/internal top-level
+  declaration the whole tree never references, skipping DI/Compose/serialization/manifest entry points,
+  advisory-flags whole dead modules like `:ghprobe`); Android Lint `UnusedResources` (scoped via
+  `lint{}`) for dead drawables/strings/layouts.
 - **APK signing**: release keystore `~/.vela-signing/vela-release.jks` (alias `vela`,
   password in `credentials.txt`); CI secrets `VELA_KEYSTORE_BASE64` /
   `_PASSWORD` / `VELA_KEY_ALIAS`. **`CN=Vela Maps`**. **Keystore lives outside the repo

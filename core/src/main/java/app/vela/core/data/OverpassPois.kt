@@ -47,7 +47,7 @@ object OverpassPois {
         val url = "$ENDPOINT?data=" + URLEncoder.encode(query, "UTF-8")
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/PimpinPumpkin/Vela)")
+            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/alltechdev/vela-dpad)")
             .build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return emptyList()
@@ -75,7 +75,7 @@ object OverpassPois {
         val url = "$ENDPOINT?data=" + URLEncoder.encode(query, "UTF-8")
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/PimpinPumpkin/Vela)")
+            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/alltechdev/vela-dpad)")
             .build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return emptyList()
@@ -108,7 +108,7 @@ object OverpassPois {
         val url = "$ENDPOINT?data=" + URLEncoder.encode(query, "UTF-8")
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/PimpinPumpkin/Vela)")
+            .header("User-Agent", "VelaMaps/0.1 (+https://github.com/alltechdev/vela-dpad)")
             .build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return emptyList()

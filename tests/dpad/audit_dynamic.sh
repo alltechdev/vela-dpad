@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/audit_dynamic.sh — EXHAUSTIVE on-device D-pad auditor.
+# tests/dpad/audit_dynamic.sh — EXHAUSTIVE on-device D-pad auditor.
 #
 # Drives to EVERY reachable surface and stress-tests the invariants that MUST hold everywhere:
 #   (1) opens focused     — a primary element is focused on open (no wasted keypress); the bare map

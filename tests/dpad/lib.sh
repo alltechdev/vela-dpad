@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/lib.sh — shared helpers for reproducible on-device D-pad tests.
+# tests/dpad/lib.sh — shared helpers for reproducible on-device D-pad tests.
 #
 # Every test drives the app with ONLY a 5-key D-pad (via `adb shell input keyevent`) and asserts
 # on the focused element (read from `uiautomator dump`). This is the scripted, repeatable version

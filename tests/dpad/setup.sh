@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/setup.sh — one-time device prep so the tests run headless:
+# tests/dpad/setup.sh — one-time device prep so the tests run headless:
 # grant location permission and install a mock GPS provider (Brooklyn by default, so search /
 # routing have a real fix). Re-runnable. Override the fix with VELA_LAT / VELA_LNG.
 set -uo pipefail

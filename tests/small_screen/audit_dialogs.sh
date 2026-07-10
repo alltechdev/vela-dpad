@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dpad_test_suite/audit_dialogs.sh — EXTREME small-screen dialog audit.
+# tests/dpad/audit_dialogs.sh — EXTREME small-screen dialog audit.
 #
 # Shrinks the display to a feature-phone size and verifies that a dialog shows ALL of its content
 # and BUTTONS without clipping any off-screen — the buttons must stay on-screen and focus-reachable
@@ -9,7 +9,7 @@
 #
 #   ./audit_dialogs.sh          # runs; restores the original screen size on exit
 set -uo pipefail
-DPAD="$(cd "$(dirname "${BASH_SOURCE[0]}")/../dpad_test_suite" && pwd)"; source "$DPAD/lib.sh"; source "$DPAD/nav.sh"; D="$DPAD"
+DPAD="$(cd "$(dirname "${BASH_SOURCE[0]}")/../dpad" && pwd)"; source "$DPAD/lib.sh"; source "$DPAD/nav.sh"; D="$DPAD"
 
 if ! $ADB get-state >/dev/null 2>&1; then echo "No device."; exit 2; fi
 FAILS=0

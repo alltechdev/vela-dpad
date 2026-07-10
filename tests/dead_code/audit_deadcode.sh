@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deadcode_test_suite/audit_deadcode.sh — EXHAUSTIVE cross-module dead-code auditor (host-side).
+# tests/dead_code/audit_deadcode.sh — EXHAUSTIVE cross-module dead-code auditor (host-side).
 #
 # This is the WHOLE-TREE half of Vela's dead-code gate. detekt (config/detekt/detekt.yml, run by
 # `./gradlew detekt`) finds per-module dead code that needs a parser — unused imports, unused
@@ -21,9 +21,9 @@
 #
 #   ./audit_deadcode.sh        # scan; print VIOLATIONS (fail) + CHECK notes (triage); exit 1 on any violation
 #   ./audit_deadcode.sh -v     # also print the live-reference count for every declaration
-# Mirrors dpad_test_suite/audit_static.sh in shape; wire it into CI next to that one.
+# Mirrors tests/dpad/audit_static.sh in shape; wire it into CI next to that one.
 set -uo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERBOSE="${1:-}"
 
 python3 - "$ROOT" "$VERBOSE" <<'PY'
