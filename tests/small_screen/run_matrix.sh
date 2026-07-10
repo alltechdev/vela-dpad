@@ -16,7 +16,9 @@ while IFS='|' read -r size dens label; do
   echo "############################################################"
   echo "# $label  ($size @ ${dens}dpi)"
   echo "############################################################"
-  if VELA_SMALL="$size" VELA_SMALL_DPI="$dens" bash "$HERE/audit_smallscreen.sh"; then
+  # </dev/null: the auditor (via adb) would otherwise consume this while-loop's heredoc stdin and the
+  # sweep would run only the FIRST geometry (classic while-read stdin-eating bug).
+  if VELA_SMALL="$size" VELA_SMALL_DPI="$dens" bash "$HERE/audit_smallscreen.sh" </dev/null; then
     results="$results\n  PASS  $label ($size @ ${dens}dpi)"
   else
     results="$results\n  FAIL  $label ($size @ ${dens}dpi)"; fails=$((fails+1))
