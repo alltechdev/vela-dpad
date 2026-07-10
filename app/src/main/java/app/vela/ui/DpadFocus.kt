@@ -195,8 +195,8 @@ fun Modifier.dpadAutoFocus(): Modifier = composed {
  * requester you own. Prefer this over `rememberDpadAutoFocus()` + `.focusRequester(...)`: the weak
  * helper bails the instant `requestFocus()` doesn't throw, even when focus never actually landed,
  * so a screen can open UNfocused (device-verified: Settings' Back button did not take focus on open
- * with the weak helper; this variant lands it - confirmed at native 480x640 AND the real target
- * 240x320). No-op under touch.
+ * with the weak helper; this variant lands it - confirmed at a normal display density AND at the real
+ * feature-phone target 240x320). No-op under touch.
  */
 fun Modifier.dpadAutoFocus(requester: FocusRequester): Modifier = composed {
     val dpadFirst = rememberDpadFirstDevice()

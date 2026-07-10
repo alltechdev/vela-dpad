@@ -14,7 +14,7 @@ ADB="${ADB:-adb}"
 # RELEASE (app.vela) or the DEBUG (app.vela.debug - applicationIdSuffix) APK; prefer .debug when both
 # are present (the dev workflow). Override with VELA_PKG. This mismatch was a silent, load-bearing bug:
 # a hardcoded app.vela made launch_fresh force-stop/monkey a NON-EXISTENT package (no-op), so Vela
-# never launched and the auditor drove whatever app was already foreground (the dialer).
+# never launched and the auditor drove whatever app was already foreground.
 PKG="${VELA_PKG:-$($ADB shell pm list packages 2>/dev/null | grep -oE 'app\.vela(\.debug)?$' | sort | tail -1)}"
 PKG="${PKG:-app.vela}"
 
