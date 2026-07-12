@@ -467,5 +467,4 @@
     <string name="parking_history_clear_all">Wyczyść wszystko</string>
     <string name="parking_history_current">Bieżące</string>
     <string name="parking_history_delete">Usuń</string>
-    <string name="parking_history_restore">Przywróć</string>
 </resources>

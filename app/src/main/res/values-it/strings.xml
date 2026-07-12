@@ -465,5 +465,4 @@
     <string name="parking_history_clear_all">Cancella tutto</string>
     <string name="parking_history_current">Attuale</string>
     <string name="parking_history_delete">Elimina</string>
-    <string name="parking_history_restore">Ripristina</string>
 </resources>

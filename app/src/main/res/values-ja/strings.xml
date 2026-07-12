@@ -473,5 +473,4 @@
     <string name="parking_history_clear_all">すべて消去</string>
     <string name="parking_history_current">現在</string>
     <string name="parking_history_delete">削除</string>
-    <string name="parking_history_restore">復元</string>
 </resources>

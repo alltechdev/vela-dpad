@@ -490,5 +490,4 @@
     <string name="parking_history_clear_all">Clear all</string>
     <string name="parking_history_current">Current</string>
     <string name="parking_history_delete">Delete</string>
-    <string name="parking_history_restore">Restore</string>
 </resources>

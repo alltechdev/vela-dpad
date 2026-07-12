@@ -465,5 +465,4 @@
     <string name="parking_history_clear_all">Alles wissen</string>
     <string name="parking_history_current">Huidig</string>
     <string name="parking_history_delete">Verwijderen</string>
-    <string name="parking_history_restore">Herstellen</string>
 </resources>

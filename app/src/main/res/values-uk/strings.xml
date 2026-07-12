@@ -467,5 +467,4 @@
     <string name="parking_history_clear_all">Очистити все</string>
     <string name="parking_history_current">Поточне</string>
     <string name="parking_history_delete">Видалити</string>
-    <string name="parking_history_restore">Відновити</string>
 </resources>

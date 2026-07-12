@@ -449,5 +449,4 @@
     <string name="parking_history_clear_all">נקה הכל</string>
     <string name="parking_history_current">נוכחי</string>
     <string name="parking_history_delete">מחק</string>
-    <string name="parking_history_restore">שחזר</string>
 </resources>

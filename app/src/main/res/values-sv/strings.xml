@@ -465,5 +465,4 @@
     <string name="parking_history_clear_all">Rensa alla</string>
     <string name="parking_history_current">Aktuell</string>
     <string name="parking_history_delete">Ta bort</string>
-    <string name="parking_history_restore">Återställ</string>
 </resources>
