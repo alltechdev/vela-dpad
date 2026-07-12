@@ -91,9 +91,72 @@ class SelfTourTest {
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)
         dpad(KeyEvent.KEYCODE_DPAD_CENTER, settleMs = 900)
         shot("07-search-overlay")
-        device.pressBack()
-        Thread.sleep(800)
+        // BACK unwinds the overlay's layered state (armed field -> entry page -> map); allow up
+        // to 3 presses, bounded. Each press is followed by a WAITING check (2.5s), never a 0-wait
+        // findObject: a blind instant re-check raced the close animation, fired an extra BACK on
+        // the bare map, and exited the app (the 46s X320 flake - this suite's own bug, not Vela's).
+        var backTries = 0
+        while (
+            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc("Settings")), 2_500L) == null &&
+            backTries < 3
+        ) {
+            device.pressBack(); backTries++
+        }
         shot("08-back-on-map")
-        assertNotNull("BACK did not return to the map (search bar gone)", byDesc("Settings"))
+        assertNotNull("BACK did not return to the map within 3 presses", byDesc("Settings"))
+
+        // ---- Search -> results -> place sheet (live network; mock GPS set by the wrapper) ------
+        byText("Coffee")?.let { chip ->
+            chip.click()
+            val results = device.wait(
+                androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.textContains("results")),
+                20_000L,
+            )
+            if (results != null) {
+                shot("09-search-results")
+                // Open the first result. Live content shifts what a FIXED D-pad walk lands on
+                // (the 48s flake), so walk-then-VERIFY with one bounded retry: after CENTER, a
+                // place sheet must show its Directions pill; if not, one more DOWN and retry.
+                // The assertion is unweakened - the sheet must open or the tour fails.
+                dpad(KeyEvent.KEYCODE_DPAD_DOWN); dpad(KeyEvent.KEYCODE_DPAD_DOWN); dpad(KeyEvent.KEYCODE_DPAD_DOWN)
+                dpad(KeyEvent.KEYCODE_DPAD_CENTER, settleMs = 2500)
+                if (device.findObject(androidx.test.uiautomator.By.text("Directions")) == null) {
+                    device.pressBack(); Thread.sleep(700)
+                    dpad(KeyEvent.KEYCODE_DPAD_DOWN)
+                    dpad(KeyEvent.KEYCODE_DPAD_CENTER, settleMs = 2500)
+                }
+                shot("10-place-sheet")
+                // The Directions pill must exist in BOTH flavors; Website must be ABSENT on restricted.
+                assertNotNull("Directions pill missing on place sheet", byText("Directions"))
+                if (SelfTour.restricted) {
+                    assertTrue("Website pill must be ABSENT on restricted", gone("Website"))
+                    assertTrue("reviews must be ABSENT on restricted", gone("Reviews"))
+                }
+                device.pressBack(); Thread.sleep(600)
+                device.pressBack(); Thread.sleep(600)
+            } else {
+                SelfTour.mark("SKIP-search-no-network")
+            }
+        }
+
+        // ---- Parking: save -> hub -> car sheet -> clear (flavor-independent) -------------------
+        device.pressBack(); Thread.sleep(500) // ensure bare map
+        val pSave = byDesc("Save parking spot")
+        if (pSave != null) {
+            pSave.click(); Thread.sleep(1200)
+            shot("11-parking-saved")
+            byDesc("Parked car")?.click(); Thread.sleep(1000)
+            assertNotNull("parking hub menu did not open", byText("Find my car"))
+            shot("12-parking-menu")
+            byText("Find my car")!!.click(); Thread.sleep(1500)
+            assertNotNull("Parked car sheet did not open", byText("Parked car"))
+            shot("13-parking-car-sheet")
+            device.pressBack(); Thread.sleep(600)
+            // clear the spot so the device is left clean
+            byDesc("Parked car")?.click(); Thread.sleep(1000)
+            byText("Clear parking")?.click(); Thread.sleep(600)
+        } else {
+            SelfTour.mark("SKIP-parking-not-in-this-build")
+        }
     }
 }

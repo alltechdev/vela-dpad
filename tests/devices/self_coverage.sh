@@ -43,7 +43,7 @@ run_one() {
   done
   local T0=$(date +%s)
   $ADB shell am instrument -w -e class app.vela.tour.SelfTourTest "$PKG.test/androidx.test.runner.AndroidJUnitRunner" 2>&1 \
-    | grep -E "OK \(|FAILURES|Tests run|Error in|junit" | sed 's/^/  /'
+    | grep -E "OK \(|FAILURES|Tests run|Error in|junit|AssertionError|Exception" | sed 's/^/  /'
   rc=$?
   echo "  elapsed: $(( $(date +%s) - T0 ))s"
   # pull the stills BEFORE anything else clears app storage (a later pm clear wipes them)
