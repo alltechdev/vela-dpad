@@ -23,12 +23,13 @@ object AppLocale {
     /** The languages Vela's generated nav voice is translated into (and, rolling out, the UI chrome).
      * This is the source of truth for the in-app language picker - keep it in sync with the NavStrings
      * table in :core. */
-    val SUPPORTED = listOf("en", "fr", "de", "es", "it", "pt", "nl", "ru", "pl", "sv", "uk")
+    val SUPPORTED = listOf("en", "fr", "de", "es", "it", "pt", "nl", "ru", "pl", "sv", "uk", "zh", "zh-TW", "ja", "he")
 
     private val ENDONYMS = mapOf(
         "en" to "English", "fr" to "Français", "de" to "Deutsch", "es" to "Español",
         "it" to "Italiano", "pt" to "Português", "nl" to "Nederlands", "ru" to "Русский",
         "pl" to "Polski", "sv" to "Svenska", "uk" to "Українська",
+        "zh" to "简体中文", "zh-TW" to "繁體中文（台灣）", "ja" to "日本語", "he" to "עברית",
     )
 
     /** The language's own name (endonym) - what a speaker of it expects to see in a language list. */
@@ -53,8 +54,11 @@ object AppLocale {
         if (changed) onLocaleChanged?.invoke()
     }
 
-    /** The resolved locale - the system default when following the system, else the override. */
-    fun effective(): Locale = language.value.takeIf { it.isNotBlank() }?.let { Locale(it) } ?: Locale.getDefault()
+    /** The resolved locale - the system default when following the system, else the override.
+     *  Hyphenated codes ("zh-TW") need [Locale.forLanguageTag]; `Locale("zh-TW")` would create a
+     *  broken language="zh-tw" locale, so nav/scrape resolution would miss the Traditional table. */
+    fun effective(): Locale = language.value.takeIf { it.isNotBlank() }
+        ?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault()
 
     /** The device's own locale, captured on the first [wrap] BEFORE any override touches the JVM
      *  default - the value to restore when the user goes back to following the system. */
@@ -73,7 +77,7 @@ object AppLocale {
             systemDefault?.let { if (Locale.getDefault() != it) Locale.setDefault(it) }
             return base
         }
-        val locale = Locale(lang)
+        val locale = Locale.forLanguageTag(lang) // handles hyphenated tags like zh-TW
         Locale.setDefault(locale)
         val config = Configuration(base.resources.configuration)
         config.setLocale(locale)
