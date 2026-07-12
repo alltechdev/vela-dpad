@@ -47,8 +47,11 @@ run_one() {
   rc=$?
   echo "  elapsed: $(( $(date +%s) - T0 ))s"
   # pull the stills BEFORE anything else clears app storage (a later pm clear wipes them)
-  $ADB pull "/sdcard/Android/data/$PKG/files/selftour/" "$out/_pull" >/dev/null 2>&1 \
-    && mv "$out"/_pull/selftour/*.png "$out"/ 2>/dev/null; rm -rf "$out/_pull"
+  # adb dir-pull layout varies (dest existing vs not): move stills from EITHER _pull/selftour/
+  # or _pull/ directly - the first pull attempt lost the stills to this quirk.
+  $ADB pull "/sdcard/Android/data/$PKG/files/selftour/" "$out/_pull" >/dev/null 2>&1
+  mv "$out"/_pull/selftour/*.png "$out"/ 2>/dev/null || mv "$out"/_pull/*.png "$out"/ 2>/dev/null
+  rm -rf "$out/_pull"
   kill "$scrpid" 2>/dev/null; wait "$scrpid" 2>/dev/null
   echo "  stills + recording: $out"
   return $rc
