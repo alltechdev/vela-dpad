@@ -37,6 +37,10 @@ run_one() {
   # continuous pixel record for the whole run (kept beside the stills; ~1-2 MB/min)
   rec="$out/run-recording.mkv"; rm -f "$rec"
   scrcpy --no-display --record "$rec" --max-fps 10 --bit-rate 2M >/dev/null 2>&1 & scrpid=$!
+  # Mock GPS is a RUN PRECONDITION (content surfaces hard-fail without a fix): arm it per leg -
+  # relying on an earlier session's provider state produced false-green runs whose content
+  # surfaces silently never executed (caught the day skips became failures).
+  bash "$HERE/../dpad/setup.sh" >/dev/null 2>&1
   $ADB shell pm clear "$PKG" >/dev/null
   for p in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION POST_NOTIFICATIONS; do
     $ADB shell pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1
