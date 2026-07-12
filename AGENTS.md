@@ -91,6 +91,17 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   frames, so verifying one feature on a device never needs the full ~13-min tour. A partial run
   reports PARTIAL, never the FULLY COVERED verdict. Current phases:
   `firstrun map search place directions settings voice parking`.
+  **HARD RULE - one surface fails, re-run ONLY that phase, NEVER the whole leg.** A full leg is
+  ~13-14 min (~35 min for both geometries); iterating a fix by re-running the whole tour is
+  unacceptable waste. `PHASES=<phase> bash tests/devices/full_coverage.sh <id>` runs just that group -
+  a light phase (map/place) in ~1-2 min; the `settings` phase is the slow one (~9 min measured at
+  240x320) because its three deep sub-sections each dump-per-swipe scroll, so that swipe overhead is
+  the real bottleneck to optimize next. Every phase re-establishes its own state (no `pm clear` outside `firstrun`, each does
+  `goto_map`; `place`/`directions` re-run search if needed), so any single phase runs standalone as
+  long as the app is past first-run. Iterate the fix with `PHASES=<failing-phase>` at the ONE affected
+  geometry/flavor; only once it passes, run the full leg (no `PHASES`) ONCE for the verdict. Do NOT
+  re-run legs that already passed when the change cannot regress them - reason about blast radius
+  first (e.g. a swipe-helper tweak can't regress a leg that already reached the section).
   **The IN-PROCESS self-coverage suite (`app/src/androidTest` SelfTourTest + `tests/devices/
   self_coverage.sh <id>`)** is the fast tour: ~10x quicker than full_coverage.sh for the surfaces
   it covers (36s vs ~6min at 240x320) and STRICTER - real focus-state assertions per D-pad step
