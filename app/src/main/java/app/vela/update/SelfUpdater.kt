@@ -64,9 +64,15 @@ class SelfUpdater @Inject constructor(
             val code = run
             if (code <= currentVersionCode) return@runCatching null
             val assets = o.getJSONArray("assets")
+            // Releases carry TWO APKs since the restricted flavor shipped: the standard one and a
+            // "-restricted" one. Pick the asset matching THIS build's flavor - a restricted install
+            // must never be offered the standard APK (and the OS would refuse it anyway: different
+            // applicationId), and standard must skip the restricted asset (first-match used to).
+            val wantRestricted = app.vela.BuildConfig.RESTRICTED
             val apk = (0 until assets.length())
                 .map { assets.getJSONObject(it) }
-                .firstOrNull { it.getString("name").endsWith(".apk") }
+                .filter { it.getString("name").endsWith(".apk") && !it.getString("name").contains("-debug") }
+                .firstOrNull { it.getString("name").contains("restricted") == wantRestricted }
                 ?: return@runCatching null
             UpdateInfo(
                 versionName = tag.removePrefix("v"),

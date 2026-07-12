@@ -21,6 +21,10 @@ android {
         versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("appVersionName") as String?) ?: "0.0.1"
 
+        // Restricted build flavor flag (see productFlavors below). false everywhere except
+        // the `restricted` flavor, which overrides it to true.
+        buildConfigField("boolean", "RESTRICTED", "false")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
@@ -127,6 +131,27 @@ android {
             applicationIdSuffix = ".staging"
             matchingFallbacks += "release"
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    // Two POLICY flavors. `standard` is the app as-is. `restricted` hard-locks the six
+    // self-restriction toggles at their restrictive values and REMOVES their rows from Settings
+    // (see ui/Restricted.kt + the holders): no reviews, no "Read all reviews" page, no photos,
+    // adult categories hidden, external links hidden, no voice-search mic. Its own applicationId
+    // (app.vela.restricted) so it installs side by side and the OS installer can never cross-grade
+    // a restricted install onto a standard APK (different package + the updater picks the matching
+    // release asset). CI ships BOTH release APKs; only standard gets a debug compile.
+    flavorDimensions += "policy"
+    productFlavors {
+        create("standard") {
+            dimension = "policy"
+            isDefault = true
+        }
+        create("restricted") {
+            dimension = "policy"
+            applicationIdSuffix = ".restricted"
+            versionNameSuffix = "-restricted"
+            buildConfigField("boolean", "RESTRICTED", "true")
         }
     }
 
