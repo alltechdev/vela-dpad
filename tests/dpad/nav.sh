@@ -35,18 +35,18 @@ focus_search_bar() { key "$K_DOWN"; }
 # instead (the "Settings unreachable" false-fail). Press RIGHT twice (reaches the rightmost gear from
 # either start), confirm "Appearance", and retry the whole nav (backing out of the overlay) if not.
 open_settings() {
-  local a b x1
+  local a
   for a in 1 2 3 4; do
     goto_map
-    key "$K_DOWN"                            # ambient -> the search ROW (search field, left side)
-    b="$(focused_bounds)"; x1="$(echo "$b" | sed -E 's/^\[([0-9]+),.*/\1/')"
-    # Step RIGHT to the gear ONLY if DOWN landed on the left (the search field). Never RIGHT twice:
-    # a second RIGHT past the rightmost gear CLEARS focus, so OK then does nothing (the old bug that
-    # made Settings "unreachable"). If DOWN already landed far-right (the gear itself), OK directly.
-    [ -n "$x1" ] && [ "$x1" -lt 120 ] 2>/dev/null && key "$K_RIGHT"
-    key "$K_OK" 1.5
-    for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.5; done
-    key "$K_BACK" 1                          # opened the search overlay instead? back out, retry
+    # Reach the gear by its content-desc, not a fixed RIGHT count: the voice-search MIC sits
+    # between the search field and the gear now, so the old "RIGHT once from the field" landed on
+    # the mic and OK opened dictation instead of Settings (the restricted-run settings cascade).
+    # tap_desc is layout/flavor-proof; the gear's D-PAD reach is separately proven by
+    # audit_dynamic's traversal (this gate is coverage, not the reachability auditor).
+    if tap_desc "Settings"; then
+      for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.5; done
+    fi
+    key "$K_BACK" 1                          # opened something else? back out, retry
   done
   return 1
 }
@@ -78,9 +78,17 @@ reach_directions() {
   run_coffee || return 1
   open_first_place
   key "$K_OK" 1                          # expand the sheet so the action pills are on screen
-  keys "$K_DOWN" "$K_DOWN" "$K_DOWN"     # -> the action-pills row (lands on Call, the middle pill)
-  key "$K_LEFT"                          # -> Directions (the leftmost, emphasised pill)
-  key "$K_OK" 5                         # open the directions panel
+  # Reach the Directions pill by its TEXT, not a fixed DOWN count: the sheet's row layout varies
+  # by flavor (the restricted build has no photo strip and no Website pill, so a blind 3-DOWN
+  # overshot the pills row - the flavor-cascade bug). tap_center is flavor/layout-proof; the
+  # D-pad REACH of the pill is separately proven by audit_dynamic's traversal.
+  if tap_center "Directions"; then
+    sleep 4
+  else
+    keys "$K_DOWN" "$K_DOWN" "$K_DOWN"   # fallback: the old walk (dump raced / text off-screen)
+    key "$K_LEFT"
+    key "$K_OK" 5
+  fi
   on_screen "Add stop"                   # a directions-panel-only row
 }
 

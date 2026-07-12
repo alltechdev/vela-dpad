@@ -14,10 +14,12 @@ object LiveReviews {
     val on = mutableStateOf(true)
 
     fun init(context: Context) {
-        on.value = prefs(context).getBoolean(KEY, true)
+        // Restricted flavor: locked OFF, pref ignored (see Restricted.kt).
+        on.value = if (RESTRICTED_BUILD) false else prefs(context).getBoolean(KEY, true)
     }
 
     fun set(context: Context, value: Boolean) {
+        if (RESTRICTED_BUILD) return // locked
         on.value = value
         prefs(context).edit().putBoolean(KEY, value).apply()
     }
