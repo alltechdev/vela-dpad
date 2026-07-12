@@ -81,6 +81,11 @@ object AppLocale {
         Locale.setDefault(locale)
         val config = Configuration(base.resources.configuration)
         config.setLocale(locale)
+        // Force the RTL/LTR direction from the chosen locale. `setLocale` only auto-updates
+        // layoutDirection when the config's direction wasn't already set - but AdaptiveDensity.wrap
+        // ran first and produced a config with an explicit (LTR) direction, so Hebrew never flipped
+        // the layout without this (device-verified: back button + rows stayed left in Hebrew).
+        config.setLayoutDirection(locale)
         return base.createConfigurationContext(config)
     }
 
