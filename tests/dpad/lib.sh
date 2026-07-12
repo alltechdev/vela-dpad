@@ -190,7 +190,12 @@ scroll_focus_ok() {
 # full_coverage.sh to frame a surface); D-pad REACHABILITY of every element is enforced separately by
 # audit_dynamic.sh. Returns non-zero if unreached.
 swipe_up_to() {
-  local want="$1" max="${2:-40}" i sz w h
+  # max default 72: the deepest section (Saved places) sits ~4 sections above the bottom of the LONGEST
+  # (standard-flavor) Settings list, which on the smallest 240x320 geometry is ~50 short (26%) swipes
+  # down - 40 undershot it. The per-swipe on_screen check makes a high max SAFE (it stops the instant the
+  # text appears, so it can't overshoot); a high max only costs extra swipes when the target is genuinely
+  # absent, which never happens for the known sections these calls target.
+  local want="$1" max="${2:-72}" i sz w h
   sz="$($ADB shell wm size 2>/dev/null | grep -oE '[0-9]+x[0-9]+' | tail -1)"
   w="${sz%x*}"; h="${sz#*x}"; : "${w:=480}"; : "${h:=800}"
   # SHORT + SLOW swipes. Short (~26% of the screen) so a section's header+body block spans SEVERAL
@@ -198,7 +203,14 @@ swipe_up_to() {
   # distance with no momentum - a fast fling coasts a whole screen past the finger lift and flings a
   # single-row section header clean past between checks (device-seen: Voice library / Saved places
   # consistently overshot with a 220ms fling; a slow drag lands on them every time).
-  local x=$((w/2)) y1=$((h*63/100)) y2=$((h*37/100))
+  # x = LEFT GUTTER (~13% of width, floored at 24px), NOT centre: a centre-column drag lands on an
+  # interactive widget (the Voice-search-mic Switch row / the Download button in the Search section) that
+  # SWALLOWS the drag, stalling the list mid-scroll so deep sections (Offline / Saved places) never come
+  # into view - device-reproduced on standard @240x320: 40 centre swipes stuck at Search, one gutter
+  # swipe reached Saved places. The gutter holds only left-aligned label text, which never eats a drag; a
+  # pure-vertical swipe there can't trigger the horizontal back-gesture either.
+  local x=$((w*13/100)); [ "$x" -lt 24 ] && x=24
+  local y1=$((h*63/100)) y2=$((h*37/100))
   for i in $(seq 1 "$max"); do
     on_screen "$want" && return 0
     $ADB shell input swipe "$x" "$y1" "$x" "$y2" 700 >/dev/null 2>&1
@@ -212,7 +224,8 @@ nudge_up() {
   local sz w h
   sz="$($ADB shell wm size 2>/dev/null | grep -oE '[0-9]+x[0-9]+' | tail -1)"
   w="${sz%x*}"; h="${sz#*x}"; : "${w:=480}"; : "${h:=800}"
-  $ADB shell input swipe $((w/2)) $((h*62/100)) $((w/2)) $((h*34/100)) 200 >/dev/null 2>&1
+  local gx=$((w*13/100)); [ "$gx" -lt 24 ] && gx=24   # left gutter, same reason as swipe_up_to
+  $ADB shell input swipe "$gx" $((h*62/100)) "$gx" $((h*34/100)) 200 >/dev/null 2>&1
   sleep 0.5
 }
 # tap_desc <exact>  - tap the centre of the node with that exact content-desc (one dump). For icon
