@@ -131,7 +131,7 @@ jobs:
         # The resource half of the dead-code gate: Android Lint UnusedResources (scoped via the
         # lint{} block in app/build.gradle.kts to run ONLY that detector, promoted to fatal). Fails
         # the build on a dead drawable/string/layout. Accurate: the app does no getIdentifier lookup.
-        run: ./gradlew :app:lintDebug --no-daemon -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
+        run: ./gradlew :app:lintStandardDebug --no-daemon -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
 
       - name: Build debug APK (standard flavor only)
         # The debug variant is R8-minified + debuggable (smooth on-device dev build with Timber
