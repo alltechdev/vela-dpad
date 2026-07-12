@@ -282,6 +282,8 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             }
             Hint(stringResource(R.string.settings_buildings_3d_hint))
 
+            // Restricted flavor: all five Place pages toggles are hard-locked (Restricted.kt), so the section is hidden entirely.
+            if (!app.vela.ui.RESTRICTED_BUILD) {
             Spacer(Modifier.height(20.dp))
             SectionTitle(stringResource(R.string.settings_place_pages))
 
@@ -344,6 +346,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 )
             }
             Hint(stringResource(R.string.settings_hide_external_links_hint))
+            }
 
             Spacer(Modifier.height(20.dp))
             SectionTitle(stringResource(R.string.settings_navigation))

@@ -43,7 +43,15 @@ cover_one() {
   local ALLPHASES="firstrun map search place directions settings voice parking"
   local phases="${PHASES:-$ALLPHASES}" full=0; [ "$phases" = "$ALLPHASES" ] && full=1
   phase() { case " $phases " in *" $1 "*) return 0;; *) return 1;; esac; }
-  out="$HERE/$id/screenshots/full"; mkdir -p "$out"; [ "$full" = 1 ] && rm -f "$out"/*.png
+  # Flavor-aware output: a run against the RESTRICTED flavor writes to its own directory so it can
+  # never clobber the committed standard-flavor frames (a restricted full run's rm -f once wiped
+  # them - device-seen). The standard set stays the support-verdict record; the restricted set is
+  # the restricted-flavor record, kept side by side.
+  case "${VELA_PKG:-}" in
+    *restricted*) out="$HERE/$id/screenshots/full-restricted" ;;
+    *)            out="$HERE/$id/screenshots/full" ;;
+  esac
+  mkdir -p "$out"; [ "$full" = 1 ] && rm -f "$out"/*.png
   echo "################ FULL COVERAGE: $id ($geom @ ${dens}dpi) ################"
   $ADB shell wm size "$geom" >/dev/null 2>&1; $ADB shell wm density "$dens" >/dev/null 2>&1
   $ADB shell settings put global vela_force_dpad 1 >/dev/null 2>&1
@@ -140,7 +148,10 @@ cover_one() {
     # sheet appears - a single early check read as MISSED while the feature was fine.
     ok=0
     for _ in 1 2 3 4; do
-      if on_screen "Listening…" || on_screen "Getting ready…" || on_screen_contains "Vela Voice"; then ok=1; break; fi
+      # Accept ANY of the three mic outcomes: the on-device capture sheet, the Vela Voice download
+      # offer, or a system voice-input app showing our "Speak to search" prompt (a post-pm-clear
+      # device has no model, so Auto routes to the provider - that IS the mic working).
+      if on_screen "Listening…" || on_screen "Getting ready…" || on_screen_contains "Vela Voice" || on_screen_contains "Speak to search"; then ok=1; break; fi
       sleep 2
     done
     if [ "$ok" = 1 ]; then mark "voice-capture-sheet" 1; key "$K_BACK" 1

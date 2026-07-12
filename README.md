@@ -42,6 +42,12 @@ the model + screen size and resolution.
 
 [<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="54">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/alltechdev/vela-dpad)
 
+**Two editions per release:** the standard APK, and `vela-maps-v<version>-restricted.apk` - a
+restricted edition for users who impose the self-restrictions on themselves and want them
+non-optional (no reviews, no photos, adult categories hidden, no external links; voice search
+stays available; the toggles are hard-locked and absent from Settings). It installs side by side under its own app id
+and self-updates only to restricted builds.
+
 Add `https://github.com/alltechdev/vela-dpad` in
 **[Obtainium](https://github.com/ImranR98/Obtainium)** to auto-track the latest
 release, or grab an APK from

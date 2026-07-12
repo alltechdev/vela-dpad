@@ -133,8 +133,40 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   stops (so it never fights the user). `audit_static.sh` surfaces every weak use for triage - each must
   be screenshot-verified to actually focus on a small screen, or converted.
 
-## The feat/restrictions branch (hard rules)
+## The restricted build flavor + the feat/restrictions branch (hard rules)
 
+**WHAT THIS IS (read before touching anything restriction-related):** Vela ships TWO release APKs
+from one codebase via the `policy` flavor dimension (`app/build.gradle.kts` `productFlavors`):
+- **`standard`** - the app exactly as before. Its behavior must stay BYTE-IDENTICAL: every
+  restriction below remains a user-flippable Settings toggle with the same defaults as always.
+- **`restricted`** - for users who impose the restrictions on themselves and want them
+  NON-OPTIONAL. The five self-restriction toggles are HARD-LOCKED at their restrictive values and
+  their Settings rows are REMOVED (the whole Place pages section disappears): reviews OFF,
+  "Read all reviews" page OFF, photos OFF, adult categories HIDDEN, website/external links HIDDEN.
+  **Voice search stays FULLY AVAILABLE in the restricted flavor** (mic, Vela Voice download, the
+  Search section in Settings) - it is not a content restriction, it is how a keypad user types.
+
+How the lock works (keep this shape for any new restriction):
+- `BuildConfig.RESTRICTED` (false in defaultConfig, true only in the `restricted` flavor) surfaces
+  as `ui/Restricted.kt`'s `RESTRICTED_BUILD` compile-time constant.
+- **The lock lives in each HOLDER, not in the Settings UI**: `init()` forces the locked value and
+  never reads the pref; `set()` is a no-op. So every caller is bound, R8 strips the dead branch
+  per flavor, and no pref surgery can unlock it.
+- Settings hides the now-inert rows behind `if (!RESTRICTED_BUILD)`.
+- The restricted flavor has its OWN applicationId (`app.vela.restricted`, debug
+  `app.vela.restricted.debug`) - installs side by side, and the OS installer can never cross-grade
+  a restricted install onto a standard APK. `SelfUpdater` picks the release asset matching its own
+  flavor by the `restricted` name marker - keep "restricted" in the release asset filename.
+- CI (`ci.yml`): debug builds are STANDARD-ONLY (`assembleStandardDebug`); release builds BOTH
+  flavors and publishes `vela-maps-v<ver>.apk` + `vela-maps-v<ver>-restricted.apk` on every release.
+- **A new user-facing restriction = a holder locked by `RESTRICTED_BUILD` + a hidden Settings row +
+  (if it must act inside `:core`) the `CategoryFilter.enabled`-style flag pattern.** Never a fork of
+  app logic per flavor and never a branch-only patch.
+- **Testing: the restricted flavor obeys every D-pad + small-screen hard rule** - run the coverage
+  phases against `app.vela.restricted.debug` (`VELA_PKG=app.vela.restricted.debug`) at EVERY target
+  geometry. EVERY phase must pass, the `voice` phase included (the mic works in restricted too).
+
+Branch rules:
 - **Keep `feat/restrictions` synced with `main` at all times.** After anything merges to main,
   merge main into `feat/restrictions` (or rebase it) promptly - it must never drift stale.
 - **On conflict, `feat/restrictions` WINS.** If a restrictions-based feature in that branch

@@ -133,21 +133,26 @@ jobs:
         # the build on a dead drawable/string/layout. Accurate: the app does no getIdentifier lookup.
         run: ./gradlew :app:lintDebug --no-daemon -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
 
-      - name: Build debug APK
-        # The debug variant is now R8-minified + debuggable (smooth on-device dev build with Timber
+      - name: Build debug APK (standard flavor only)
+        # The debug variant is R8-minified + debuggable (smooth on-device dev build with Timber
         # /StrictMode/ANR-watchdog), so it exercises its own proguard rules - build it in CI too so a
-        # debug-only R8/keep regression can't slip through. No signing/version props needed.
+        # debug-only R8/keep regression can't slip through. Only the STANDARD flavor gets a debug
+        # build; the restricted flavor ships as a release APK alongside it (policy flavors, see
+        # app/build.gradle.kts productFlavors). No signing/version props needed.
         run: >
-          ./gradlew :app:assembleDebug --no-daemon
+          ./gradlew :app:assembleStandardDebug --no-daemon
           -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
 
-      - name: Build release APK
+      - name: Build release APKs (standard + restricted)
+        # BOTH policy flavors release: the normal APK and a "restricted" one whose six
+        # self-restriction toggles are hard-locked on (no reviews/photos/external links/adult
+        # categories/mic) and removed from Settings. One gradle invocation builds both.
         env:
           VELA_KEYSTORE_PATH: ${{ runner.temp }}/vela-release.jks
           VELA_KEYSTORE_PASSWORD: ${{ secrets.VELA_KEYSTORE_PASSWORD }}
           VELA_KEY_ALIAS: ${{ secrets.VELA_KEY_ALIAS }}
         run: >
-          ./gradlew :app:assembleRelease --no-daemon
+          ./gradlew :app:assembleStandardRelease :app:assembleRestrictedRelease --no-daemon
           -PappVersionName=${{ steps.ver.outputs.name }}
           -PappVersionCode=${{ steps.ver.outputs.code }}
           -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
@@ -156,14 +161,21 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vela-maps-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/standard/release/app-standard-release.apk
+          if-no-files-found: error
+
+      - name: Upload restricted APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vela-maps-restricted-apk
+          path: app/build/outputs/apk/restricted/release/app-restricted-release.apk
           if-no-files-found: error
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: vela-maps-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/standard/debug/app-standard-debug.apk
           if-no-files-found: error
 
       - name: Publish release
@@ -175,10 +187,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VER="${{ steps.ver.outputs.name }}"
-          cp app/build/outputs/apk/release/app-release.apk "vela-maps-v${VER}.apk"
+          cp app/build/outputs/apk/standard/release/app-standard-release.apk "vela-maps-v${VER}.apk"
+          # The restricted-flavor APK (own applicationId app.vela.restricted; the in-app updater in
+          # each flavor picks its matching asset by the "restricted" name marker - keep it in the name).
+          cp app/build/outputs/apk/restricted/release/app-restricted-release.apk "vela-maps-v${VER}-restricted.apk"
           # Also attach the R8-minified DEBUG APK (debuggable + Timber/StrictMode/ANR-watchdog) so
           # on-device diagnosis doesn't require digging a login-gated workflow artifact out of the run.
-          cp app/build/outputs/apk/debug/app-debug.apk "vela-maps-v${VER}-debug.apk"
+          cp app/build/outputs/apk/standard/debug/app-standard-debug.apk "vela-maps-v${VER}-debug.apk"
           # Build the changelog from the commit subjects since the previous release. Our commit
           # subjects are written as plain-language changelog lines, so this reads as real release
           # notes (what Obtainium shows people), not a raw hash dump.
@@ -198,4 +213,5 @@ jobs:
             --latest \
             --notes "$NOTES" \
             "vela-maps-v${VER}.apk" \
+            "vela-maps-v${VER}-restricted.apk" \
             "vela-maps-v${VER}-debug.apk"

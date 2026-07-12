@@ -13,10 +13,12 @@ object ShowReviews {
     val on = mutableStateOf(true)
 
     fun init(context: Context) {
-        on.value = prefs(context).getBoolean(KEY, true)
+        // Restricted flavor: locked OFF, pref ignored (see Restricted.kt).
+        on.value = if (RESTRICTED_BUILD) false else prefs(context).getBoolean(KEY, true)
     }
 
     fun set(context: Context, value: Boolean) {
+        if (RESTRICTED_BUILD) return // locked
         on.value = value
         prefs(context).edit().putBoolean(KEY, value).apply()
     }
@@ -34,10 +36,12 @@ object LoadPhotos {
     val on = mutableStateOf(true)
 
     fun init(context: Context) {
-        on.value = prefs(context).getBoolean(KEY, true)
+        // Restricted flavor: locked OFF, pref ignored (see Restricted.kt).
+        on.value = if (RESTRICTED_BUILD) false else prefs(context).getBoolean(KEY, true)
     }
 
     fun set(context: Context, value: Boolean) {
+        if (RESTRICTED_BUILD) return // locked
         on.value = value
         prefs(context).edit().putBoolean(KEY, value).apply()
     }
@@ -57,11 +61,13 @@ object HideAdult {
     val on = mutableStateOf(false)
 
     fun init(context: Context) {
-        on.value = prefs(context).getBoolean(KEY, false)
+        // Restricted flavor: locked ON, pref ignored (see Restricted.kt).
+        on.value = if (RESTRICTED_BUILD) true else prefs(context).getBoolean(KEY, false)
         app.vela.core.data.CategoryFilter.enabled = on.value
     }
 
     fun set(context: Context, value: Boolean) {
+        if (RESTRICTED_BUILD) return // locked
         on.value = value
         app.vela.core.data.CategoryFilter.enabled = value // gate the :core data-source seam
         prefs(context).edit().putBoolean(KEY, value).apply()
@@ -82,10 +88,12 @@ object HideExternalLinks {
     val on = mutableStateOf(false)
 
     fun init(context: Context) {
-        on.value = prefs(context).getBoolean(KEY, false)
+        // Restricted flavor: locked ON, pref ignored (see Restricted.kt).
+        on.value = if (RESTRICTED_BUILD) true else prefs(context).getBoolean(KEY, false)
     }
 
     fun set(context: Context, value: Boolean) {
+        if (RESTRICTED_BUILD) return // locked
         on.value = value
         prefs(context).edit().putBoolean(KEY, value).apply()
     }
