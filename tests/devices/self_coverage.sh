@@ -37,6 +37,10 @@ run_one() {
   # continuous pixel record for the whole run (kept beside the stills; ~1-2 MB/min)
   rec="$out/run-recording.mkv"; rm -f "$rec"
   scrcpy --no-display --record "$rec" --max-fps 10 --bit-rate 2M >/dev/null 2>&1 & scrpid=$!
+  # Mock GPS is a RUN PRECONDITION (content surfaces hard-fail without a fix): arm it per leg -
+  # relying on an earlier session's provider state produced false-green runs whose content
+  # surfaces silently never executed (caught the day skips became failures).
+  bash "$HERE/../dpad/setup.sh" >/dev/null 2>&1
   $ADB shell pm clear "$PKG" >/dev/null
   for p in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION POST_NOTIFICATIONS; do
     $ADB shell pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1
@@ -47,11 +51,8 @@ run_one() {
   rc=$?
   echo "  elapsed: $(( $(date +%s) - T0 ))s"
   # pull the stills BEFORE anything else clears app storage (a later pm clear wipes them)
-  # adb dir-pull layout varies (dest existing vs not): move stills from EITHER _pull/selftour/
-  # or _pull/ directly - the first pull attempt lost the stills to this quirk.
-  $ADB pull "/sdcard/Android/data/$PKG/files/selftour/" "$out/_pull" >/dev/null 2>&1
-  mv "$out"/_pull/selftour/*.png "$out"/ 2>/dev/null || mv "$out"/_pull/*.png "$out"/ 2>/dev/null
-  rm -rf "$out/_pull"
+  $ADB pull "/sdcard/Android/data/$PKG/files/selftour/" "$out/_pull" >/dev/null 2>&1 \
+    && mv "$out"/_pull/selftour/*.png "$out"/ 2>/dev/null; rm -rf "$out/_pull"
   kill "$scrpid" 2>/dev/null; wait "$scrpid" 2>/dev/null
   echo "  stills + recording: $out"
   return $rc

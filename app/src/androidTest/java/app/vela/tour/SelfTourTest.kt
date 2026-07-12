@@ -106,7 +106,32 @@ class SelfTourTest {
         assertNotNull("BACK did not return to the map within 3 presses", byDesc("Settings"))
 
         // ---- Search -> results -> place sheet (live network; mock GPS set by the wrapper) ------
-        byText("Coffee")?.let { chip ->
+    }
+
+    /**
+     * WIP - content + parking surfaces. NOT yet proven deterministic (the search-results D-pad
+     * walk and the cold-start fix timing both misbehave differently per geometry), so it is
+     * EXCLUDED from the proven tour: a pass must never mean less than it claims. The external
+     * full_coverage gate remains the MANDATORY record for these surfaces (AGENTS migration rule).
+     * Skips inside are HARD FAILURES by design - keep that when finishing this.
+     */
+    @org.junit.Ignore("WIP: content surfaces not yet deterministic - external gate remains the record")
+    @Test
+    fun contentAndParkingTour_WIP() {
+        ActivityScenario.launch(MainActivity::class.java)
+        device.waitForIdle()
+        // The search is CENTER-relative: on a cold start the first GPS fix lands seconds after
+        // launch and the map is still on the world view - searching then finds nothing (the
+        // external harness never hit this only because it moved slower). Do what a user does:
+        // recenter on the fix first, then search.
+        device.wait(
+            androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.descContains("my location")),
+            8_000L,
+        )?.click()
+        Thread.sleep(3500)
+        val chip = byText("Coffee")
+        assertNotNull("Coffee chip missing from the bare map", chip)
+        chip!!.let { chip ->
             chip.click()
             val results = device.wait(
                 androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.textContains("results")),
@@ -135,7 +160,7 @@ class SelfTourTest {
                 device.pressBack(); Thread.sleep(600)
                 device.pressBack(); Thread.sleep(600)
             } else {
-                SelfTour.mark("SKIP-search-no-network")
+                org.junit.Assert.fail("search returned no results within 20s - content surfaces MUST run (network + mock GPS are run preconditions); a silent skip is not a pass")
             }
         }
 
@@ -156,7 +181,7 @@ class SelfTourTest {
             byDesc("Parked car")?.click(); Thread.sleep(1000)
             byText("Clear parking")?.click(); Thread.sleep(600)
         } else {
-            SelfTour.mark("SKIP-parking-not-in-this-build")
+            org.junit.Assert.fail("parking P button not found - the parking surfaces MUST run")
         }
     }
 }

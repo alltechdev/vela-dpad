@@ -42,3 +42,5 @@ app/libs/*.aar
 
 # Local Claude Code entrypoint - symlink to AGENTS.md (the committed guide)
 /CLAUDE.md
+*/screenshots/selftour*/run-recording.mkv
+tests/devices/*/screenshots/*/run-recording.mkv
