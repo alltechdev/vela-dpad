@@ -940,6 +940,7 @@ class MapViewModel @Inject constructor(
                 // do its specific name+address query - without this, popular times +
                 // editorial/owner never loaded for saved/recent places (only via search).
                 fetchPlaceDetails(enriched)
+                fetchStopDepartures(enriched) // a saved/recent transit stop shows its board too
             }
         }
     }
@@ -1470,9 +1471,9 @@ class MapViewModel @Inject constructor(
      *  (needed for the `?cid=` deep-link); guarded to the still-selected place when it returns. */
     private fun fetchStopDepartures(p: Place) {
         val fid = p.featureId
-        if (fid.isNullOrBlank() || !fid.contains(":")) return
+        if (fid.isNullOrBlank() || !fid.contains(":")) { android.util.Log.i("VelaDepartures", "gate: no fid (cat='${p.category}')"); return }
         val cat = p.category ?: ""
-        if (!TRANSIT_CAT.containsMatchIn(cat)) return
+        if (!TRANSIT_CAT.containsMatchIn(cat)) { android.util.Log.i("VelaDepartures", "gate: cat no match '${cat}'"); return }
         _state.update { if (it.selected?.featureId == fid) it.copy(stopDeparturesLoading = true) else it }
         viewModelScope.launch {
             val board = runCatching { webStopDepartures.fetch(fid) }
