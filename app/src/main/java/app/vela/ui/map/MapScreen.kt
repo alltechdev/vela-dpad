@@ -1107,6 +1107,7 @@ fun MapScreen(
             // Hidden while the search overlay is up (e.g. picking a custom origin) so
             // the panel doesn't render over it.
             state.directionsOpen && !searchOpen && state.pickOnMap == null -> DirectionsPanel(
+                flockOnRoute = state.flockOnRoute,
                 originName = if (state.directionsReversed) (state.selected?.name ?: stringResource(R.string.mapscreen_place))
                 else (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location)),
                 destinationName = if (state.directionsReversed) (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location))
