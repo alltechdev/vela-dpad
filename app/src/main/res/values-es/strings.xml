@@ -214,6 +214,9 @@
     <string name="place_transit_now">Saliendo</string>
     <string name="place_transit_in_min">en %1$d min</string> <!-- format -->
     <string name="place_transit_live">En directo</string>
+    <string name="place_departures">Salidas</string>
+    <string name="place_every">Cada %1$s</string> <!-- format -->
+    <string name="route_detail_unavailable">Detalles de la línea no disponibles</string>
     <string name="place_hide_steps">Ocultar pasos</string>
     <string name="place_show_steps">Mostrar pasos</string>
     <string name="place_walk">A pie</string>
