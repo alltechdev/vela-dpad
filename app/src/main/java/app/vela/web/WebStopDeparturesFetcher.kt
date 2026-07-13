@@ -71,8 +71,12 @@ class WebStopDeparturesFetcher @Inject constructor(
         } finally {
             pending.remove(id)
         }
+        // Diagnostic (no place identifiers logged): which of the three null paths fired.
+        android.util.Log.i("VelaDepartures", "raw len=${raw?.length ?: -1}")
         if (raw.isNullOrEmpty()) null
-        else runCatching { StopDeparturesParser.parse(raw) }.getOrNull()
+        else runCatching { StopDeparturesParser.parse(raw) }
+            .onFailure { android.util.Log.i("VelaDepartures", "parse threw: ${it.message?.take(120)}") }
+            .getOrNull()
     }
 
     /** cid = LOW half of the `0xHIGH:0xLOW` feature id as unsigned decimal (the `?cid=` deep-link). */
