@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.vela.R
@@ -116,6 +117,11 @@ fun ManeuverBanner(
     // rememberUpdatedState keeps the captured refs pointing at the latest lambdas.
     val latestNext by rememberUpdatedState(onPreviewNext)
     val latestPrev by rememberUpdatedState(onPreviewPrev)
+    // COMPACT mode on feature-phone-short screens (issue #41 follow-up): the 54dp glyph +
+    // headline distance + 16dp paddings are the documented nav-card style for NORMAL phones, but on
+    // a ~320-640px-tall display that card still claims a big slice of the map. Under 500dp of height
+    // the glyph, distance type and paddings all step down; normal phones are untouched.
+    val compact = LocalConfiguration.current.screenHeightDp < 500
     Card(
         modifier
             .fillMaxWidth()
@@ -166,14 +172,14 @@ fun ManeuverBanner(
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         colors = CardDefaults.cardColors(containerColor = container, contentColor = content),
     ) {
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+        Column(Modifier.padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 8.dp else 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(maneuverIcon(type), contentDescription = null, modifier = Modifier.size(54.dp))
-                Spacer(Modifier.width(18.dp))
+                Icon(maneuverIcon(type), contentDescription = null, modifier = Modifier.size(if (compact) 36.dp else 54.dp))
+                Spacer(Modifier.width(if (compact) 10.dp else 18.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         formatDistance(distanceMeters),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     val signs = roadSigns(text, ref)
