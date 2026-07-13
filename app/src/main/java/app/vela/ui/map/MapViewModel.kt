@@ -1466,21 +1466,29 @@ class MapViewModel @Inject constructor(
         RegexOption.IGNORE_CASE,
     )
 
+    // Debug sink shared with WebStopDeparturesFetcher: this device mutes logcat for live pids
+    // after `adb logcat -c`, so the gate diagnostics go to a file that cannot be muted.
+    private fun depDbg(msg: String) {
+        android.util.Log.i("VelaDepartures", msg)
+        runCatching { java.io.File(appContext.filesDir, "departures_debug.txt").appendText("${System.currentTimeMillis()} $msg\n") }
+    }
+
     /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
      *  Only fired for places whose category reads like a transit stop AND that carry a feature id
      *  (needed for the `?cid=` deep-link); guarded to the still-selected place when it returns. */
     private fun fetchStopDepartures(p: Place) {
+        depDbg("try: cat='${p.category}' fid?=${!p.featureId.isNullOrBlank()}")
         val fid = p.featureId
-        if (fid.isNullOrBlank() || !fid.contains(":")) { android.util.Log.i("VelaDepartures", "gate: no fid (cat='${p.category}')"); return }
+        if (fid.isNullOrBlank() || !fid.contains(":")) { depDbg("gate: no fid (cat='${p.category}')"); return }
         val cat = p.category ?: ""
-        if (!TRANSIT_CAT.containsMatchIn(cat)) { android.util.Log.i("VelaDepartures", "gate: cat no match '${cat}'"); return }
+        if (!TRANSIT_CAT.containsMatchIn(cat)) { depDbg("gate: cat no match '$cat'"); return }
         _state.update { if (it.selected?.featureId == fid) it.copy(stopDeparturesLoading = true) else it }
         viewModelScope.launch {
             val board = runCatching { webStopDepartures.fetch(fid) }
-                .onFailure { android.util.Log.i("VelaDepartures", "fetch failed: ${it.message}") }
+                .onFailure { depDbg("fetch failed: ${it.message}") }
                 .getOrNull()
             // Line count only (no place name in logs) so a shape drift is visible without leaking where.
-            android.util.Log.i("VelaDepartures", "board lines=${board?.lines?.size ?: -1}")
+            depDbg("board lines=${board?.lines?.size ?: -1}")
             _state.update { st ->
                 if (st.selected?.featureId != fid) st
                 else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)

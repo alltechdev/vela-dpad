@@ -118,7 +118,11 @@ class WebStopDeparturesFetcher @Inject constructor(
     }
 
     private companion object {
-        const val TOTAL_TIMEOUT_MS = 20_000L
+        // 45s CEILING, not a wait - the deferred completes the moment the bridge fires (~5s on a fast
+        // phone). Upstream's 20s was tuned on a Pixel; the fork's target feature phones need ~30s to
+        // load desktop Maps in the hidden WebView (measured 30.7s on an MTK M5), so 20s ALWAYS timed
+        // out there and the board never showed. Slow-device headroom costs a fast device nothing.
+        const val TOTAL_TIMEOUT_MS = 45_000L
         const val SETTLE_MS = 1_600L
 
         /** Pull the place-details string out of APP_INITIALIZATION_STATE — the longest
