@@ -238,6 +238,8 @@
     <string name="place_transit_live">Live</string>
     <string name="place_departures">Departures</string>
     <string name="place_every">Every %1$s</string> <!-- format -->
+    <string name="place_transit_more_times">%1$d more</string> <!-- format -->
+    <string name="place_transit_view_stops">Stops</string>
     <string name="route_detail_unavailable">Route details unavailable</string>
     <string name="place_hide_steps">Hide steps</string>
     <string name="place_show_steps">Show steps</string>

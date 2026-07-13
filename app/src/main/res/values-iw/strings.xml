@@ -215,6 +215,8 @@
     <string name="place_transit_live">בשידור חי</string>
     <string name="place_departures">יציאות</string>
     <string name="place_every">כל %1$s</string> <!-- format -->
+    <string name="place_transit_more_times">עוד %1$d</string> <!-- format -->
+    <string name="place_transit_view_stops">תחנות</string>
     <string name="route_detail_unavailable">פרטי הקו אינם זמינים</string>
     <string name="place_hide_steps">הסתר שלבים</string>
     <string name="place_show_steps">הצג שלבים</string>

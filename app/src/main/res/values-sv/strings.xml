@@ -216,6 +216,8 @@
     <string name="place_transit_live">Live</string>
     <string name="place_departures">Avgångar</string>
     <string name="place_every">Var %1$s</string> <!-- format -->
+    <string name="place_transit_more_times">%1$d till</string> <!-- format -->
+    <string name="place_transit_view_stops">Hållplatser</string>
     <string name="route_detail_unavailable">Linjedetaljer ej tillgängliga</string>
     <string name="place_hide_steps">Dölj steg</string>
     <string name="place_show_steps">Visa steg</string>

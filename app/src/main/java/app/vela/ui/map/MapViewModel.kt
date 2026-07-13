@@ -1331,6 +1331,9 @@ class MapViewModel @Inject constructor(
     private fun fetchReviews(p: Place, force: Boolean = false) {
         // "Show reviews" off: no review section is rendered, so don't scrape either.
         if (!app.vela.ui.ShowReviews.on.value) return
+        // A BARE transit stop (no rating) has no review content and its sheet suppresses the review
+        // tab - skip the 40s scrape entirely (its WebView/mutex would just delay the board fetch).
+        if (p.rating == null && p.category?.let { TRANSIT_CAT.containsMatchIn(it) } == true) return
         // Supersede any in-flight scrape: the fetcher serializes on a Mutex, so an abandoned
         // 40 s Taco Bell grind would otherwise make the NEXT place's reviews queue behind it
         // (~90 s worst case to first review). Cancelling frees the mutex immediately, and this
@@ -1487,24 +1490,71 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /** The nearest LIVE transit-category listing to [at] among [results], within [radiusM]. Shared by the
+     *  stop-icon tap and the intersection board re-resolve - the one predicate for "the operating stop". */
+    private fun nearestLiveStop(results: List<Place>, at: LatLng, radiusM: Double = 250.0): Place? =
+        results.asSequence()
+            .filter { !it.permanentlyClosed && it.location.distanceTo(at) < radiusM }
+            .filter { p -> p.category?.let { TRANSIT_CAT.containsMatchIn(it) } == true }
+            .minByOrNull { it.location.distanceTo(at) }
+
     /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
      *  Only fired for places whose category reads like a transit stop AND that carry a feature id
      *  (needed for the `?cid=` deep-link); guarded to the still-selected place when it returns. */
     private fun fetchStopDepartures(p: Place) {
-        depDbg("try: cat='${p.category}' fid?=${!p.featureId.isNullOrBlank()}")
         val fid = p.featureId
-        if (fid.isNullOrBlank() || !fid.contains(":")) { depDbg("gate: no fid (cat='${p.category}')"); return }
+        if (fid.isNullOrBlank() || !fid.contains(":")) return
         val cat = p.category ?: ""
-        if (!TRANSIT_CAT.containsMatchIn(cat)) { depDbg("gate: cat no match '$cat'"); return }
-        _state.update { if (it.selected?.featureId == fid) it.copy(stopDeparturesLoading = true) else it }
+        when {
+            // A real transit listing: its own place page carries the board.
+            TRANSIT_CAT.containsMatchIn(cat) -> fetchBoardFrom(fid, selectedFid = fid)
+            // A bus stop named by its intersection ("Main St & 1st Ave") that Google resolved to
+            // the ROAD JUNCTION ("Intersection") rather than the co-located Stop - so its own page has NO
+            // board. Re-resolve to the stop and pull ITS board, the same way onPoiTap does for a
+            // tapped stop icon. The board attaches to the intersection sheet.
+            cat.contains("intersection", ignoreCase = true) -> resolveIntersectionStopBoard(p)
+        }
+    }
+
+    /** Fetch a transit stop's board from its own [boardFid] and attach it to the still-selected place
+     *  ([selectedFid]). Feature-id-gated so a slow fetch can't land on a place the user has moved off. */
+    private fun fetchBoardFrom(boardFid: String, selectedFid: String?) {
+        _state.update { if (it.selected?.featureId == selectedFid) it.copy(stopDeparturesLoading = true) else it }
         viewModelScope.launch {
-            val board = runCatching { webStopDepartures.fetch(fid) }
-                .onFailure { depDbg("fetch failed: ${it.message}") }
-                .getOrNull()
-            // Line count only (no place name in logs) so a shape drift is visible without leaking where.
+            val board = runCatching { webStopDepartures.fetch(boardFid) }.getOrNull()
             depDbg("board lines=${board?.lines?.size ?: -1}")
             _state.update { st ->
-                if (st.selected?.featureId != fid) st
+                if (st.selected?.featureId != selectedFid) st
+                else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
+            }
+        }
+    }
+
+    /** [p] resolved to an "Intersection", but a bus stop usually sits at the same corner as its own Google
+     *  listing. Search "<name> bus stop" near the corner (the transit-hint trick onPoiTap uses), take the
+     *  nearest LIVE transit-category listing, and pull its board onto [p]'s sheet. No stop -> no board. */
+    private fun resolveIntersectionStopBoard(p: Place) {
+        val selectedFid = p.featureId
+        _state.update { if (it.selected?.featureId == selectedFid) it.copy(stopDeparturesLoading = true) else it }
+        viewModelScope.launch {
+            val stopFid = runCatching {
+                // A junction's own point sits back from the stops on each approach, so use a generous
+                // ~250 m radius (a real co-located stop measured 89 m out, past the old 80 m cut).
+                // Name-first, then a bare proximity query: OSM and Google often NAME the same stop
+                // differently ("A & B" vs "B & A"), and a name-keyed search can miss even when the
+                // listing is right there.
+                val byName = nearestLiveStop(dataSource.search("${p.name} bus stop", p.location).places, p.location)
+                val stop = byName ?: nearestLiveStop(dataSource.search("bus stop", p.location).places, p.location)
+                stop?.featureId?.takeIf { it.contains(":") }
+            }.getOrNull()
+            if (stopFid == null) {
+                _state.update { st -> if (st.selected?.featureId == selectedFid) st.copy(stopDeparturesLoading = false) else st }
+                return@launch
+            }
+            val board = runCatching { webStopDepartures.fetch(stopFid) }.getOrNull()
+            depDbg("intersection stop board lines=${board?.lines?.size ?: -1}")
+            _state.update { st ->
+                if (st.selected?.featureId != selectedFid) st
                 else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
             }
         }
@@ -1681,10 +1731,7 @@ class MapViewModel @Inject constructor(
                     // most-reviewed override (a defunct-but-reviewed shelter must not beat the live stop).
                     // No such listing -> null, so the lightweight name+location placeholder stays (a stop
                     // name beats a corner).
-                    results.asSequence()
-                        .filter { !it.permanentlyClosed && it.location.distanceTo(location) < 80.0 }
-                        .filter { p -> p.category?.let { c -> TRANSIT_CAT.containsMatchIn(c) } == true }
-                        .minByOrNull { it.location.distanceTo(location) }
+                    nearestLiveStop(results, location)
                 } else {
                     val canonical = results
                         .filter { it.location.distanceTo(location) < 35.0 }
