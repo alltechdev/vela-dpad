@@ -47,6 +47,8 @@
     <string name="settings_live_traffic_hint">מצלל כבישים לפי עומס בזמן עיון. הניווט כבר צובע את המסלול שלך לפי תנועה.</string>
     <string name="settings_transit_layer">הדגש קווי תחבורה ציבורית</string>
     <string name="settings_transit_layer_hint">משרטט קווי רכבת ורכבת תחתית על המפה.</string>
+    <string name="settings_topography">הצללת שטח</string>
+    <string name="settings_topography_hint">מוסיף הצללה לגבעות ולהרים במפה. כבוי כברירת מחדל.</string>
     <string name="settings_read_all_reviews">כפתור \"קרא את כל הביקורות\"</string>
     <string name="settings_read_all_reviews_hint">מוסיף כפתור \"קרא את כל הביקורות\" שפותח את עמוד הביקורות המלא של Google בתוך האפליקציה, עם כל ביקורת. כבוי = רשימת הביקורות של Vela בלבד.</string>
     <string name="settings_buildings_3d">בניינים תלת-ממדיים</string>

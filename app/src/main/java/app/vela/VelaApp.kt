@@ -52,6 +52,7 @@ class VelaApp : Application() {
         AppLocale.init(this) // resolve the app language (system default) → drives the nav-text locale
         Traffic.init(this)
         TransitLayer.init(this)
+        app.vela.ui.Topography.init(this) // terrain-relief hillshade toggle (Settings > Map), off by default
         app.vela.ui.SimLocation.init(this)
         app.vela.ui.VoiceSearch.init(this) // voice-search toggle + engine/provider prefs (mic in the search bar)
         app.vela.ui.LiveReviews.init(this)
