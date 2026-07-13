@@ -127,6 +127,22 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   `for id in kyocera-e4810 sonim-x320; do PHASES="<phase>" bash tests/devices/full_coverage.sh $id; done`
   and look at both sets of frames before calling it done. A new geometry added to the matrix joins
   this loop the same day.
+    **HARD RULE - THE FULL VERIFICATION MATRIX, BEFORE EVERY FEATURE PR MERGES (added 2026-07-13
+  after it was repeatedly forgotten - do not merge without ALL FOUR cells):**
+  1. **Both geometries** - 240x320@160 AND 480x854@320 (the rule above). The attached device's
+     native size is NOT a substitute.
+  2. **D-pad walk-and-activate** - arrow TO each new interactive element and activate it with OK,
+     confirming a visible focus ring and the state change. `audit_static.sh` passing is necessary
+     but NOT sufficient - it proves the ring exists, not that the element is reachable/activatable.
+     (Check the UI/accessibility state for the effect, not the prefs file - SharedPreferences
+     `apply()` writes disk lazily and races a file check into a false failure.)
+  3. **BOTH release variants** - standard AND restricted (`assembleRestrictedDebug`): the feature is
+     present and working there, or correctly gated, AND the flavor's locks are still intact
+     (no Place-pages section etc.).
+  4. **Eyeballed screenshots** - a human-readable frame per surface; script assertions alone don't
+     count (the verify-visually rule).
+  State the matrix results in the PR body. A cell that genuinely cannot run yet (e.g. a HUD that
+  only renders while driving) is DECLARED as deferred in the PR, never silently skipped.
 - **Every screen opens focused AND stays D-pad-navigable at a SMALL display, not just native.**
   Verify at a real target size - `adb shell wm size 240x320; adb shell wm density 160` (Kyocera e4810;
   see `tests/devices/`) - by SCREENSHOT: the screen lands a visible focus ring on open AND arrows move
