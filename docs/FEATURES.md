@@ -193,7 +193,8 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] **Directions step list/overview** before and during nav; tap a step to preview that turn at its true cumulative distance; pre-nav steps and ETA match nav from the start.
 - [~] **Foreground navigation service** - guidance continues backgrounded/screen-off via an ongoing notification with the next turn, ETA, faster-route note and End; best-effort on Android 14/GrapheneOS.
 - [x] **Periodic live re-routing** - every ~2 min re-checks traffic and offers a one-tap switch to a faster route.
-- [~] **Posted speed-limit badge** (app-side done; needs the graph re-bake to light up) - a US-MUTCD or EU-disc sign by the speedometer that reddens when exceeded, from OSM maxspeed read off the on-device GraphHopper graph, keyless + offline.
+- [~] **Posted speed-limit badge** - a US-MUTCD or EU-disc sign that reddens when exceeded, from OSM maxspeed. TWO sources: the on-device GraphHopper graph (offline, exact) OR, when no region is downloaded, a keyless **online "Speed B" streamer** (`MaxspeedOverlayStore` streams per-region maxspeed PMTiles; the map reads the tag under the puck off an invisible queryable layer). The sign prefers the graph and falls back to the overlay, so a limit shows anywhere online.
+- [x] **Unified Google-style speed box (SpeedWidget)** - the speedometer and the limit sign are ONE bottom-left box shown while moving (nav AND free-drive): current speed always, the posted limit tucked in as a regulatory sign on top when known, the whole readout amber when over. The scale bar hides while free-driving so the box owns the corner.
 - [ ] Speed-camera + hazard alerts.
 - [x] **Android Auto first cut shipped** (see above); remaining: car-side search + route start, and a real head-unit drive.
 - [x] **Arrival/trip summary** - a "You've arrived" card with total time and distance and the destination name, with the final maneuver pinned to the route end.
