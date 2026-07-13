@@ -97,6 +97,13 @@ jobs:
       - name: Unit tests
         run: ./gradlew :core:test --no-daemon
 
+      - name: Check translations
+        # Android lint's MissingTranslation doesn't run on assemble/test, so a missed locale
+        # backfill ships silently (English shown for that key). Fail fast if any translatable
+        # string is absent from a locale or its placeholders drifted. Intentionally-English-only
+        # strings are marked translatable="false" in res/values/strings.xml and skipped.
+        run: python3 tools/check-translations.py
+
       - name: Derive build version
         id: ver
         # Fresh fork version line, started over at 0.0.x (this repo is independent of upstream's

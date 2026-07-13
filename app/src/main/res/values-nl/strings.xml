@@ -209,6 +209,9 @@
     <string name="place_live_traffic">live verkeer</string>
     <string name="place_finding_transit">OV-routes zoeken…</string>
     <string name="place_no_transit">Geen OV-routes gevonden</string>
+    <string name="place_transit_now">Vertrekt nu</string>
+    <string name="place_transit_in_min">over %1$d min</string> <!-- format -->
+    <string name="place_transit_live">Live</string>
     <string name="place_hide_steps">Stappen verbergen</string>
     <string name="place_show_steps">Stappen tonen</string>
     <string name="place_walk">Lopen</string>
@@ -231,7 +234,9 @@
     <string name="place_from_the_owner">Van de eigenaar</string>
     <string name="place_share_place">Plaats delen</string>
     <string name="place_share">Delen</string>
-    <string name="place_share_gmaps_link">Google Maps-link</string>
+    <string name="place_open_web">Openen op internet</string>
+    <string name="place_copy_link">Link kopiëren</string>
+    <string name="place_link_copied">Link gekopieerd</string>
     <string name="place_share_map_pin">Kaartspeld (geo:)</string>
     <string name="place_share_coordinates">Coördinaten</string>
     <string name="place_copy_coordinates">Coördinaten kopiëren</string>
@@ -348,7 +353,9 @@
     <string name="mapvm_search_failed_reason">Zoeken mislukt: %1$s</string>
     <string name="mapvm_none_found_along_route">Geen \"%1$s\" gevonden langs uw route</string>
     <string name="mapvm_search_failed">Zoeken mislukt</string>
+    <string name="mapvm_no_results">Geen resultaten voor \"%1$s\".</string> <!-- format -->
     <string name="mapvm_dropped_pin">Speld geplaatst</string>
+    <string name="mapvm_stop_added">Tussenstop toegevoegd</string>
     <string name="mapvm_no_mode_route_found">Geen %1$s-route gevonden</string>
     <string name="mapvm_directions_need_recalibration">Route vereist herkalibratie: %1$s</string>
     <string name="mapvm_routing_failed_reason">Routering mislukt: %1$s</string>
