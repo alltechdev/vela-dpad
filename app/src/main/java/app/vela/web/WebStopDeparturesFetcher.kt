@@ -71,12 +71,21 @@ class WebStopDeparturesFetcher @Inject constructor(
         } finally {
             pending.remove(id)
         }
-        // Diagnostic (no place identifiers logged): which of the three null paths fired.
-        android.util.Log.i("VelaDepartures", "raw len=${raw?.length ?: -1}")
+        // Diagnostic via FILE (this MTK device mutes logcat for live pids after logcat -c):
+        // filesDir/departures_debug.txt accumulates one line per fetch; raw payload saved alongside
+        // for the parser-shape diff. Debug builds only concern; tiny and overwritten per fetch.
+        dbg("raw len=${raw?.length ?: -1}")
+        if (!raw.isNullOrEmpty()) runCatching { java.io.File(context.filesDir, "departures_raw.txt").writeText(raw) }
         if (raw.isNullOrEmpty()) null
         else runCatching { StopDeparturesParser.parse(raw) }
-            .onFailure { android.util.Log.i("VelaDepartures", "parse threw: ${it.message?.take(120)}") }
+            .onFailure { dbg("parse threw: ${it.message?.take(120)}") }
             .getOrNull()
+            .also { dbg("parsed lines=${it?.lines?.size ?: -1}") }
+    }
+
+    private fun dbg(msg: String) {
+        android.util.Log.i("VelaDepartures", msg)
+        runCatching { java.io.File(context.filesDir, "departures_debug.txt").appendText("${System.currentTimeMillis()} $msg\n") }
     }
 
     /** cid = LOW half of the `0xHIGH:0xLOW` feature id as unsigned decimal (the `?cid=` deep-link). */
