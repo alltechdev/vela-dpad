@@ -277,6 +277,21 @@ fun MapScreen(
     var followMe by remember { mutableStateOf(true) }
     val driveFollowing = followMe && !state.navigating && !resultsShown && state.selected == null &&
         !state.directionsOpen && !state.showSteps && !searchOpen && state.pickOnMap == null
+    // The posted-limit ("Speed B") overlay is armed by ACTUAL MOTION, never by the bare browse map.
+    // driveFollowing alone is true whenever you're just looking at the map (followMe defaults on), and
+    // keying the overlay off it mounted the maxspeed PMTiles sources on the browse map - native tile
+    // fetch + tessellation on every pan/zoom - AND ripped them out of the style MID-GESTURE the moment
+    // a pan dropped followMe. That style churn is a panning-jank regression; motion arms it instantly,
+    // stillness disarms after 2 min so stoplights/parking don't churn sources either.
+    var speedOverlayArmed by remember { mutableStateOf(false) }
+    val movingNow = state.navigating || (state.mySpeed ?: 0f) > 3f
+    LaunchedEffect(movingNow) {
+        if (movingNow) speedOverlayArmed = true
+        else if (speedOverlayArmed) {
+            kotlinx.coroutines.delay(120_000)
+            speedOverlayArmed = false
+        }
+    }
     // Expanded detent of the results bottom sheet, hoisted here so the BACK gesture can step it
     // one detent (expanded -> peek) before collapsing to the minimized bar (user 2026-07-09).
     var resultsExpanded by remember { mutableStateOf(false) }
@@ -588,7 +603,7 @@ fun MapScreen(
             addressOverlays = state.addressOverlays,
             maxspeedOverlays = state.maxspeedOverlays,
             onRoadLimitKmh = vm::onOverlayRoadLimit,
-            speedOverlayOn = state.navigating || driveFollowing, // query the overlay only while driving
+            speedOverlayOn = speedOverlayArmed, // motion-armed with hysteresis - NEVER on the parked browse map
             trafficControls = state.trafficControls,
             flockCameras = state.flockCameras,
             navBannerBottomPx = if (state.navigating) navBannerBottomPx else 0,
@@ -1349,9 +1364,10 @@ fun MapScreen(
             // (The live-traffic overlay toggle lives in Settings → Map - it's a
             // niche browse-only layer, and nav shows per-segment route traffic,
             // so it doesn't belong on the map.)
-            // Scale bar, bottom-left just past the attribution ⓘ. Hidden while free-driving: the
-            // speed box owns the bottom-left corner then (Google hides the scale in its driving view).
-            if (!driveFollowing) {
+            // Scale bar, bottom-left just past the attribution ⓘ. Hidden only while ACTUALLY
+            // free-driving (moving, speed box on screen) - `!driveFollowing` alone hid it on the
+            // whole browse map, since follow is armed by default.
+            if (!(driveFollowing && speedOverlayArmed)) {
                 ScaleBar(
                     metersPerPixel = metersPerPixel,
                     dark = darkTheme,
