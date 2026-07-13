@@ -532,7 +532,9 @@ non-negotiable rules for any ported commit:
   8. **Merge-friendly** (this fork rebases on upstream): new behaviour in new files
      (`DpadFocus.kt`/`VelaMenu.kt`/`VelaDialog.kt`/`MapDpadController.kt`), shared-file edits as small
      anchored insertions, one commented D-pad import block per file. **Reuse the helpers - do not
-     reinvent** `dpadHighlight`/`dpadAutoFocus`/`dpadSwallowHorizontal`/`dpadFieldEscape`.
+     reinvent** `dpadHighlight`/`dpadAutoFocus`/`dpadSwallowHorizontal`/`dpadFieldEscape`/
+     `dpadRowSibling` (the last wires LEFT/RIGHT across a button/chip row inside a vertical list that
+     swallows bare L/R - or the row's siblings are unreachable; see issue #24).
   9. **Enforcement (two suites):** `tests/dpad/` - `audit_static.sh` (no device; every rule above
      as a source scan; **must be 0 violations**, CI-ready), `audit_dynamic.sh` (every surface opens
      focused, multi-axis traversal never loses focus + reaches all distinct elements, BACK exits),

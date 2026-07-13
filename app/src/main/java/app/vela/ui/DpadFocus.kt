@@ -228,6 +228,32 @@ fun Modifier.dpadSwallowHorizontal(): Modifier =
     this.onKeyEvent { ev -> ev.key == Key.DirectionLeft || ev.key == Key.DirectionRight }
 
 /**
+ * Wires LEFT/RIGHT D-pad movement across a ROW of focusable siblings (buttons/chips), so a
+ * horizontal row is reachable inside a vertical list whose container swallows bare LEFT/RIGHT
+ * (see [dpadSwallowHorizontal] - without this, only the sibling that DOWN happens to land on is
+ * reachable and the others are stranded; issue #24: Import + Test-voice unreachable on a qin f25).
+ * Attach to EACH sibling with the shared [requesters] list and this sibling's [index]: it takes
+ * that index's [FocusRequester] AND drives L/R by `requestFocus` (which, unlike `moveFocus`, never
+ * clears focus at the ends) while CONSUMING the key so it never reaches the container swallow. This
+ * is the reusable form of the inline vibrate-chip pattern - use it, don't re-inline. Inert under
+ * touch (those keys never fire); left/right at the ends are no-ops (stay put), matching the chips.
+ */
+fun Modifier.dpadRowSibling(requesters: List<FocusRequester>, index: Int): Modifier =
+    this
+        .focusRequester(requesters[index])
+        .onKeyEvent { ev ->
+            if (ev.key == Key.DirectionRight || ev.key == Key.DirectionLeft) {
+                if (ev.type == KeyEventType.KeyDown) {
+                    if (ev.key == Key.DirectionRight && index < requesters.lastIndex) requesters[index + 1].requestFocus()
+                    if (ev.key == Key.DirectionLeft && index > 0) requesters[index - 1].requestFocus()
+                }
+                true
+            } else {
+                false
+            }
+        }
+
+/**
  * Makes a text field D-pad ESCAPABLE: UP/DOWN move focus to the previous/next form control
  * instead of being swallowed by the field's own cursor handling. Without this, a single- or
  * multi-line `TextField`/`BasicTextField` eats the vertical arrows, trapping focus on the
