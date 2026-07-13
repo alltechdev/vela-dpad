@@ -2361,14 +2361,24 @@ private fun PlaceTabs(
     onPanelEngaged: () -> Unit = {},
     panelEngaged: Boolean = false,
 ) {
+    // A BARE bus stop (transit-category AND no rating, i.e. no real review content) shows only its
+    // departure board + stop timeline - Reviews/About are noise there. But a RATED transit CENTER
+    // (a real building people review) keeps both tabs: gate on the bare-stop signal, NOT category
+    // alone, or real buildings lose their reviews. Real buildings carry a Google rating / reviews /
+    // a featured review; bare stops carry none.
+    val isTransitCategory = place.category?.lowercase()?.let { c ->
+        listOf("station", "stop", "transit", "transport", "hub", "bus", "subway", "metro", "tram", "rail", "ferry", "terminal", "platform").any { it in c }
+    } == true
+    val isBareStop = isTransitCategory && place.rating == null && reviews.isEmpty() && place.featuredReview == null
     // With the live panel on, the scrape never runs, so reviewsLoading can't summon the tab -
     // any Google-listed place (valid feature id) gets the tab; the panel shows Google's own
-    // zero-reviews state if there are none.
+    // zero-reviews state if there are none. The LiveReviews clause is the ONLY one suppressed
+    // for a bare stop; real review content still shows.
     val hasReviews = app.vela.ui.ShowReviews.on.value && (
         place.rating != null || reviews.isNotEmpty() || reviewsLoading || place.featuredReview != null ||
-            (app.vela.ui.LiveReviews.on.value && place.featureId?.contains(":") == true)
+            (app.vela.ui.LiveReviews.on.value && place.featureId?.contains(":") == true && !isBareStop)
         )
-    val hasAbout = place.about.isNotEmpty() || place.editorialSummary != null || place.ownerDescription != null
+    val hasAbout = !isBareStop && (place.about.isNotEmpty() || place.editorialSummary != null || place.ownerDescription != null)
     val tabs = buildList {
         if (hasReviews) add("Reviews")
         if (hasAbout) add("About")
