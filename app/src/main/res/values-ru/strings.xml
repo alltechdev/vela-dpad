@@ -216,6 +216,8 @@
     <string name="place_transit_live">Онлайн</string>
     <string name="place_departures">Отправления</string>
     <string name="place_every">Каждые %1$s</string> <!-- format -->
+    <string name="place_transit_more_times">ещё %1$d</string> <!-- format -->
+    <string name="place_transit_view_stops">Остановки</string>
     <string name="route_detail_unavailable">Сведения о маршруте недоступны</string>
     <string name="place_hide_steps">Скрыть шаги</string>
     <string name="place_show_steps">Показать шаги</string>
