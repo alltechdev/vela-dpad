@@ -232,6 +232,8 @@
     <string name="place_transit_now">Departing</string>
     <string name="place_transit_in_min">in %1$d min</string> <!-- format -->
     <string name="place_transit_live">Live</string>
+    <string name="place_departures">Departures</string>
+    <string name="place_every">Every %1$s</string> <!-- format -->
     <string name="place_hide_steps">Hide steps</string>
     <string name="place_show_steps">Show steps</string>
     <string name="place_walk">Walk</string>

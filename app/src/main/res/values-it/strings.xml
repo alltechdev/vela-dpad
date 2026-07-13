@@ -214,6 +214,8 @@
     <string name="place_transit_now">In partenza</string>
     <string name="place_transit_in_min">tra %1$d min</string> <!-- format -->
     <string name="place_transit_live">In diretta</string>
+    <string name="place_departures">Partenze</string>
+    <string name="place_every">Ogni %1$s</string> <!-- format -->
     <string name="place_hide_steps">Nascondi passaggi</string>
     <string name="place_show_steps">Mostra passaggi</string>
     <string name="place_walk">A piedi</string>

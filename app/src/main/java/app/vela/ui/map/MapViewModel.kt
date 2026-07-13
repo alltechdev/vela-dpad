@@ -111,6 +111,8 @@ data class MapUiState(
                                                       // .pmtiles - rendered beneath OSM to fill gaps
     val trafficControls: List<app.vela.core.data.TrafficControl> = emptyList(), // OSM lights+stop signs drawn at high zoom
     val flockCameras: List<app.vela.core.data.AlprCamera> = emptyList(), // ALPR/Flock cameras (DeFlock/OSM), neighbourhood zoom
+    val stopDepartures: app.vela.core.model.StopDepartures? = null, // a tapped transit stop's live board
+    val stopDeparturesLoading: Boolean = false,
     val directionsOpen: Boolean = false,
     val directionsReversed: Boolean = false, // route from the place back to you
     val directionsOrigin: Place? = null,     // custom "From" (null = your live location)
@@ -228,6 +230,7 @@ class MapViewModel @Inject constructor(
     private val webPhotos: WebPhotoFetcher,
     private val webReviews: WebReviewsFetcher,
     private val webDirections: WebDirectionsFetcher,
+    private val webStopDepartures: app.vela.web.WebStopDeparturesFetcher,
     private val diag: app.vela.core.diag.DiagLog,
     private val diagExporter: app.vela.diag.DiagExporter,
     private val webPopularTimes: app.vela.web.WebPopularTimesFetcher,
@@ -1183,6 +1186,7 @@ class MapViewModel @Inject constructor(
         fetchReviews(p)
         fetchPhotos(p)
         fetchPlaceDetails(p)
+        fetchStopDepartures(p) // a searched/saved transit stop shows its live board too
         backfillOfflineAddress(p)
         rememberRecentPlace(SavedPlace.of(p))
     }
@@ -1461,6 +1465,28 @@ class MapViewModel @Inject constructor(
         RegexOption.IGNORE_CASE,
     )
 
+    /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
+     *  Only fired for places whose category reads like a transit stop AND that carry a feature id
+     *  (needed for the `?cid=` deep-link); guarded to the still-selected place when it returns. */
+    private fun fetchStopDepartures(p: Place) {
+        val fid = p.featureId
+        if (fid.isNullOrBlank() || !fid.contains(":")) return
+        val cat = p.category ?: ""
+        if (!TRANSIT_CAT.containsMatchIn(cat)) return
+        _state.update { if (it.selected?.featureId == fid) it.copy(stopDeparturesLoading = true) else it }
+        viewModelScope.launch {
+            val board = runCatching { webStopDepartures.fetch(fid) }
+                .onFailure { android.util.Log.i("VelaDepartures", "fetch failed: ${it.message}") }
+                .getOrNull()
+            // Line count only (no place name in logs) so a shape drift is visible without leaking where.
+            android.util.Log.i("VelaDepartures", "board lines=${board?.lines?.size ?: -1}")
+            _state.update { st ->
+                if (st.selected?.featureId != fid) st
+                else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
+            }
+        }
+    }
+
     fun onPoiTap(name: String, location: LatLng, kind: String? = null) {
         if (consumeAssign(SavedPlace(id = "poi:" + name.hashCode(), name = name, lat = location.lat, lng = location.lng))) return
         // A transit-kind basemap tap ("bus_stop"/"railway" class) biases the resolve below.
@@ -1495,6 +1521,7 @@ class MapViewModel @Inject constructor(
                 reviewsFound = 0,
                 loadingDetails = false,
                 photosLoading = false,
+                stopDepartures = null, stopDeparturesLoading = false,
                 pickingOrigin = false,
                 pickingStop = false,
                 directionsOpen = false,
@@ -1545,6 +1572,7 @@ class MapViewModel @Inject constructor(
                 fetchReviews(full)
                 fetchPhotos(full)
                 fetchPlaceDetails(full) // popular times + editorial/owner, like a search-result tap
+                fetchStopDepartures(full) // a bus stop / station tapped on the MAP gets its live board
                 rememberRecentPlace(SavedPlace.of(full))
             }
         }

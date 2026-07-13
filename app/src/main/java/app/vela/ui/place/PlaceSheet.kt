@@ -213,6 +213,8 @@ fun PlaceSheet(
     reviewsFound: Int = 0,
     photosLoading: Boolean = false,
     detailsLoading: Boolean = false,
+    stopDepartures: app.vela.core.model.StopDepartures? = null, // a transit stop's live board (issue #71)
+    stopDeparturesLoading: Boolean = false,
     placesHere: List<Place> = emptyList(),
     onClose: () -> Unit,
     onToggleSave: () -> Unit,
@@ -761,11 +763,20 @@ fun PlaceSheet(
 
             // A permanently-closed POI already says so in red above - don't also
             // nag "Hours not listed" beneath it (the dead-POI hours are moot).
+            // A transit stop has no opening hours by nature - Google shows its departures, not
+            // "hours not listed": suppress that line whenever a board is loading/present or the
+            // category reads like a stop.
+            val isTransitStop = stopDepartures != null || stopDeparturesLoading || place.category?.lowercase()?.let { c ->
+                listOf("station", "stop", "transit", "transport", "hub", "bus", "subway", "metro", "tram", "rail", "ferry", "terminal", "platform").any { it in c }
+            } == true
             if (place.hours.isNotEmpty()) {
                 HoursSection(place.hours, ink, dim)
-            } else if (place.category != null && !place.permanentlyClosed) {
+            } else if (place.category != null && !place.permanentlyClosed && !isTransitStop) {
                 Text(stringResource(R.string.place_hours_not_listed), style = MaterialTheme.typography.bodySmall, color = dim, modifier = Modifier.padding(top = 10.dp))
             }
+
+            // Live departure board for a transit stop (keyless, from the station's own place page).
+            StopDepartureBoard(stopDepartures, stopDeparturesLoading, ink, dim, dark)
 
             // Phone + website as their own tappable rows showing the actual number / domain - placed
             // BELOW the hours (Google's order), well clear of the Directions button up top. The pills
@@ -1750,6 +1761,111 @@ private fun StopLine(stop: TransitStopTime, ink: Color, dim: Color, emphasize: B
 
 /** A colour-filled line badge (e.g. a blue "Amtrak Thruway"), mirroring Google's
  * transit pills; falls back to the theme primary when no colour is supplied. */
+/** A transit stop's live departure board - Google's "See departure board" for the station,
+ *  keyless from the place page. Each line/direction shows its next departures with a countdown
+ *  on the soonest (green + a Live dot when Google has a real-time fix) and the running frequency. */
+@Composable
+private fun StopDepartureBoard(
+    d: app.vela.core.model.StopDepartures?,
+    loading: Boolean,
+    ink: Color,
+    dim: Color,
+    dark: Boolean,
+    onTapRoute: (app.vela.core.model.StopDepartureLine) -> Unit = {},
+) {
+    if (d == null && !loading) return
+    Spacer(Modifier.height(14.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(Icons.Default.DirectionsTransit, contentDescription = null, tint = dim, modifier = Modifier.size(18.dp))
+        Text(stringResource(R.string.place_departures), style = MaterialTheme.typography.titleSmall, color = ink)
+    }
+    if (d == null) {
+        Row(
+            Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            Text(stringResource(R.string.place_finding_transit), style = MaterialTheme.typography.bodyMedium, color = dim)
+        }
+        return
+    }
+    val nowSec by produceState(initialValue = System.currentTimeMillis() / 1000L) {
+        while (true) { delay(30_000L); value = System.currentTimeMillis() / 1000L }
+    }
+    // Google-style clean list: plain tappable rows separated by hairline dividers.
+    Column(Modifier.padding(top = 6.dp)) {
+        val lines = d.lines.take(24)
+        lines.forEachIndexed { i, line ->
+            DepartureLineRow(line, nowSec, ink, dim, onTapRoute)
+            if (i < lines.lastIndex) {
+                HorizontalDivider(
+                    color = SheetPalette.row(dark),
+                    thickness = 0.5.dp,
+                    modifier = Modifier.padding(start = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DepartureLineRow(
+    line: app.vela.core.model.StopDepartureLine,
+    nowSec: Long,
+    ink: Color,
+    dim: Color,
+    onTapRoute: (app.vela.core.model.StopDepartureLine) -> Unit = {},
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .dpadHighlight(RoundedCornerShape(10.dp))
+            .clickable { onTapRoute(line) }
+            .padding(vertical = 10.dp, horizontal = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (line.label != null) {
+                LinePill(TransitLine(name = line.label!!, mode = line.mode, colorHex = line.colorHex))
+            } else {
+                Icon(transitModeIcon(line.mode), contentDescription = null, tint = dim, modifier = Modifier.size(18.dp))
+            }
+            line.headsign?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = ink, modifier = Modifier.weight(1f))
+            } ?: Spacer(Modifier.weight(1f))
+            line.headwayText?.let {
+                Text(stringResource(R.string.place_every, it), style = MaterialTheme.typography.labelMedium, color = dim)
+            }
+        }
+        if (line.upcoming.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val next = line.upcoming.first()
+                val live = next.realtime
+                val countdown = departsInLabel(next.epochSec, nowSec)
+                Text(
+                    next.clockText.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (live) SheetPalette.TrafficGreen else ink,
+                )
+                countdown?.let {
+                    Text(
+                        "· $it",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (live) SheetPalette.TrafficGreen else dim,
+                    )
+                }
+                if (live) Box(Modifier.size(6.dp).clip(CircleShape).background(SheetPalette.TrafficGreen))
+                line.upcoming.drop(1).take(3).forEach {
+                    Text(it.clockText.orEmpty(), style = MaterialTheme.typography.bodySmall, color = dim)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun LinePill(line: TransitLine) {
     val fallback = MaterialTheme.colorScheme.primary

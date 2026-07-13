@@ -214,6 +214,8 @@
     <string name="place_transit_now">Відправляється</string>
     <string name="place_transit_in_min">через %1$d хв</string> <!-- format -->
     <string name="place_transit_live">Наживо</string>
+    <string name="place_departures">Відправлення</string>
+    <string name="place_every">Кожні %1$s</string> <!-- format -->
     <string name="place_hide_steps">Сховати кроки</string>
     <string name="place_show_steps">Показати кроки</string>
     <string name="place_walk">Пішки</string>

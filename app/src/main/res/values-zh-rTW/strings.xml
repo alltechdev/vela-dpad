@@ -229,6 +229,8 @@
     <string name="place_transit_now">即將出發</string>
     <string name="place_transit_in_min">%1$d 分鐘後</string> <!-- format -->
     <string name="place_transit_live">即時</string>
+    <string name="place_departures">發車時刻</string>
+    <string name="place_every">每 %1$s</string> <!-- format -->
     <string name="place_hide_steps">隱藏步驟</string>
     <string name="place_show_steps">顯示步驟</string>
     <string name="place_walk">步行</string>

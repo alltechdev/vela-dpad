@@ -1146,6 +1146,8 @@ fun MapScreen(
                 reviewsFound = state.reviewsFound,
                 photosLoading = state.photosLoading,
                 detailsLoading = state.loadingDetails,
+                stopDepartures = state.stopDepartures,
+                stopDeparturesLoading = state.stopDeparturesLoading,
                 placesHere = state.placesHere,
                 onClose = vm::clearSelection,
                 onToggleSave = vm::toggleSave,
