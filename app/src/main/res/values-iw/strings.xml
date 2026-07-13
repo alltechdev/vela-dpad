@@ -213,6 +213,9 @@
     <string name="place_transit_now">יוצא כעת</string>
     <string name="place_transit_in_min">בעוד %1$d דק׳</string> <!-- format -->
     <string name="place_transit_live">בשידור חי</string>
+    <string name="place_departures">יציאות</string>
+    <string name="place_every">כל %1$s</string> <!-- format -->
+    <string name="route_detail_unavailable">פרטי הקו אינם זמינים</string>
     <string name="place_hide_steps">הסתר שלבים</string>
     <string name="place_show_steps">הצג שלבים</string>
     <string name="place_walk">הליכה</string>

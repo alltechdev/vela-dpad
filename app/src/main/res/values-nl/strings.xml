@@ -214,6 +214,9 @@
     <string name="place_transit_now">Vertrekt nu</string>
     <string name="place_transit_in_min">over %1$d min</string> <!-- format -->
     <string name="place_transit_live">Live</string>
+    <string name="place_departures">Vertrektijden</string>
+    <string name="place_every">Elke %1$s</string> <!-- format -->
+    <string name="route_detail_unavailable">Lijndetails niet beschikbaar</string>
     <string name="place_hide_steps">Stappen verbergen</string>
     <string name="place_show_steps">Stappen tonen</string>
     <string name="place_walk">Lopen</string>

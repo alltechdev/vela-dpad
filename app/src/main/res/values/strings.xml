@@ -75,6 +75,12 @@
     <string name="settings_transit_layer_hint">Draws train and subway lines on the map in colour, so rail is easy to follow. Uses the open map data already in the tiles, no network.</string>
     <string name="settings_topography">Terrain shading</string>
     <string name="settings_topography_hint">Shades hills and mountains on the map. Off by default.</string>
+    <string name="settings_flock" translatable="false">Surveillance cameras</string>
+    <string name="settings_flock_hint" translatable="false">Shows mapped automated license-plate reader (Flock) cameras, from the community DeFlock project in OpenStreetMap. Off by default.</string>
+    <string name="settings_flock_route_alert" translatable="false">Avoid surveillance cameras</string>
+    <string name="settings_flock_route_alert_hint" translatable="false">Counts the license-plate reader (Flock) cameras on each route and auto-picks a lower-camera one when it costs only a little longer. It never sends you far out of the way, so where cameras are unavoidable it just shows the counts and leaves the choice to you. Long-press the map to route through a point yourself. Off by default.</string>
+    <string name="dir_cameras_on_route" translatable="false">%1$d cameras on this route</string> <!-- format -->
+    <string name="mapvm_flock_avoided" translatable="false">Rerouted to avoid cameras</string>
     <string name="settings_read_all_reviews">“Read all reviews” button</string>
     <string name="settings_read_all_reviews_hint">Reviews in the place sheet are always Vela\'s own smooth native list. This adds a “Read all reviews” button that opens Google\'s full reviews page FULL-SCREEN, with every review (not just the first ~50), Google\'s server-side search, and video reviews that play. Trackers/beacons are blocked, but it does run Google\'s page inside the app. Off = native list only, no Google page for reviews.</string>
     <string name="settings_buildings_3d">3D buildings</string>
@@ -230,6 +236,9 @@
     <string name="place_transit_now">Departing</string>
     <string name="place_transit_in_min">in %1$d min</string> <!-- format -->
     <string name="place_transit_live">Live</string>
+    <string name="place_departures">Departures</string>
+    <string name="place_every">Every %1$s</string> <!-- format -->
+    <string name="route_detail_unavailable">Route details unavailable</string>
     <string name="place_hide_steps">Hide steps</string>
     <string name="place_show_steps">Show steps</string>
     <string name="place_walk">Walk</string>

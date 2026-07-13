@@ -53,6 +53,8 @@ class VelaApp : Application() {
         Traffic.init(this)
         TransitLayer.init(this)
         app.vela.ui.Topography.init(this) // terrain-relief hillshade toggle (Settings > Map), off by default
+        app.vela.ui.Flock.init(this) // ALPR/Flock camera layer toggle (Settings > Map), off by default
+        app.vela.ui.FlockRouteAlert.init(this) // avoid-cameras routing toggle (Settings > Map), off by default
         app.vela.ui.SimLocation.init(this)
         app.vela.ui.VoiceSearch.init(this) // voice-search toggle + engine/provider prefs (mic in the search bar)
         app.vela.ui.LiveReviews.init(this)

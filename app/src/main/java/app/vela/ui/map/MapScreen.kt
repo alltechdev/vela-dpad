@@ -362,6 +362,10 @@ fun MapScreen(
     // which IS the search bar (measured). Net: no map engage, no BACK, one arrow reaches search.
     // This is the ONE screen that intentionally opens un-focused (the map is ambient; the first key
     // isn't wasted - it goes straight to search). (Was: auto-engage the map - user report 2026-07-08.)
+    // Toggling the Flock layer in Settings refetches for the current view right away (otherwise the
+    // cameras wouldn't appear until the next pan). Clears the layer when turned off.
+    LaunchedEffect(app.vela.ui.Flock.on.value) { vm.refreshFlockNow() }
+
     // Choose-on-map (pickOnMap) is the EXCEPTION to the exception: there the whole task IS moving the
     // map to place a pin, so we DO auto-focus + engage the map target the moment pick mode opens, so
     // arrows pan immediately and OK confirms (the crosshair/pill are suppressed in pick mode because
@@ -586,6 +590,7 @@ fun MapScreen(
             onRoadLimitKmh = vm::onOverlayRoadLimit,
             speedOverlayOn = state.navigating || driveFollowing, // query the overlay only while driving
             trafficControls = state.trafficControls,
+            flockCameras = state.flockCameras,
             navBannerBottomPx = if (state.navigating) navBannerBottomPx else 0,
             onAmbientTap = { i -> state.ambientPois.getOrNull(i)?.let(vm::selectPlace) },
             onCameraIdle = vm::onCameraIdle,
@@ -1077,6 +1082,7 @@ fun MapScreen(
             // Hidden while the search overlay is up (e.g. picking a custom origin) so
             // the panel doesn't render over it.
             state.directionsOpen && !searchOpen && state.pickOnMap == null -> DirectionsPanel(
+                flockOnRoute = state.flockOnRoute,
                 originName = if (state.directionsReversed) (state.selected?.name ?: stringResource(R.string.mapscreen_place))
                 else (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location)),
                 destinationName = if (state.directionsReversed) (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location))
@@ -1116,6 +1122,9 @@ fun MapScreen(
                 reviewsFound = state.reviewsFound,
                 photosLoading = state.photosLoading,
                 detailsLoading = state.loadingDetails,
+                stopDepartures = state.stopDepartures,
+                stopDeparturesLoading = state.stopDeparturesLoading,
+                onTapRoute = vm::openRouteDetail,
                 placesHere = state.placesHere,
                 onClose = vm::clearSelection,
                 onToggleSave = vm::toggleSave,
@@ -1167,6 +1176,17 @@ fun MapScreen(
 
         // "Choose on map" crosshair - the map is visible; a fixed pin marks screen centre. Move the
         // map under it (or long-press) and Confirm to set the start/stop from that point (Google-style).
+        // Full-screen tap-through route timeline off a stop's departure board.
+        if (state.routeDetail != null || state.routeDetailLoading) {
+            app.vela.ui.place.RouteDetailSheet(
+                step = state.routeDetail,
+                title = state.routeDetailTitle,
+                loading = state.routeDetailLoading,
+                onClose = vm::closeRouteDetail,
+                onStopTap = vm::openRouteStop,
+            )
+        }
+
         state.pickOnMap?.let { target ->
             ChooseOnMapOverlay(
                 target = target,
