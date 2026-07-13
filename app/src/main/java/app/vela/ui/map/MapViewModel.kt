@@ -1452,8 +1452,19 @@ class MapViewModel @Inject constructor(
 
     /** Tapped a POI on the map: show it immediately, then enrich with full
      * details (hours, rating, …) from a search for that name nearby. */
-    fun onPoiTap(name: String, location: LatLng) {
+    // Basemap POI classes/subclasses that mean "a transit stop" - threaded from the map tap as the
+    // kind hint so a bus stop resolves to the OPERATING stop, not the road intersection at its spot.
+    private val TRANSIT_CAT = Regex(
+        """station|stop|subway|metro|transit|transport|\bhub\b|\bbus\b|train|\brail\b|tram|light rail|terminal|ferry|""" +
+            """bahnhof|haltestelle|gare|estaci|estaç|stazione|fermata|estação|halte|stanice|""" +
+            """지하철|вокзал|станц|остановка|停|駅|车站|車站""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun onPoiTap(name: String, location: LatLng, kind: String? = null) {
         if (consumeAssign(SavedPlace(id = "poi:" + name.hashCode(), name = name, lat = location.lat, lng = location.lng))) return
+        // A transit-kind basemap tap ("bus_stop"/"railway" class) biases the resolve below.
+        val transitHint = kind?.takeIf { TRANSIT_CAT.containsMatchIn(it) }
         // Picking the route origin (or a stop) by tapping the map → adopt this POI, don't open it.
         if (_state.value.pickingStop) {
             addStop(Place(id = "poi:" + name.hashCode(), name = name, location = location))
@@ -1502,15 +1513,29 @@ class MapViewModel @Inject constructor(
                 // result when the canonical listing CLEARLY dominates by review count
                 // (a true duplicate, not a close call). Results are already filtered
                 // by the POI's own name, which keeps this from wandering off-place.
-                val canonical = results
-                    .filter { it.location.distanceTo(location) < 35.0 }
-                    .maxByOrNull { it.reviewCount ?: 0 }
-                val pick = if (canonical != null && nearest != null &&
-                    (canonical.reviewCount ?: 0) >= 2 * (nearest.reviewCount ?: 0) + 5
-                ) {
-                    canonical
+                val pick = if (transitHint != null) {
+                    // Transit tap: pick the OPERATING stop, not the nearest/most-reviewed thing at the
+                    // coordinate. A stop's spot usually ALSO has a road junction (Google's "Intersection")
+                    // and can carry a stale PERMANENTLY-CLOSED old shelter; nearest/most-reviewed lands on
+                    // those. Take the nearest LIVE transit-category listing near the tap, and SKIP the
+                    // most-reviewed override (a defunct-but-reviewed shelter must not beat the live stop).
+                    // No such listing -> null, so the lightweight name+location placeholder stays (a stop
+                    // name beats a corner).
+                    results.asSequence()
+                        .filter { !it.permanentlyClosed && it.location.distanceTo(location) < 80.0 }
+                        .filter { p -> p.category?.let { c -> TRANSIT_CAT.containsMatchIn(c) } == true }
+                        .minByOrNull { it.location.distanceTo(location) }
                 } else {
-                    nearest
+                    val canonical = results
+                        .filter { it.location.distanceTo(location) < 35.0 }
+                        .maxByOrNull { it.reviewCount ?: 0 }
+                    if (canonical != null && nearest != null &&
+                        (canonical.reviewCount ?: 0) >= 2 * (nearest.reviewCount ?: 0) + 5
+                    ) {
+                        canonical
+                    } else {
+                        nearest
+                    }
                 }
                 pick to results
             }.getOrNull()
