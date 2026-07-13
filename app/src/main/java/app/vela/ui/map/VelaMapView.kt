@@ -200,7 +200,7 @@ fun VelaMapView(
     transitOn: Boolean = false, // highlight rail (train + subway/tram) lines from the basemap tiles
     topographyOn: Boolean = false, // terrain-relief hillshade; OFF by default (Google-style)
     previewTarget: LatLng?,
-    onPoiTap: (name: String, location: LatLng) -> Unit,
+    onPoiTap: (name: String, location: LatLng, kind: String?) -> Unit,
     onMarkerTap: (index: Int) -> Unit,
     ambientPois: List<MapMarker> = emptyList(),
     onAmbientTap: (index: Int) -> Unit = {},
@@ -781,7 +781,11 @@ fun VelaMapView(
                     val hit = feats.firstOrNull { it.geometry() is Point && nameOf(it) != null }
                     if (hit != null) {
                         val pt = hit.geometry() as Point
-                        poiTap.value(nameOf(hit)!!, LatLng(pt.latitude(), pt.longitude()))
+                        val kind = listOfNotNull(
+                            hit.getStringProperty("class")?.takeIf { hit.hasProperty("class") },
+                            hit.getStringProperty("subclass")?.takeIf { hit.hasProperty("subclass") },
+                        ).joinToString(" ").ifBlank { null }
+                        poiTap.value(nameOf(hit)!!, LatLng(pt.latitude(), pt.longitude()), kind)
                         return@handleTap true
                     }
                     val box = RectF(p.x - r, p.y - r, p.x + r, p.y + r)

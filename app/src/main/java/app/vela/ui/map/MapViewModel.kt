@@ -111,6 +111,11 @@ data class MapUiState(
                                                       // .pmtiles - rendered beneath OSM to fill gaps
     val trafficControls: List<app.vela.core.data.TrafficControl> = emptyList(), // OSM lights+stop signs drawn at high zoom
     val flockCameras: List<app.vela.core.data.AlprCamera> = emptyList(), // ALPR/Flock cameras (DeFlock/OSM), neighbourhood zoom
+    val stopDepartures: app.vela.core.model.StopDepartures? = null, // a tapped transit stop's live board
+    val stopDeparturesLoading: Boolean = false,
+    val routeDetail: TransitStep? = null,         // the tapped board line's stop timeline (a ride leg)
+    val routeDetailTitle: String? = null,
+    val routeDetailLoading: Boolean = false,
     val directionsOpen: Boolean = false,
     val directionsReversed: Boolean = false, // route from the place back to you
     val directionsOrigin: Place? = null,     // custom "From" (null = your live location)
@@ -228,6 +233,7 @@ class MapViewModel @Inject constructor(
     private val webPhotos: WebPhotoFetcher,
     private val webReviews: WebReviewsFetcher,
     private val webDirections: WebDirectionsFetcher,
+    private val webStopDepartures: app.vela.web.WebStopDeparturesFetcher,
     private val diag: app.vela.core.diag.DiagLog,
     private val diagExporter: app.vela.diag.DiagExporter,
     private val webPopularTimes: app.vela.web.WebPopularTimesFetcher,
@@ -937,6 +943,7 @@ class MapViewModel @Inject constructor(
                 // do its specific name+address query - without this, popular times +
                 // editorial/owner never loaded for saved/recent places (only via search).
                 fetchPlaceDetails(enriched)
+                fetchStopDepartures(enriched) // a saved/recent transit stop shows its board too
             }
         }
     }
@@ -1183,6 +1190,7 @@ class MapViewModel @Inject constructor(
         fetchReviews(p)
         fetchPhotos(p)
         fetchPlaceDetails(p)
+        fetchStopDepartures(p) // a searched/saved transit stop shows its live board too
         backfillOfflineAddress(p)
         rememberRecentPlace(SavedPlace.of(p))
     }
@@ -1452,8 +1460,121 @@ class MapViewModel @Inject constructor(
 
     /** Tapped a POI on the map: show it immediately, then enrich with full
      * details (hours, rating, …) from a search for that name nearby. */
-    fun onPoiTap(name: String, location: LatLng) {
+    // Basemap POI classes/subclasses that mean "a transit stop" - threaded from the map tap as the
+    // kind hint so a bus stop resolves to the OPERATING stop, not the road intersection at its spot.
+    private val TRANSIT_CAT = Regex(
+        """station|stop|subway|metro|transit|transport|\bhub\b|\bbus\b|train|\brail\b|tram|light rail|terminal|ferry|""" +
+            """bahnhof|haltestelle|gare|estaci|estaç|stazione|fermata|estação|halte|stanice|""" +
+            """지하철|вокзал|станц|остановка|停|駅|车站|車站""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    // Debug sink shared with WebStopDeparturesFetcher: this device mutes logcat for live pids
+    // after `adb logcat -c`, so the gate diagnostics go to a file that cannot be muted.
+    private fun depDbg(msg: String) {
+        android.util.Log.i("VelaDepartures", msg)
+        runCatching {
+            val fdbg = java.io.File(appContext.filesDir, "departures_debug.txt")
+            if (fdbg.length() > 64_000) fdbg.delete() // tiny rolling trace, never unbounded
+            fdbg.appendText("${System.currentTimeMillis()} $msg\n")
+        }
+    }
+
+    /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
+     *  Only fired for places whose category reads like a transit stop AND that carry a feature id
+     *  (needed for the `?cid=` deep-link); guarded to the still-selected place when it returns. */
+    private fun fetchStopDepartures(p: Place) {
+        depDbg("try: cat='${p.category}' fid?=${!p.featureId.isNullOrBlank()}")
+        val fid = p.featureId
+        if (fid.isNullOrBlank() || !fid.contains(":")) { depDbg("gate: no fid (cat='${p.category}')"); return }
+        val cat = p.category ?: ""
+        if (!TRANSIT_CAT.containsMatchIn(cat)) { depDbg("gate: cat no match '$cat'"); return }
+        _state.update { if (it.selected?.featureId == fid) it.copy(stopDeparturesLoading = true) else it }
+        viewModelScope.launch {
+            val board = runCatching { webStopDepartures.fetch(fid) }
+                .onFailure { depDbg("fetch failed: ${it.message}") }
+                .getOrNull()
+            // Line count only (no place name in logs) so a shape drift is visible without leaking where.
+            depDbg("board lines=${board?.lines?.size ?: -1}")
+            _state.update { st ->
+                if (st.selected?.featureId != fid) st
+                else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
+            }
+        }
+    }
+
+    private var routeDetailJob: Job? = null
+
+    /** Tap a route on the departure board -> its stop timeline with times. Reuses the PROVEN
+     *  transit-itinerary parser: a directions query from this stop toward the route's headsign
+     *  returns a ride leg whose board/intermediate/alight stops already carry per-stop times.
+     *  No new keyless scraping. */
+    fun openRouteDetail(line: app.vela.core.model.StopDepartureLine) {
+        val origin = _state.value.selected?.location ?: return
+        val dest = line.headsign?.takeIf { it.isNotBlank() } ?: run {
+            flashStatus(appContext.getString(R.string.route_detail_unavailable)); return
+        }
+        val title = listOfNotNull(line.label, dest).joinToString(" · ")
+        _state.update { it.copy(routeDetailLoading = true, routeDetailTitle = title, routeDetail = null) }
+        routeDetailJob?.cancel()
+        routeDetailJob = viewModelScope.launch {
+            // Aim at the route's destination (geocode the headsign near the stop), then ride transit there.
+            // A bare headsign is often ambiguous, so prefer a candidate that is itself a transit place
+            // and, among those, the one nearest the tapped stop.
+            val cands = runCatching { dataSource.search(dest, origin).places }.getOrDefault(emptyList())
+            val transitish = cands.filter { it.category?.let { c ->
+                listOf("station", "transit", "stop", "airport", "terminal", "bart", "metro", "rail")
+                    .any { k -> c.contains(k, ignoreCase = true) }
+            } == true }
+            val destLoc = (transitish.minByOrNull { it.location.distanceTo(origin) }
+                ?: cands.minByOrNull { it.location.distanceTo(origin) })?.location
+            if (destLoc == null) {
+                _state.update { it.copy(routeDetailLoading = false) }
+                flashStatus(appContext.getString(R.string.route_detail_unavailable)); return@launch
+            }
+            val trips = runCatching { webDirections.transit(origin, destLoc) }.getOrDefault(emptyList())
+            val rides = trips.flatMap { it.steps }.filter { it.line != null && it.intermediateStops.isNotEmpty() }
+            // Pick the leg the user actually tapped: rank by the tapped LINE, then nearest board stop.
+            val boardDist = { st: TransitStep -> st.boardStop?.location?.distanceTo(origin) ?: Double.MAX_VALUE }
+            val step = rides.filter { lineLabelMatches(line.label, it.line?.name) }.minByOrNull { boardDist(it) }
+                ?: rides.filter { boardDist(it) <= 500.0 }.minByOrNull { boardDist(it) }
+                ?: rides.firstOrNull()
+            _state.update {
+                if (step == null) { flashStatus(appContext.getString(R.string.route_detail_unavailable)); it.copy(routeDetailLoading = false) }
+                else it.copy(routeDetail = step, routeDetailLoading = false)
+            }
+        }
+    }
+
+    /** Does a departure-board line label ("N"/"42") match an itinerary line name ("N-Judah")? Exact,
+     *  or the label is the FIRST token, so a "1" label doesn't spuriously match a "10" line. */
+    private fun lineLabelMatches(label: String?, name: String?): Boolean {
+        if (label.isNullOrBlank() || name.isNullOrBlank()) return false
+        if (name.equals(label, ignoreCase = true)) return true
+        return name.trim().split(Regex("[\\s\\-/]")).firstOrNull()?.equals(label, ignoreCase = true) == true
+    }
+
+    fun closeRouteDetail() {
+        // Cancel the in-flight lookup too: dismissing mid-load must not let the fetch complete and
+        // spring the sheet back open (or flash "unavailable") after the user moved on.
+        routeDetailJob?.cancel()
+        _state.update { it.copy(routeDetail = null, routeDetailLoading = false, routeDetailTitle = null) }
+    }
+
+    /** Tap a stop on the route timeline -> open THAT stop (its own board fires, so the user can keep
+     *  tapping down the line). The transit KIND hint makes the resolve prefer the live stop listing
+     *  over the road junction at the same coordinate. */
+    fun openRouteStop(stop: app.vela.core.model.TransitStopTime) {
+        val loc = stop.location ?: return
+        closeRouteDetail()
+        onPoiTap(stop.name, loc, "transit stop")
+    }
+
+    fun onPoiTap(name: String, location: LatLng, kind: String? = null) {
         if (consumeAssign(SavedPlace(id = "poi:" + name.hashCode(), name = name, lat = location.lat, lng = location.lng))) return
+        // A transit-kind basemap tap ("bus_stop"/"railway" class) biases the resolve below.
+        val transitHint = kind?.takeIf { TRANSIT_CAT.containsMatchIn(it) }
+        val searchQuery = if (transitHint != null && !name.lowercase().contains(transitHint)) "$name $transitHint" else name
         // Picking the route origin (or a stop) by tapping the map → adopt this POI, don't open it.
         if (_state.value.pickingStop) {
             addStop(Place(id = "poi:" + name.hashCode(), name = name, location = location))
@@ -1484,6 +1605,7 @@ class MapViewModel @Inject constructor(
                 reviewsFound = 0,
                 loadingDetails = false,
                 photosLoading = false,
+                stopDepartures = null, stopDeparturesLoading = false,
                 pickingOrigin = false,
                 pickingStop = false,
                 directionsOpen = false,
@@ -1491,7 +1613,7 @@ class MapViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val resolved = runCatching {
-                val results = dataSource.search(name, location).places
+                val results = dataSource.search(searchQuery, location).places
                 val nearest = results.minByOrNull { p -> p.location.distanceTo(location) }
                 // A tapped POI can map to several Google listings at the same spot -
                 // e.g. a co-branded "SpeeDee Midas" has a rich "SpeeDee" profile (543
@@ -1502,15 +1624,29 @@ class MapViewModel @Inject constructor(
                 // result when the canonical listing CLEARLY dominates by review count
                 // (a true duplicate, not a close call). Results are already filtered
                 // by the POI's own name, which keeps this from wandering off-place.
-                val canonical = results
-                    .filter { it.location.distanceTo(location) < 35.0 }
-                    .maxByOrNull { it.reviewCount ?: 0 }
-                val pick = if (canonical != null && nearest != null &&
-                    (canonical.reviewCount ?: 0) >= 2 * (nearest.reviewCount ?: 0) + 5
-                ) {
-                    canonical
+                val pick = if (transitHint != null) {
+                    // Transit tap: pick the OPERATING stop, not the nearest/most-reviewed thing at the
+                    // coordinate. A stop's spot usually ALSO has a road junction (Google's "Intersection")
+                    // and can carry a stale PERMANENTLY-CLOSED old shelter; nearest/most-reviewed lands on
+                    // those. Take the nearest LIVE transit-category listing near the tap, and SKIP the
+                    // most-reviewed override (a defunct-but-reviewed shelter must not beat the live stop).
+                    // No such listing -> null, so the lightweight name+location placeholder stays (a stop
+                    // name beats a corner).
+                    results.asSequence()
+                        .filter { !it.permanentlyClosed && it.location.distanceTo(location) < 80.0 }
+                        .filter { p -> p.category?.let { c -> TRANSIT_CAT.containsMatchIn(c) } == true }
+                        .minByOrNull { it.location.distanceTo(location) }
                 } else {
-                    nearest
+                    val canonical = results
+                        .filter { it.location.distanceTo(location) < 35.0 }
+                        .maxByOrNull { it.reviewCount ?: 0 }
+                    if (canonical != null && nearest != null &&
+                        (canonical.reviewCount ?: 0) >= 2 * (nearest.reviewCount ?: 0) + 5
+                    ) {
+                        canonical
+                    } else {
+                        nearest
+                    }
                 }
                 pick to results
             }.getOrNull()
@@ -1520,6 +1656,7 @@ class MapViewModel @Inject constructor(
                 fetchReviews(full)
                 fetchPhotos(full)
                 fetchPlaceDetails(full) // popular times + editorial/owner, like a search-result tap
+                fetchStopDepartures(full) // a bus stop / station tapped on the MAP gets its live board
                 rememberRecentPlace(SavedPlace.of(full))
             }
         }

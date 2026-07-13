@@ -229,6 +229,9 @@
     <string name="place_transit_now">即将出发</string>
     <string name="place_transit_in_min">%1$d 分钟后</string> <!-- format -->
     <string name="place_transit_live">实时</string>
+    <string name="place_departures">发车时刻</string>
+    <string name="place_every">每 %1$s</string> <!-- format -->
+    <string name="route_detail_unavailable">无法获取线路详情</string>
     <string name="place_hide_steps">隐藏步骤</string>
     <string name="place_show_steps">显示步骤</string>
     <string name="place_walk">步行</string>
