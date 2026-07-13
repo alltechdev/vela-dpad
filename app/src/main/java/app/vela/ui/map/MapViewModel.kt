@@ -113,6 +113,9 @@ data class MapUiState(
     val flockCameras: List<app.vela.core.data.AlprCamera> = emptyList(), // ALPR/Flock cameras (DeFlock/OSM), neighbourhood zoom
     val stopDepartures: app.vela.core.model.StopDepartures? = null, // a tapped transit stop's live board
     val stopDeparturesLoading: Boolean = false,
+    val routeDetail: TransitStep? = null,         // the tapped board line's stop timeline (a ride leg)
+    val routeDetailTitle: String? = null,
+    val routeDetailLoading: Boolean = false,
     val directionsOpen: Boolean = false,
     val directionsReversed: Boolean = false, // route from the place back to you
     val directionsOrigin: Place? = null,     // custom "From" (null = your live location)
@@ -1496,10 +1499,78 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    private var routeDetailJob: Job? = null
+
+    /** Tap a route on the departure board -> its stop timeline with times. Reuses the PROVEN
+     *  transit-itinerary parser: a directions query from this stop toward the route's headsign
+     *  returns a ride leg whose board/intermediate/alight stops already carry per-stop times.
+     *  No new keyless scraping. */
+    fun openRouteDetail(line: app.vela.core.model.StopDepartureLine) {
+        val origin = _state.value.selected?.location ?: return
+        val dest = line.headsign?.takeIf { it.isNotBlank() } ?: run {
+            flashStatus(appContext.getString(R.string.route_detail_unavailable)); return
+        }
+        val title = listOfNotNull(line.label, dest).joinToString(" · ")
+        _state.update { it.copy(routeDetailLoading = true, routeDetailTitle = title, routeDetail = null) }
+        routeDetailJob?.cancel()
+        routeDetailJob = viewModelScope.launch {
+            // Aim at the route's destination (geocode the headsign near the stop), then ride transit there.
+            // A bare headsign is often ambiguous, so prefer a candidate that is itself a transit place
+            // and, among those, the one nearest the tapped stop.
+            val cands = runCatching { dataSource.search(dest, origin).places }.getOrDefault(emptyList())
+            val transitish = cands.filter { it.category?.let { c ->
+                listOf("station", "transit", "stop", "airport", "terminal", "bart", "metro", "rail")
+                    .any { k -> c.contains(k, ignoreCase = true) }
+            } == true }
+            val destLoc = (transitish.minByOrNull { it.location.distanceTo(origin) }
+                ?: cands.minByOrNull { it.location.distanceTo(origin) })?.location
+            if (destLoc == null) {
+                _state.update { it.copy(routeDetailLoading = false) }
+                flashStatus(appContext.getString(R.string.route_detail_unavailable)); return@launch
+            }
+            val trips = runCatching { webDirections.transit(origin, destLoc) }.getOrDefault(emptyList())
+            val rides = trips.flatMap { it.steps }.filter { it.line != null && it.intermediateStops.isNotEmpty() }
+            // Pick the leg the user actually tapped: rank by the tapped LINE, then nearest board stop.
+            val boardDist = { st: TransitStep -> st.boardStop?.location?.distanceTo(origin) ?: Double.MAX_VALUE }
+            val step = rides.filter { lineLabelMatches(line.label, it.line?.name) }.minByOrNull { boardDist(it) }
+                ?: rides.filter { boardDist(it) <= 500.0 }.minByOrNull { boardDist(it) }
+                ?: rides.firstOrNull()
+            _state.update {
+                if (step == null) { flashStatus(appContext.getString(R.string.route_detail_unavailable)); it.copy(routeDetailLoading = false) }
+                else it.copy(routeDetail = step, routeDetailLoading = false)
+            }
+        }
+    }
+
+    /** Does a departure-board line label ("N"/"42") match an itinerary line name ("N-Judah")? Exact,
+     *  or the label is the FIRST token, so a "1" label doesn't spuriously match a "10" line. */
+    private fun lineLabelMatches(label: String?, name: String?): Boolean {
+        if (label.isNullOrBlank() || name.isNullOrBlank()) return false
+        if (name.equals(label, ignoreCase = true)) return true
+        return name.trim().split(Regex("[\\s\\-/]")).firstOrNull()?.equals(label, ignoreCase = true) == true
+    }
+
+    fun closeRouteDetail() {
+        // Cancel the in-flight lookup too: dismissing mid-load must not let the fetch complete and
+        // spring the sheet back open (or flash "unavailable") after the user moved on.
+        routeDetailJob?.cancel()
+        _state.update { it.copy(routeDetail = null, routeDetailLoading = false, routeDetailTitle = null) }
+    }
+
+    /** Tap a stop on the route timeline -> open THAT stop (its own board fires, so the user can keep
+     *  tapping down the line). The transit KIND hint makes the resolve prefer the live stop listing
+     *  over the road junction at the same coordinate. */
+    fun openRouteStop(stop: app.vela.core.model.TransitStopTime) {
+        val loc = stop.location ?: return
+        closeRouteDetail()
+        onPoiTap(stop.name, loc, "transit stop")
+    }
+
     fun onPoiTap(name: String, location: LatLng, kind: String? = null) {
         if (consumeAssign(SavedPlace(id = "poi:" + name.hashCode(), name = name, lat = location.lat, lng = location.lng))) return
         // A transit-kind basemap tap ("bus_stop"/"railway" class) biases the resolve below.
         val transitHint = kind?.takeIf { TRANSIT_CAT.containsMatchIn(it) }
+        val searchQuery = if (transitHint != null && !name.lowercase().contains(transitHint)) "$name $transitHint" else name
         // Picking the route origin (or a stop) by tapping the map → adopt this POI, don't open it.
         if (_state.value.pickingStop) {
             addStop(Place(id = "poi:" + name.hashCode(), name = name, location = location))
@@ -1538,7 +1609,7 @@ class MapViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val resolved = runCatching {
-                val results = dataSource.search(name, location).places
+                val results = dataSource.search(searchQuery, location).places
                 val nearest = results.minByOrNull { p -> p.location.distanceTo(location) }
                 // A tapped POI can map to several Google listings at the same spot -
                 // e.g. a co-branded "SpeeDee Midas" has a rich "SpeeDee" profile (543

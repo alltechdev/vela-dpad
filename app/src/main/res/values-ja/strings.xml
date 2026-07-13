@@ -231,6 +231,7 @@
     <string name="place_transit_live">リアルタイム</string>
     <string name="place_departures">発車時刻</string>
     <string name="place_every">%1$s ごと</string> <!-- format -->
+    <string name="route_detail_unavailable">路線の詳細を取得できません</string>
     <string name="place_hide_steps">詳細を非表示</string>
     <string name="place_show_steps">詳細を表示</string>
     <string name="place_walk">徒歩</string>

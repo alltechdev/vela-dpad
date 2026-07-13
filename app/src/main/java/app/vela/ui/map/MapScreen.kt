@@ -1148,6 +1148,7 @@ fun MapScreen(
                 detailsLoading = state.loadingDetails,
                 stopDepartures = state.stopDepartures,
                 stopDeparturesLoading = state.stopDeparturesLoading,
+                onTapRoute = vm::openRouteDetail,
                 placesHere = state.placesHere,
                 onClose = vm::clearSelection,
                 onToggleSave = vm::toggleSave,
@@ -1199,6 +1200,17 @@ fun MapScreen(
 
         // "Choose on map" crosshair - the map is visible; a fixed pin marks screen centre. Move the
         // map under it (or long-press) and Confirm to set the start/stop from that point (Google-style).
+        // Full-screen tap-through route timeline off a stop's departure board.
+        if (state.routeDetail != null || state.routeDetailLoading) {
+            app.vela.ui.place.RouteDetailSheet(
+                step = state.routeDetail,
+                title = state.routeDetailTitle,
+                loading = state.routeDetailLoading,
+                onClose = vm::closeRouteDetail,
+                onStopTap = vm::openRouteStop,
+            )
+        }
+
         state.pickOnMap?.let { target ->
             ChooseOnMapOverlay(
                 target = target,

@@ -31,6 +31,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
@@ -215,6 +218,7 @@ fun PlaceSheet(
     detailsLoading: Boolean = false,
     stopDepartures: app.vela.core.model.StopDepartures? = null, // a transit stop's live board (issue #71)
     stopDeparturesLoading: Boolean = false,
+    onTapRoute: (app.vela.core.model.StopDepartureLine) -> Unit = {},
     placesHere: List<Place> = emptyList(),
     onClose: () -> Unit,
     onToggleSave: () -> Unit,
@@ -776,7 +780,7 @@ fun PlaceSheet(
             }
 
             // Live departure board for a transit stop (keyless, from the station's own place page).
-            StopDepartureBoard(stopDepartures, stopDeparturesLoading, ink, dim, dark)
+            StopDepartureBoard(stopDepartures, stopDeparturesLoading, ink, dim, dark, onTapRoute)
 
             // Phone + website as their own tappable rows showing the actual number / domain - placed
             // BELOW the hours (Google's order), well clear of the Directions button up top. The pills
@@ -1862,6 +1866,123 @@ private fun DepartureLineRow(
                     Text(it.clockText.orEmpty(), style = MaterialTheme.typography.bodySmall, color = dim)
                 }
             }
+        }
+    }
+}
+
+/**
+ * The tap-through stop timeline for one route off the departure board. Reuses the proven
+ * transit-itinerary parser: [app.vela.ui.map.MapViewModel.openRouteDetail] runs a keyless
+ * directions query from the tapped stop toward the route's headsign, and the returned ride leg
+ * carries the board / intermediate / alight stops with per-stop times. Rendered as a vertical
+ * timeline; tapping any stop opens that stop's own board (via [onStopTap]) so the user can keep
+ * tapping down the line, mirroring Google's tap-through.
+ */
+@Composable
+fun RouteDetailSheet(
+    step: TransitStep?,
+    title: String?,
+    loading: Boolean,
+    onClose: () -> Unit,
+    onStopTap: (TransitStopTime) -> Unit,
+) {
+    BackHandler(onBack = onClose)
+    // D-pad: place focus on the back arrow when the sheet opens (same convention as the reviews page),
+    // so a D-pad-only user can immediately scroll the timeline / step onto a stop with no wake-up press.
+    val backFocus = rememberDpadAutoFocus()
+    val dark = isAppInDarkTheme()
+    val ink = if (dark) InkDark else InkLight
+    val dim = if (dark) DimDark else DimLight
+    val lineColor = parseHexColor(step?.line?.colorHex) ?: MaterialTheme.colorScheme.primary
+    // The full ordered call list: board first, then the in-betweens, then alight (stitched + de-duped).
+    val stops = remember(step) {
+        val mid = step?.intermediateStops ?: emptyList()
+        buildList {
+            step?.boardStop?.let { add(it) }
+            addAll(mid)
+            step?.alightStop?.let { a -> if (mid.none { it.name == a.name } && step.boardStop?.name != a.name) add(a) }
+        }
+    }
+    Surface(Modifier.fillMaxSize(), color = if (dark) SheetDark else SheetLight) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                IconButton(onClick = onClose, modifier = Modifier.focusRequester(backFocus).dpadHighlight()) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.place_close), tint = ink)
+                }
+                step?.line?.let { LinePill(it) }
+                Text(
+                    title ?: step?.headsign ?: step?.line?.name.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = ink,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            step?.numStops?.let { n ->
+                Text(
+                    stringResource(R.string.place_transit_stops, n),
+                    style = MaterialTheme.typography.labelMedium, color = dim,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
+                )
+            }
+            HorizontalDivider(color = SheetPalette.row(dark))
+            if (stops.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    if (loading || step == null) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    else Text(stringResource(R.string.route_detail_unavailable), style = MaterialTheme.typography.bodyMedium, color = dim)
+                }
+                return@Column
+            }
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
+                itemsIndexed(stops) { i, stop ->
+                    RouteStopRow(stop, lineColor, ink, dim, i == 0, i == stops.lastIndex, onClick = { onStopTap(stop) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouteStopRow(
+    stop: TransitStopTime,
+    lineColor: Color,
+    ink: Color,
+    dim: Color,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .dpadHighlight(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(start = 6.dp, end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Vertical rail + node, continuous between rows; board/alight get the big node.
+        val big = isFirst || isLast
+        Box(Modifier.width(24.dp).height(48.dp), contentAlignment = Alignment.Center) {
+            if (!isFirst) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.TopCenter).background(lineColor))
+            if (!isLast) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.BottomCenter).background(lineColor))
+            Box(Modifier.size(if (big) 14.dp else 9.dp).clip(CircleShape).background(lineColor))
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            stop.name,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isFirst || isLast) FontWeight.SemiBold else FontWeight.Normal,
+            color = ink,
+            maxLines = 2,
+            modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+        )
+        stop.timeText?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium, color = dim, modifier = Modifier.padding(start = 8.dp))
         }
     }
 }

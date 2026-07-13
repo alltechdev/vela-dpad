@@ -216,6 +216,7 @@
     <string name="place_transit_live">Live</string>
     <string name="place_departures">Avgångar</string>
     <string name="place_every">Var %1$s</string> <!-- format -->
+    <string name="route_detail_unavailable">Linjedetaljer ej tillgängliga</string>
     <string name="place_hide_steps">Dölj steg</string>
     <string name="place_show_steps">Visa steg</string>
     <string name="place_walk">Gå</string>
