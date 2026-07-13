@@ -277,6 +277,21 @@ fun MapScreen(
     var followMe by remember { mutableStateOf(true) }
     val driveFollowing = followMe && !state.navigating && !resultsShown && state.selected == null &&
         !state.directionsOpen && !state.showSteps && !searchOpen && state.pickOnMap == null
+    // The posted-limit ("Speed B") overlay is armed by ACTUAL MOTION, never by the bare browse map.
+    // driveFollowing alone is true whenever you're just looking at the map (followMe defaults on), and
+    // keying the overlay off it mounted the maxspeed PMTiles sources on the browse map - native tile
+    // fetch + tessellation on every pan/zoom - AND ripped them out of the style MID-GESTURE the moment
+    // a pan dropped followMe. That style churn is a panning-jank regression; motion arms it instantly,
+    // stillness disarms after 2 min so stoplights/parking don't churn sources either.
+    var speedOverlayArmed by remember { mutableStateOf(false) }
+    val movingNow = state.navigating || (state.mySpeed ?: 0f) > 3f
+    LaunchedEffect(movingNow) {
+        if (movingNow) speedOverlayArmed = true
+        else if (speedOverlayArmed) {
+            kotlinx.coroutines.delay(120_000)
+            speedOverlayArmed = false
+        }
+    }
     // Expanded detent of the results bottom sheet, hoisted here so the BACK gesture can step it
     // one detent (expanded -> peek) before collapsing to the minimized bar (user 2026-07-09).
     var resultsExpanded by remember { mutableStateOf(false) }
@@ -586,6 +601,9 @@ fun MapScreen(
             ambientPois = ambientMarkersOf(state),
             buildingOverlays = state.buildingOverlays,
             addressOverlays = state.addressOverlays,
+            maxspeedOverlays = state.maxspeedOverlays,
+            onRoadLimitKmh = vm::onOverlayRoadLimit,
+            speedOverlayOn = speedOverlayArmed, // motion-armed with hysteresis - NEVER on the parked browse map
             trafficControls = state.trafficControls,
             flockCameras = state.flockCameras,
             navBannerBottomPx = if (state.navigating) navBannerBottomPx else 0,
@@ -949,52 +967,24 @@ fun MapScreen(
             }
         }
 
-        // Speedometer (Google-style) - bottom-left during nav. The DISPLAYED value is smoothed
-        // (Google shows the fused estimate, not each raw doppler sample - the raw 1 Hz readout
-        // flickered 59/60/61 at a steady cruise), with a small deadband so a stop reads a
-        // clean 0 instead of 1 mph jitter.
-        val speedMps = state.mySpeed
-        if (state.navigating && speedMps != null) {
-            val shownSpeed by animateFloatAsState(
-                targetValue = if (speedMps < 0.4f) 0f else speedMps,
-                animationSpec = tween(durationMillis = 600),
-                label = "speedo",
-            )
-            val (value, unit) = formatSpeed(shownSpeed)
-            val dark = isAppInDarkTheme()
-            Surface(
-                shape = CircleShape,
-                color = SheetPalette.bg(dark),
-                contentColor = SheetPalette.ink(dark),
-                shadowElevation = 4.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(start = 16.dp, bottom = navBarClearance)
-                    .size(60.dp),
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Text("$value", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(unit, style = MaterialTheme.typography.labelSmall, color = SheetPalette.dim(dark))
-                }
-            }
-        }
-
-        // Posted speed-limit sign - sits just above the speedometer during nav, when the on-device
-        // graph knows the current road's OSM maxspeed (hidden otherwise; sparse OSM coverage = often blank).
-        if (state.navigating && state.speedLimitKmh != null) {
-            SpeedLimitSign(
-                limitKmh = state.speedLimitKmh!!,
+        // Unified speed readout (Google-style), bottom-left while MOVING - during nav AND during a
+        // free-drive (browsing without a route, moving on the clean map). Always shows the current
+        // speed; the posted limit (on-device graph maxspeed, else the streamed "Speed B" overlay)
+        // tucks into the SAME box when known, and it still reads clean as just a speed when no limit
+        // is available. Over the limit -> amber. In free-drive the scale bar hides (below) so the box
+        // owns the corner, like Google's driving view.
+        val movingFree = !state.navigating && (state.mySpeed ?: 0f) > 3f &&
+            !searchOpen && state.selected == null && !state.directionsOpen && !state.showSteps && !resultsShown
+        val postedLimitKmh = state.speedLimitKmh ?: state.speedLimitOverlayKmh
+        if ((state.navigating && state.mySpeed != null) || movingFree) {
+            SpeedWidget(
                 speedMps = state.mySpeed,
+                limitKmh = postedLimitKmh,
                 imperial = Units.imperial.value,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
-                    .padding(start = 16.dp, bottom = navBarClearance + 68.dp), // above the 60dp speedo + 8dp gap
+                    .padding(start = 16.dp, bottom = navBarClearance),
             )
         }
 
@@ -1374,15 +1364,19 @@ fun MapScreen(
             // (The live-traffic overlay toggle lives in Settings → Map - it's a
             // niche browse-only layer, and nav shows per-segment route traffic,
             // so it doesn't belong on the map.)
-            // Scale bar, bottom-left just past the attribution ⓘ.
-            ScaleBar(
-                metersPerPixel = metersPerPixel,
-                dark = darkTheme,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(start = 46.dp, bottom = 16.dp + chromeLift),
-            )
+            // Scale bar, bottom-left just past the attribution ⓘ. Hidden only while ACTUALLY
+            // free-driving (moving, speed box on screen) - `!driveFollowing` alone hid it on the
+            // whole browse map, since follow is armed by default.
+            if (!(driveFollowing && speedOverlayArmed)) {
+                ScaleBar(
+                    metersPerPixel = metersPerPixel,
+                    dark = darkTheme,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .navigationBarsPadding()
+                        .padding(start = 46.dp, bottom = 16.dp + chromeLift),
+                )
+            }
         }
 
         // --- transient surfaces --------------------------------------------
@@ -2483,52 +2477,80 @@ private fun FasterRouteCard(
 }
 
 /**
- * The posted speed-limit sign shown by the speedometer during nav - US MUTCD style (white rounded
- * rectangle, "SPEED LIMIT" + number) in imperial units, EU/RoW style (white disc, red ring, number)
- * in metric. The number turns red when the current GPS speed exceeds the limit by a tolerance (GPS
- * speed is noisy, so a plain > would flap). [limitKmh] is the OSM/GraphHopper value in km/h.
+ * The unified Google-style speed box shown while moving (nav AND free-drive): the posted speed limit
+ * as a regulatory sign on top (US MUTCD "SPEED LIMIT" square in imperial, EU/RoW red roundel in
+ * metric) WHEN known, and the current speed always below. Reads clean as just a speed when no limit
+ * is available. The readout turns amber when the current GPS speed exceeds the limit by a tolerance
+ * (GPS speed is noisy, so a plain > would flap). [limitKmh] is the OSM/GraphHopper value in km/h.
  */
 @Composable
-private fun SpeedLimitSign(
-    limitKmh: Double,
+private fun SpeedWidget(
     speedMps: Float?,
+    limitKmh: Double?,
     imperial: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val (limit, _) = formatSpeedLimit(limitKmh)
-    val speedNow = speedMps?.let { if (imperial) it * 2.236936f else it * 3.6f }
+    val dark = isAppInDarkTheme()
+    // Smooth the DISPLAYED speed (Google shows the fused estimate, not each raw doppler sample - the
+    // raw 1 Hz readout flickered 59/60/61 at a steady cruise), with a small deadband so a stop reads
+    // a clean 0 instead of 1 mph jitter.
+    val shownSpeed by animateFloatAsState(
+        targetValue = (speedMps ?: 0f).let { if (it < 0.4f) 0f else it },
+        animationSpec = tween(durationMillis = 600),
+        label = "speed",
+    )
+    val (value, unit) = formatSpeed(shownSpeed)
+    val speedDisp = if (imperial) shownSpeed * 2.236936f else shownSpeed * 3.6f
+    val limitDisp = limitKmh?.let { formatSpeedLimit(it).first }
     val tol = if (imperial) 3f else 5f
-    val over = speedNow != null && speedNow > limit + tol
-    val ink = Color(0xFF202124)
-    val numberColor = if (over) Color(0xFFD32F2F) else ink
-    if (imperial) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = Color.White,
-            shadowElevation = 4.dp,
-            border = BorderStroke(2.dp, ink),
-            modifier = modifier.width(54.dp),
+    val over = limitDisp != null && speedDisp > limitDisp + tol
+    val overColor = Color(0xFFE8514A)
+    val signInk = Color(0xFF202124)
+
+    // ONE box: the posted limit as a regulatory sign on top when known, the current speed always below.
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = SheetPalette.bg(dark),
+        contentColor = SheetPalette.ink(dark),
+        shadowElevation = 4.dp,
+        modifier = modifier.widthIn(min = 58.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(6.dp),
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 5.dp, horizontal = 4.dp),
-            ) {
-                Text("SPEED", color = ink, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, lineHeight = 9.sp)
-                Text("LIMIT", color = ink, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, lineHeight = 9.sp)
-                Text("$limit", color = numberColor, fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 24.sp)
+            if (limitDisp != null) {
+                if (imperial) {
+                    Surface(
+                        shape = RoundedCornerShape(7.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.5.dp, signInk),
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                        ) {
+                            Text("SPEED", color = Color(0xFF3C4043), fontSize = 7.sp, fontWeight = FontWeight.SemiBold, lineHeight = 8.sp)
+                            Text("LIMIT", color = Color(0xFF3C4043), fontSize = 7.sp, fontWeight = FontWeight.SemiBold, lineHeight = 8.sp)
+                            Text("$limitDisp", color = if (over) overColor else signInk, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 21.sp)
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        border = BorderStroke(3.5.dp, Color(0xFFD32F2F)),
+                        modifier = Modifier.size(42.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text("$limitDisp", color = if (over) overColor else signInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
-        }
-    } else {
-        Surface(
-            shape = CircleShape,
-            color = Color.White,
-            shadowElevation = 4.dp,
-            border = BorderStroke(5.dp, Color(0xFFD32F2F)),
-            modifier = modifier.size(56.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Text("$limit", color = numberColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
+            Text("$value", fontSize = 25.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp, color = if (over) overColor else SheetPalette.ink(dark))
+            Text(unit, fontSize = 9.sp, color = SheetPalette.dim(dark), lineHeight = 10.sp)
         }
     }
 }
