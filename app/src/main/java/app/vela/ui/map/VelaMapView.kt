@@ -401,8 +401,13 @@ fun VelaMapView(
                     setSourceLayer("maxspeed") // tippecanoe layer name (build-maxspeed-region.sh: -l maxspeed)
                     setMinZoom(11f)
                     setProperties(
-                        PropertyFactory.lineColor(android.graphics.Color.TRANSPARENT), // @ColorInt, unambiguously transparent
-                        PropertyFactory.lineOpacity(0f),         // belt-and-suspenders: never drawn
+                        // NOT fully transparent: MapLibre Native EXCLUDES invisible features from
+                        // queryRenderedFeatures, so Color.TRANSPARENT/lineOpacity(0) made the limit query
+                        // return nothing and the speed-limit sign never lit (device-proven on Bedford Ave:
+                        // opacity 0 -> feats=0 forever; a visible line -> sign on the first poll). 1/255
+                        // alpha is imperceptible on screen but the feature still rasterizes -> queryable.
+                        PropertyFactory.lineColor(android.graphics.Color.BLACK),
+                        PropertyFactory.lineOpacity(0.004f),
                         PropertyFactory.lineWidth(12f),          // wide hit target for the point query
                     )
                 }
