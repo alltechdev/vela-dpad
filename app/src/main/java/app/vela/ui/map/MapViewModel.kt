@@ -1571,10 +1571,14 @@ class MapViewModel @Inject constructor(
         flockRouteJob?.cancel()
         if (!app.vela.ui.FlockRouteAlert.on.value) return
         flockRouteJob = viewModelScope.launch {
-            val counts = withContext(Dispatchers.IO) {
+            val counts = withContext(Dispatchers.Default) {
+                val local = app.vela.data.FlockCameras.isLoaded
                 routes.map { r ->
-                    runCatching { app.vela.core.data.OverpassAlprCameras.fetchAlong(http, r.polyline).size }
-                        .getOrDefault(0)
+                    // Bundled dataset: instant + reliable, so the auto-avoid re-rank always has real counts to
+                    // work with (the live Overpass fan-out per tile was slow and often returned 0 = nothing to
+                    // avoid). Fall back to Overpass only until the bundled set finishes loading.
+                    if (local) app.vela.data.FlockCameras.along(r.polyline).size
+                    else runCatching { app.vela.core.data.OverpassAlprCameras.fetchAlong(http, r.polyline).size }.getOrDefault(0)
                 }
             }
             // Still THIS route set? Guard on the epoch, not the polyline: naming a provisional route
@@ -3169,26 +3173,55 @@ class MapViewModel @Inject constructor(
             val insLat = (b[2] - b[0]) * 0.25; val insLng = (b[3] - b[1]) * 0.25
             if (cLat in (b[0] + insLat)..(b[2] - insLat) && cLng in (b[1] + insLng)..(b[3] - insLng)) return
         }
+        val padLat = (north - south) * 0.5; val padLng = (east - west) * 0.5
+        val s = south - padLat; val n = north + padLat; val w = west - padLng; val e = east + padLng
+        // FAST PATH: the bundled on-device dataset - instant, no Overpass round-trip. This is what makes
+        // the layer draw like a tile instead of waiting on a network fetch per viewport (user 2026-07-13).
+        if (app.vela.data.FlockCameras.isLoaded) {
+            flockJob?.cancel()
+            flockJob = viewModelScope.launch {
+                val res = withContext(Dispatchers.Default) { app.vela.data.FlockCameras.inBox(s, w, n, e) }
+                flockBox = doubleArrayOf(s, w, n, e)
+                val kept = capFlock(res, s, n, w, e)
+                diag.record("flock", "showing ${kept.size} camera(s) at z${"%.1f".format(zoom)}", "bundled dataset")
+                _state.update { it.copy(flockCameras = kept) }
+            }
+            return
+        }
         flockJob?.cancel()
         flockJob = viewModelScope.launch {
             delay(350)
-            val padLat = (north - south) * 0.5; val padLng = (east - west) * 0.5
-            val s = south - padLat; val n = north + padLat; val w = west - padLng; val e = east + padLng
-            val res = runCatching {
-                withContext(Dispatchers.IO) {
-                    app.vela.core.data.OverpassAlprCameras.fetchInBox(http, s, w, n, e)
-                }
-            }.getOrNull() ?: return@launch
+            // fetchInBox returns NULL on failure (network/timeout/non-2xx), an empty list on a clean
+            // "no cameras here". Record both to the shareable diagnostic (Settings -> Diagnostics): on
+            // GrapheneOS adb logcat can't see app logs, so this is how a "cameras don't show" report is
+            // actually diagnosable - the user shares diagnostics and the fetch outcome is right there.
+            val res = withContext(Dispatchers.IO) {
+                runCatching { app.vela.core.data.OverpassAlprCameras.fetchInBox(http, s, w, n, e) }.getOrNull()
+            }
+            if (res == null) {
+                diag.record("flock", "camera fetch failed at z${"%.1f".format(zoom)}", "Overpass box [$s,$w,$n,$e]")
+                android.util.Log.i("VelaFlock", "fetch FAILED zoom=$zoom")
+                return@launch
+            }
             flockBox = doubleArrayOf(s, w, n, e)
-            val cLat0 = (s + n) / 2; val cLng0 = (w + e) / 2
-            val lngScale = kotlin.math.cos(Math.toRadians(cLat0))
-            val kept = if (res.size <= CONTROLS_ONSCREEN_CAP) res else res.sortedBy {
-                val dLat = it.loc.lat - cLat0; val dLng = (it.loc.lng - cLng0) * lngScale
-                dLat * dLat + dLng * dLng
-            }.take(CONTROLS_ONSCREEN_CAP)
+            val kept = capFlock(res, s, n, w, e)
+            diag.record("flock", "showing ${kept.size} camera(s) at z${"%.1f".format(zoom)}", if (res.size != kept.size) "fetched ${res.size}, capped" else null)
             android.util.Log.i("VelaFlock", "fetched=${res.size} kept=${kept.size} zoom=$zoom")
             _state.update { it.copy(flockCameras = kept) }
         }
+    }
+
+    /** Cap the drawn cameras to the [CONTROLS_ONSCREEN_CAP] NEAREST the box centre (a dense metro cell can
+     *  hold hundreds; drawing them all clutters the map and costs tessellation). Shared by both the bundled
+     *  and the Overpass paths. */
+    private fun capFlock(res: List<app.vela.core.data.AlprCamera>, s: Double, n: Double, w: Double, e: Double): List<app.vela.core.data.AlprCamera> {
+        if (res.size <= CONTROLS_ONSCREEN_CAP) return res
+        val cLat0 = (s + n) / 2; val cLng0 = (w + e) / 2
+        val lngScale = kotlin.math.cos(Math.toRadians(cLat0))
+        return res.sortedBy {
+            val dLat = it.loc.lat - cLat0; val dLng = (it.loc.lng - cLng0) * lngScale
+            dLat * dLat + dLng * dLng
+        }.take(CONTROLS_ONSCREEN_CAP)
     }
     private var controlsBox: DoubleArray? = null // [s,w,n,e] of the last fetched (padded) box
 
@@ -3541,7 +3574,12 @@ class MapViewModel @Inject constructor(
     companion object {
         const val KEY_DISMISSED = "dismissed"
         const val CONTROLS_MIN_ZOOM = 16.0 // draw traffic lights/stop signs only when zoomed in this close
-        const val FLOCK_MIN_ZOOM = 13.0 // ALPR cameras are sparse - show them from a neighbourhood zoom
+        // ALPR cameras are sparse, so show them from a WIDE zoom - lowered 13 -> 11 (2026-07-13) so
+        // they're visible on a whole-ROUTE overview, not just after you zoom into a neighbourhood. The
+        // "I know this route has cameras but don't see any" report was almost certainly this: a route
+        // overview sits at ~z11-12, under the old z13 gate. The tag is rare, so the wider Overpass box
+        // stays light (and the on-screen count is capped).
+        const val FLOCK_MIN_ZOOM = 11.0
         const val CONTROLS_ONSCREEN_CAP = 400 // max controls handed to the map (nearest-to-center wins) - a
                                               // dense metro's padded box can carry 1000+, and every handed
                                               // symbol is re-collided per drag frame (budget-GPU jank)
