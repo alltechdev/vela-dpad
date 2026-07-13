@@ -90,6 +90,9 @@ private const val CONTROLS_SRC = "vela-controls-src" // OSM traffic lights + sto
 private const val CONTROLS_LAYER = "vela-controls"
 private const val SIGNAL_IMG = "vela-signal"
 private const val STOP_IMG = "vela-stop"
+private const val FLOCK_SRC = "vela-flock-src" // ALPR/Flock cameras (DeFlock/OSM) drawn at neighbourhood zoom
+private const val FLOCK_LAYER = "vela-flock"
+private const val FLOCK_IMG = "vela-flock-cam"
 private const val AMBIENT_INDEX_PROP = "vela-ambient-index"
 private const val ME_SRC = "vela-me-src"
 private const val ME_LAYER = "vela-me"
@@ -134,6 +137,7 @@ data class MapMarker(val name: String, val location: LatLng, val category: Strin
 private var lastAppliedMarkers: List<MapMarker>? = null
 private var lastAppliedAmbient: List<MapMarker>? = null
 private var lastAppliedControls: List<app.vela.core.data.TrafficControl>? = null
+private var lastAppliedFlock: List<app.vela.core.data.AlprCamera>? = null
 private var lastAppliedParking: LatLng? = null
 private var parkingApplied = false // distinguishes "never applied" from "applied null"
 private var lastAppliedRouteLine: List<LatLng>? = null // identity-gate the route upload - applyData runs
@@ -203,6 +207,7 @@ fun VelaMapView(
     buildingOverlays: List<String> = emptyList(), // full pmtiles:// source URIs (file:// downloaded / https:// streamed)
     addressOverlays: List<String> = emptyList(), // pmtiles:// URIs for house-number labels (streamed, OpenAddresses)
     trafficControls: List<app.vela.core.data.TrafficControl> = emptyList(), // OSM lights + stop signs drawn at high zoom
+    flockCameras: List<app.vela.core.data.AlprCamera> = emptyList(), // ALPR/Flock cameras drawn from neighbourhood zoom
     navBannerBottomPx: Int = 0, // measured screen-Y of the maneuver banner's bottom edge; drops the compass below it during nav
     onCameraIdle: (center: LatLng) -> Unit,
     onMapLongPress: (location: LatLng) -> Unit,
@@ -1124,18 +1129,19 @@ fun VelaMapView(
                 parkingApplied = false
                 lastAppliedAmbient = null
                 lastAppliedControls = null
+                lastAppliedFlock = null
                 lastAppliedRouteLine = null
                 lastGradM[0] = -1e9 // force the nav split to re-render on the fresh style
                 PoiIcons.addTo(context, style)
                 if (applyKeylessTheme) applyMapTheme(style, darkTheme) else tuneMapTiler(style, darkTheme)
-                applyData(style, routePolyline, routeColor, routeDashed, routeTrafficSpans, alternates, altColor, markers, ambientPois, trafficControls, displayLoc, meBearing, locationStale, previewTarget, routeProgress, navMode, parkingSpot)
+                applyData(style, routePolyline, routeColor, routeDashed, routeTrafficSpans, alternates, altColor, markers, ambientPois, trafficControls, flockCameras, displayLoc, meBearing, locationStale, previewTarget, routeProgress, navMode, parkingSpot)
                 ensureTraffic(style, trafficOn)
                 ensureTransit(style, transitOn)
                 ensureTopography(style, topographyOn)
             }
         } else {
             styleRef?.let {
-                applyData(it, routePolyline, routeColor, routeDashed, routeTrafficSpans, alternates, altColor, markers, ambientPois, trafficControls, displayLoc, meBearing, locationStale, previewTarget, routeProgress, navMode, parkingSpot)
+                applyData(it, routePolyline, routeColor, routeDashed, routeTrafficSpans, alternates, altColor, markers, ambientPois, trafficControls, flockCameras, displayLoc, meBearing, locationStale, previewTarget, routeProgress, navMode, parkingSpot)
                 ensureTraffic(it, trafficOn)
                 ensureTransit(it, transitOn)
                 ensureTopography(it, topographyOn)
@@ -1507,6 +1513,32 @@ private fun ensureLayers(style: Style) {
                 )
             },
             AMBIENT_LAYER,
+        )
+    }
+    // ALPR / "Flock" surveillance cameras (community DeFlock mapping in OSM). Its own symbol layer,
+    // populated only when the Settings toggle is on (empty source otherwise). Drawn ABOVE the ambient
+    // POIs so a camera you're trying to spot isn't hidden behind a shop icon; sparse enough that
+    // allowOverlap is fine. minZoom matches the neighbourhood-level fetch gate (FLOCK_MIN_ZOOM).
+    if (style.getImage(FLOCK_IMG) == null) style.addImage(FLOCK_IMG, alprCameraBitmap())
+    if (style.getSource(FLOCK_SRC) == null) {
+        style.addSource(GeoJsonSource(FLOCK_SRC))
+        val flockSize = Expression.interpolate(
+            Expression.linear(), Expression.zoom(),
+            Expression.stop(14f, 0.7f),
+            Expression.stop(17f, 1.0f),
+            Expression.stop(19f, 1.35f),
+        )
+        style.addLayer(
+            SymbolLayer(FLOCK_LAYER, FLOCK_SRC).apply {
+                setMinZoom(13.5f)
+                setProperties(
+                    PropertyFactory.iconImage(FLOCK_IMG),
+                    PropertyFactory.iconSize(flockSize),
+                    PropertyFactory.iconAllowOverlap(true),
+                    PropertyFactory.iconIgnorePlacement(true),
+                    PropertyFactory.iconPadding(2f),
+                )
+            },
         )
     }
     if (style.getSource(ME_SRC) == null) {
@@ -2123,6 +2155,7 @@ private fun applyData(
     markers: List<MapMarker>,
     ambientPois: List<MapMarker>,
     trafficControls: List<app.vela.core.data.TrafficControl>,
+    flockCameras: List<app.vela.core.data.AlprCamera>,
     me: LatLng?,
     bearing: Float?,
     meStale: Boolean,
@@ -2273,6 +2306,18 @@ private fun applyData(
         )
         style.getSourceAs<GeoJsonSource>(CONTROLS_SRC)?.setGeoJson(controlsFc)
         lastAppliedControls = trafficControls
+    }
+
+    // ALPR/Flock cameras -> icon features (identity-gated like the controls). Empty when the layer's
+    // off or zoomed out, which clears the source.
+    if (flockCameras != lastAppliedFlock) {
+        val flockFc = FeatureCollection.fromFeatures(
+            flockCameras.map { cam ->
+                Feature.fromGeometry(Point.fromLngLat(cam.loc.lng, cam.loc.lat))
+            },
+        )
+        style.getSourceAs<GeoJsonSource>(FLOCK_SRC)?.setGeoJson(flockFc)
+        lastAppliedFlock = flockCameras
     }
 
     // The location source: in browse mode applyData owns it (set it from the fix here);
@@ -2479,5 +2524,29 @@ private fun stopSignBitmap(): Bitmap {
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
     c.drawText("STOP", cx, cy + 4f, label)
+    return bmp
+}
+
+/** ALPR / "Flock" surveillance-camera marker: a purple rounded badge with a white CCTV-camera glyph,
+ *  deliberately distinct from the POI dots and the traffic controls so a plate reader reads as a
+ *  "watch out" pin, not a place. */
+private fun alprCameraBitmap(): Bitmap {
+    val s = 46
+    val bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+    val maroon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF7B1FA2.toInt() } // purple: distinct from red controls
+    // Rounded-square badge (white rim + purple field).
+    c.drawRoundRect(2f, 2f, s - 2f, s - 2f, 11f, 11f, white)
+    c.drawRoundRect(4.5f, 4.5f, s - 4.5f, s - 4.5f, 9f, 9f, maroon)
+    // A simple CCTV camera in white: body, lens, and a mount arm.
+    val body = android.graphics.RectF(12f, 18f, 30f, 27f)
+    c.drawRoundRect(body, 2f, 2f, white)
+    c.drawCircle(31f, 22.5f, 4.2f, white) // lens housing at the front
+    c.drawCircle(31f, 22.5f, 2.0f, maroon) // lens glass
+    // Mount: a short arm up to the top rail.
+    val arm = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeWidth = 2.4f; style = Paint.Style.STROKE }
+    c.drawLine(17f, 18f, 17f, 12f, arm)
+    c.drawLine(12f, 12f, 24f, 12f, arm)
     return bmp
 }

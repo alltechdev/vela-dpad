@@ -41,6 +41,7 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] **Google-style POI markers** - category-coloured teardrop pins with Material glyphs and left-aligned upright labels, ranked by prominence; nameless POIs filtered out.
 - [x] **Building footprints + house numbers, Google-style** - flat grey footprints from ~z14, 3D extrusions at z16+, house numbers where OSM has them (coverage is OSM-limited).
 - [x] **Traffic lights + stop signs on the map** at z16+ (keyless Overpass, area-cached), drawn beneath POI pins.
+- [x] **Surveillance (ALPR/Flock) cameras on the map** - an opt-in Settings → Map toggle (off by default) draws automated license-plate readers where the community DeFlock project maps them in OSM (`surveillance:type=ALPR`), as purple CCTV badges from a neighbourhood zoom (~z13.5, they're sparse landmarks). Keyless Overpass, viewport-fetched + area-cached like the traffic controls; flipping the toggle refetches the current view immediately. Nothing talks to Flock or Google.
 - [x] **Map POIs are Google-ranked by real prominence, not OSM** - ambient Google places ranked by review count and rating, view-filtered and zoom-scaled; OSM POIs hidden while they show.
 - [x] **Per-travel-mode "Vibrate on turns"** - Driving/Walking/Cycling/Transit toggles, default on except driving.
 - [x] **Place-sheet header + actions, Google-style** - name with Save/Share/overflow/close, and Directions/Call/Website action pills over the address.

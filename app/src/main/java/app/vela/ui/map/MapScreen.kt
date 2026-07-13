@@ -362,6 +362,10 @@ fun MapScreen(
     // which IS the search bar (measured). Net: no map engage, no BACK, one arrow reaches search.
     // This is the ONE screen that intentionally opens un-focused (the map is ambient; the first key
     // isn't wasted - it goes straight to search). (Was: auto-engage the map - user report 2026-07-08.)
+    // Toggling the Flock layer in Settings refetches for the current view right away (otherwise the
+    // cameras wouldn't appear until the next pan). Clears the layer when turned off.
+    LaunchedEffect(app.vela.ui.Flock.on.value) { vm.refreshFlockNow() }
+
     // Choose-on-map (pickOnMap) is the EXCEPTION to the exception: there the whole task IS moving the
     // map to place a pin, so we DO auto-focus + engage the map target the moment pick mode opens, so
     // arrows pan immediately and OK confirms (the crosshair/pill are suppressed in pick mode because
@@ -583,6 +587,7 @@ fun MapScreen(
             buildingOverlays = state.buildingOverlays,
             addressOverlays = state.addressOverlays,
             trafficControls = state.trafficControls,
+            flockCameras = state.flockCameras,
             navBannerBottomPx = if (state.navigating) navBannerBottomPx else 0,
             onAmbientTap = { i -> state.ambientPois.getOrNull(i)?.let(vm::selectPlace) },
             onCameraIdle = vm::onCameraIdle,
