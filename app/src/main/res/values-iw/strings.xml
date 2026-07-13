@@ -72,7 +72,7 @@
     <string name="settings_routing_regions_hint">כל מה שצריך כדי להתנייד במדינה, מחוז או ארץ שלמה ללא רשת: הכבישים והמקומות שלה, כך שמסלולים וחיפוש עובדים בכל מקום בתוכה. תפוס לאן שאתה נוסע.</string>
     <string name="settings_routing_no_regions">אין עדיין אזורים זמינים.</string>
     <string name="settings_clear_filter">נקה סינון</string>
-    <string name="settings_routing_filter_placeholder">חיפוש</string>
+    <string name="settings_routing_filter_placeholder">סינון %1$d אזורים… (למשל יפן, טקסס)</string> <!-- format -->
     <string name="settings_routing_no_match">אין אזורים שתואמים ל\"%1$s\".</string>
     <string name="settings_routing_downloading">מוריד… %1$d%%</string>
     <string name="settings_routing_installed">מותקן · ניתוב לא מקוון כאן</string>
@@ -208,6 +208,9 @@
     <string name="place_live_traffic">תנועה בזמן אמת</string>
     <string name="place_finding_transit">מחפש מסלולי תחבורה ציבורית…</string>
     <string name="place_no_transit">לא נמצאו מסלולי תחבורה ציבורית</string>
+    <string name="place_transit_now">יוצא כעת</string>
+    <string name="place_transit_in_min">בעוד %1$d דק׳</string> <!-- format -->
+    <string name="place_transit_live">בשידור חי</string>
     <string name="place_hide_steps">הסתר שלבים</string>
     <string name="place_show_steps">הצג שלבים</string>
     <string name="place_walk">הליכה</string>
@@ -230,7 +233,9 @@
     <string name="place_from_the_owner">מהבעלים</string>
     <string name="place_share_place">שתף מקום</string>
     <string name="place_share">שתף</string>
-    <string name="place_share_gmaps_link">קישור Google Maps</string>
+    <string name="place_open_web">פתיחה באינטרנט</string>
+    <string name="place_copy_link">העתקת קישור</string>
+    <string name="place_link_copied">הקישור הועתק</string>
     <string name="place_share_map_pin">סימון מפה (geo:)</string>
     <string name="place_share_coordinates">קואורדינטות</string>
     <string name="place_copy_coordinates">העתק קואורדינטות</string>
@@ -338,7 +343,9 @@
     <string name="mapvm_search_failed_reason">החיפוש נכשל: %1$s</string>
     <string name="mapvm_none_found_along_route">לא נמצא \"%1$s\" לאורך המסלול שלך</string>
     <string name="mapvm_search_failed">החיפוש נכשל</string>
+    <string name="mapvm_no_results">אין תוצאות עבור \"%1$s\".</string> <!-- format -->
     <string name="mapvm_dropped_pin">סיכה נשמטה</string>
+    <string name="mapvm_stop_added">תחנה נוספה</string>
     <string name="mapvm_no_mode_route_found">לא נמצא מסלול %1$s</string>
     <string name="mapvm_directions_need_recalibration">המסלול דורש כיול מחדש: %1$s</string>
     <string name="mapvm_routing_failed_reason">הניתוב נכשל: %1$s</string>
@@ -449,4 +456,19 @@
     <string name="parking_history_clear_all">נקה הכל</string>
     <string name="parking_history_current">נוכחי</string>
     <string name="parking_history_delete">מחק</string>
+    <string name="place_current_traffic">תנועה נוכחית</string>
+    <string name="mapscreen_filter_top_rated">4.0★</string>
+    <string name="mapscreen_section_recent_searches">חיפושים אחרונים</string>
+    <string name="mapscreen_clear_recent_searches">ניקוי חיפושים אחרונים</string>
+    <string name="root_diag_title">לעזור לשפר את Vela?</string>
+    <string name="root_diag_body">שניהם נשארים בטלפון שלך. שום דבר לא נשלח אלא אם תייצא אותו. ניתן לשנות כל אחד בכל עת בהגדרות.</string>
+    <string name="root_diag_share_title">שיתוף אבחון</string>
+    <string name="root_diag_share_desc">יומן מקומי קצר של חיפושים, מסלולים ושגיאות.</string>
+    <string name="root_diag_trips_title">שמירת הנסיעות שלי</string>
+    <string name="root_diag_trips_desc">מקליט את עקבות ה-GPS של הניווט כדי שניתן יהיה לשחזר נסיעות לצורך בדיקה. חושפני יותר: המסלולים המדויקים שלך.</string>
+    <string name="root_diag_save">שמירת הבחירות</string>
+    <string name="root_offline_title">מפות לא מקוונות</string>
+    <string name="root_offline_body">Vela מקבל מקומות, חיפוש והוראות הגעה מ-Google, כך שללא קליטה יפעלו רק אזורים שהורדת. הגדר אזור עכשיו כדי להיות מכוסה כשאין קליטה.</string>
+    <string name="root_offline_setup">הגדרת מצב לא מקוון</string>
+    <string name="settings_update_found">יש עדכון זמין! חזור למפה כדי להתקין אותו.</string>
 </resources>

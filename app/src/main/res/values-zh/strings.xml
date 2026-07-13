@@ -98,7 +98,7 @@
     <string name="settings_routing_regions_hint">离线走遍整个州、省或国家所需的一切：道路和地点数据，让路线和搜索在其境内任何地方都可用。下载您要去的地区即可。</string>
     <string name="settings_routing_no_regions">暂无可用区域。</string>
     <string name="settings_clear_filter">清除筛选</string>
-    <string name="settings_routing_filter_placeholder">搜索</string>
+    <string name="settings_routing_filter_placeholder">筛选 %1$d 个区域…（例如日本、德克萨斯）</string> <!-- format -->
     <string name="settings_routing_no_match">没有与“%1$s”匹配的区域。</string> <!-- format -->
     <string name="settings_routing_downloading">正在下载… %1$d%%</string> <!-- format -->
     <string name="settings_routing_installed">已安装 · 此处可离线导航</string>
@@ -224,6 +224,9 @@
     <string name="place_live_traffic">实时路况</string>
     <string name="place_finding_transit">正在查找公交路线…</string>
     <string name="place_no_transit">未找到公交路线</string>
+    <string name="place_transit_now">即将出发</string>
+    <string name="place_transit_in_min">%1$d 分钟后</string> <!-- format -->
+    <string name="place_transit_live">实时</string>
     <string name="place_hide_steps">隐藏步骤</string>
     <string name="place_show_steps">显示步骤</string>
     <string name="place_walk">步行</string>
@@ -246,7 +249,9 @@
     <string name="place_from_the_owner">来自商家</string>
     <string name="place_share_place">分享地点</string>
     <string name="place_share">分享</string>
-    <string name="place_share_gmaps_link">Google 地图链接</string>
+    <string name="place_open_web">在网页中打开</string>
+    <string name="place_copy_link">复制链接</string>
+    <string name="place_link_copied">已复制链接</string>
     <string name="place_share_map_pin">地图图钉 (geo:)</string>
     <string name="place_share_coordinates">坐标</string>
     <string name="place_copy_coordinates">复制坐标</string>
@@ -370,7 +375,9 @@
     <string name="mapvm_search_failed_reason">搜索失败：%1$s</string> <!-- format -->
     <string name="mapvm_none_found_along_route">沿途未找到“%1$s”</string> <!-- format -->
     <string name="mapvm_search_failed">搜索失败</string>
+    <string name="mapvm_no_results">找不到“%1$s”的结果。</string> <!-- format -->
     <string name="mapvm_dropped_pin">已放置的图钉</string>
+    <string name="mapvm_stop_added">已添加途经点</string>
     <string name="mapvm_no_mode_route_found">未找到%1$s路线</string> <!-- format -->
     <string name="mapvm_directions_need_recalibration">路线需要重新校准：%1$s</string> <!-- format -->
     <string name="mapvm_routing_failed_reason">路线规划失败：%1$s</string> <!-- format -->
@@ -473,4 +480,19 @@
     <string name="parking_history_clear_all">全部清除</string>
     <string name="parking_history_current">当前</string>
     <string name="parking_history_delete">删除</string>
+    <string name="place_current_traffic">当前路况</string>
+    <string name="mapscreen_filter_top_rated">4.0★</string>
+    <string name="mapscreen_section_recent_searches">最近搜索</string>
+    <string name="mapscreen_clear_recent_searches">清除最近搜索</string>
+    <string name="root_diag_title">帮助改进 Vela？</string>
+    <string name="root_diag_body">两者都保留在您的手机上。除非您导出，否则不会发送任何内容。可随时在设置中更改。</string>
+    <string name="root_diag_share_title">共享诊断信息</string>
+    <string name="root_diag_share_desc">搜索、路线和错误的简短本地日志。</string>
+    <string name="root_diag_trips_title">保存我的行程</string>
+    <string name="root_diag_trips_desc">记录您的导航 GPS 轨迹，以便回放行程进行测试。更敏感：您的精确路线。</string>
+    <string name="root_diag_save">保存选择</string>
+    <string name="root_offline_title">离线地图</string>
+    <string name="root_offline_body">Vela 从 Google 获取地点、搜索和路线，因此在无信号时只有您已下载的区域可用。立即设置一个区域，以便在失去信号时仍有保障。</string>
+    <string name="root_offline_setup">设置离线</string>
+    <string name="settings_update_found">有可用更新！返回地图进行安装。</string>
 </resources>

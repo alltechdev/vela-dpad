@@ -120,6 +120,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -1402,10 +1403,32 @@ private fun TransitBoard(
             Text(stringResource(R.string.place_finding_transit), style = MaterialTheme.typography.bodyMedium, color = dim)
         }
         trips.isEmpty() -> Text(stringResource(R.string.place_no_transit), style = MaterialTheme.typography.bodyMedium, color = dim)
-        else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            trips.take(6).forEach { TransitRow(it, ink, dim, dark, onWalkDirections, onStartTransit) }
+        else -> {
+            // One shared clock so every row's "departs in X min" countdown ticks together
+            // (recomputed each 30s against the parsed departure epochs).
+            val nowSec by produceState(initialValue = System.currentTimeMillis() / 1000L) {
+                while (true) {
+                    delay(30_000L)
+                    value = System.currentTimeMillis() / 1000L
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                trips.take(6).forEach { TransitRow(it, nowSec, ink, dim, dark, onWalkDirections, onStartTransit) }
+            }
         }
     }
+}
+
+/** "Departing" / "in 7 min" from a departure epoch, or null when there's nothing useful to
+ *  show - no epoch, already gone (>1 min past), or too far out (>90 min, where the printed
+ *  departure time carries it). Mirrors Google's leading countdown on the transit board. */
+@Composable
+private fun departsInLabel(depEpochSec: Long?, nowSec: Long): String? {
+    val dep = depEpochSec ?: return null
+    val diff = dep - nowSec
+    if (diff < -60L || diff > 90L * 60L) return null
+    if (diff <= 60L) return stringResource(R.string.place_transit_now)
+    return stringResource(R.string.place_transit_in_min, ((diff + 30L) / 60L).toInt())
 }
 
 /** Full-screen step-by-step transit guidance (Moovit-style): the current leg large, the remaining
@@ -1467,9 +1490,14 @@ fun TransitNavSheet(
 }
 
 @Composable
-private fun TransitRow(t: TransitItinerary, ink: Color, dim: Color, dark: Boolean, onWalkDirections: suspend (LatLng, LatLng) -> List<String> = { _, _ -> emptyList() }, onStartTransit: (TransitItinerary) -> Unit = {}) {
+private fun TransitRow(t: TransitItinerary, nowSec: Long, ink: Color, dim: Color, dark: Boolean, onWalkDirections: suspend (LatLng, LatLng) -> List<String> = { _, _ -> emptyList() }, onStartTransit: (TransitItinerary) -> Unit = {}) {
     var expanded by remember { mutableStateOf(false) }
     val canExpand = t.steps.isNotEmpty()
+    // "Departs in X min" from the parsed departure epoch, and the real-time signal (a leg
+    // carrying a live delay or a real-time-vs-timetable time) so the countdown can read green.
+    val countdown = departsInLabel(t.departureEpochSec, nowSec)
+    val live = t.steps.any { it.delayText != null || it.boardStop?.scheduledText != null }
+    val boardDelay = t.steps.firstOrNull { it.mode != TransitMode.WALK && it.delayText != null }?.delayText
     Column(
         Modifier
             .fillMaxWidth()
@@ -1479,6 +1507,37 @@ private fun TransitRow(t: TransitItinerary, ink: Color, dim: Color, dark: Boolea
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        if (countdown != null || boardDelay != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                countdown?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (live) SheetPalette.TrafficGreen else ink,
+                    )
+                }
+                if (live) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(SheetPalette.TrafficGreen))
+                    Text(
+                        stringResource(R.string.place_transit_live),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = SheetPalette.TrafficGreen,
+                    )
+                }
+                boardDelay?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = SheetPalette.TrafficRed,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             val range = listOfNotNull(t.departureText, t.arrivalText).joinToString(" – ")
             Text(
@@ -2397,12 +2456,35 @@ private fun ShareIconButton(place: Place, tint: Color) {
         open = false
     }
 
+    // Open this exact place on the Google Maps website (in the browser), not share a link. Prefer the
+    // place's own cid deep-link (opens the real place page); fall back to a name+coords query.
+    fun openWeb() {
+        val cid = place.featureId?.substringAfter(":", "")?.removePrefix("0x")?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { java.math.BigInteger(it, 16).toString() }.getOrNull() }
+        val url = if (cid != null) "https://www.google.com/maps?cid=$cid"
+            else "https://www.google.com/maps/search/?api=1&query=${Uri.encode(place.name)}%20$lat%2C$lng"
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        open = false
+    }
+
+    // Copy the place's Google Maps link straight to the clipboard (a quiet toast confirms).
+    fun copyLink() {
+        val url = "https://www.google.com/maps/search/?api=1&query=$lat%2C$lng"
+        runCatching {
+            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(place.name, url))
+            Toast.makeText(context, context.getString(R.string.place_link_copied), Toast.LENGTH_SHORT).show()
+        }
+        open = false
+    }
+
     Box {
         IconButton(onClick = { open = true }, modifier = Modifier.size(40.dp)) {
             Icon(Icons.Default.Share, contentDescription = stringResource(R.string.place_share), tint = tint, modifier = Modifier.size(20.dp))
         }
         VelaMenu(expanded = open, onDismissRequest = { open = false }) {
-            item(stringResource(R.string.place_share_gmaps_link)) { share("${place.name}\nhttps://www.google.com/maps/search/?api=1&query=$lat%2C$lng") }
+            item(stringResource(R.string.place_open_web)) { openWeb() }
+            item(stringResource(R.string.place_copy_link)) { copyLink() }
             // A geo: URI opens in ANY maps app (incl. Vela) - no google.com, the
             // degoogled-friendly way to send a pin.
             item(stringResource(R.string.place_share_map_pin)) { share("${place.name}\ngeo:$lat,$lng?q=$lat,$lng(${Uri.encode(place.name)})") }

@@ -209,6 +209,9 @@
     <string name="place_live_traffic">ruch na żywo</string>
     <string name="place_finding_transit">Wyszukiwanie połączeń komunikacji miejskiej…</string>
     <string name="place_no_transit">Nie znaleziono połączeń komunikacji miejskiej</string>
+    <string name="place_transit_now">Odjeżdża</string>
+    <string name="place_transit_in_min">za %1$d min</string> <!-- format -->
+    <string name="place_transit_live">Na żywo</string>
     <string name="place_hide_steps">Ukryj etapy</string>
     <string name="place_show_steps">Pokaż etapy</string>
     <string name="place_walk">Pieszo</string>
@@ -231,7 +234,9 @@
     <string name="place_from_the_owner">Od właściciela</string>
     <string name="place_share_place">Udostępnij miejsce</string>
     <string name="place_share">Udostępnij</string>
-    <string name="place_share_gmaps_link">Link Google Maps</string>
+    <string name="place_open_web">Otwórz w internecie</string>
+    <string name="place_copy_link">Kopiuj link</string>
+    <string name="place_link_copied">Skopiowano link</string>
     <string name="place_share_map_pin">Pinezka mapy (geo:)</string>
     <string name="place_share_coordinates">Współrzędne</string>
     <string name="place_copy_coordinates">Kopiuj współrzędne</string>
@@ -348,7 +353,9 @@
     <string name="mapvm_search_failed_reason">Wyszukiwanie nie powiodło się: %1$s</string>
     <string name="mapvm_none_found_along_route">Nie znaleziono „%1$s” wzdłuż Twojej trasy</string>
     <string name="mapvm_search_failed">Wyszukiwanie nie powiodło się</string>
+    <string name="mapvm_no_results">Brak wyników dla \"%1$s\".</string> <!-- format -->
     <string name="mapvm_dropped_pin">Upuszczona pinezka</string>
+    <string name="mapvm_stop_added">Dodano przystanek</string>
     <string name="mapvm_no_mode_route_found">Nie znaleziono trasy: %1$s</string>
     <string name="mapvm_directions_need_recalibration">Trasa wymaga rekalibracji: %1$s</string>
     <string name="mapvm_routing_failed_reason">Wyznaczanie trasy nie powiodło się: %1$s</string>

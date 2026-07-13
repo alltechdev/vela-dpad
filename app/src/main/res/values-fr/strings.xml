@@ -209,6 +209,9 @@
     <string name="place_live_traffic">trafic en temps réel</string>
     <string name="place_finding_transit">Recherche d\'itinéraires en transports…</string>
     <string name="place_no_transit">Aucun itinéraire en transports trouvé</string>
+    <string name="place_transit_now">Départ imminent</string>
+    <string name="place_transit_in_min">dans %1$d min</string> <!-- format -->
+    <string name="place_transit_live">En direct</string>
     <string name="place_hide_steps">Masquer les étapes</string>
     <string name="place_show_steps">Afficher les étapes</string>
     <string name="place_walk">À pied</string>
@@ -231,7 +234,9 @@
     <string name="place_from_the_owner">Réponse du propriétaire</string>
     <string name="place_share_place">Partager le lieu</string>
     <string name="place_share">Partager</string>
-    <string name="place_share_gmaps_link">Lien Google Maps</string>
+    <string name="place_open_web">Ouvrir sur le Web</string>
+    <string name="place_copy_link">Copier le lien</string>
+    <string name="place_link_copied">Lien copié</string>
     <string name="place_share_map_pin">Repère sur la carte (geo:)</string>
     <string name="place_share_coordinates">Coordonnées</string>
     <string name="place_copy_coordinates">Copier les coordonnées</string>
@@ -348,7 +353,9 @@
     <string name="mapvm_search_failed_reason">Échec de la recherche : %1$s</string>
     <string name="mapvm_none_found_along_route">Aucun « %1$s » trouvé le long de votre itinéraire</string>
     <string name="mapvm_search_failed">Échec de la recherche</string>
+    <string name="mapvm_no_results">Aucun résultat pour \"%1$s\".</string> <!-- format -->
     <string name="mapvm_dropped_pin">Repère placé</string>
+    <string name="mapvm_stop_added">Arrêt ajouté</string>
     <string name="mapvm_no_mode_route_found">Aucun itinéraire %1$s trouvé</string>
     <string name="mapvm_directions_need_recalibration">L\'itinéraire nécessite un recalibrage : %1$s</string>
     <string name="mapvm_routing_failed_reason">Échec du calcul d\'itinéraire : %1$s</string>
