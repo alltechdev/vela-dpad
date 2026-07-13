@@ -287,6 +287,18 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(stringResource(R.string.settings_flock), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = app.vela.ui.Flock.on.value,
+                    onCheckedChange = { app.vela.ui.Flock.set(context, it) },
+                )
+            }
+            Hint(stringResource(R.string.settings_flock_hint))
+
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(stringResource(R.string.settings_buildings_3d), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 Switch(
                     checked = app.vela.ui.Buildings3d.on.value,
