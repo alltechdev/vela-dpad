@@ -73,6 +73,8 @@
     <string name="settings_live_traffic_hint">地図の閲覧中、混雑状況に応じて道路を色分けします。ナビ中のルートは常に交通状況で色分けされます。</string>
     <string name="settings_transit_layer">交通機関の路線を強調</string>
     <string name="settings_transit_layer_hint">鉄道や地下鉄の路線を地図上に表示します。</string>
+    <string name="settings_topography">地形の陰影</string>
+    <string name="settings_topography_hint">地図上の丘や山に陰影を付けます。既定ではオフです。</string>
     <string name="settings_read_all_reviews">「クチコミをすべて読む」ボタン</string>
     <string name="settings_read_all_reviews_hint">アプリ内で Google のクチコミページ全体を開く「クチコミをすべて読む」ボタンを追加します。すべてのクチコミを確認できます。オフの場合は Vela 独自のクチコミ一覧のみ表示します。</string>
     <string name="settings_buildings_3d">3D 建物</string>
