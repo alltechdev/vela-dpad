@@ -252,6 +252,14 @@ fun VelaMapView(
     val viewport = rememberUpdatedState(onViewport)
     val dpadHolder = rememberUpdatedState(dpadController)
     val gestureMove = remember { booleanArrayOf(false) }
+    // A key-driven pan (MapDpadController.panBy) is a DELIBERATE user pan, but it moves the camera
+    // with a programmatic easeCamera whose move-started reason is API_ANIMATION - which the
+    // move-started listener below writes into gestureMove as false, clobbering the flag markPan set
+    // before the camera settles. So the camera-idle never reported the new centre to the VM, and
+    // "Choose on map" confirmed at the STALE pre-pan centre = your current location (issue #24). This
+    // separate flag is set by markPan and CANNOT be clobbered by the API_ANIMATION move-started, so
+    // the idle reliably reports a key pan's centre.
+    val keyPanPending = remember { booleanArrayOf(false) }
     val navZoomSpeed = remember { floatArrayOf(0f) }          // low-passed speed driving the nav zoom
     val scaling = remember { booleanArrayOf(false) }          // a pinch-zoom is in progress
     val navUserZoom = remember { doubleArrayOf(Double.NaN) }  // manual nav zoom override (NaN = auto)
@@ -842,8 +850,9 @@ fun VelaMapView(
                     }
                 })
                 map.addOnCameraIdleListener {
-                    if (gestureMove[0]) {
+                    if (gestureMove[0] || keyPanPending[0]) {
                         gestureMove[0] = false
+                        keyPanPending[0] = false
                         map.cameraPosition.target?.let { t ->
                             cameraIdle.value(LatLng(t.latitude, t.longitude))
                         }
@@ -892,9 +901,17 @@ fun VelaMapView(
                     c.onLongPress = { pt -> longPress.value(LatLng(pt.latitude, pt.longitude)) }
                     c.markPan = {
                         gestureMove[0] = true
+                        keyPanPending[0] = true // survives the API_ANIMATION move-started reset (issue #24)
                         if (navModeHolder.value) {
                             navPanned.value()
                             navUserZoom[0] = Double.NaN
+                        } else {
+                            // A D-pad pan is "let me look around" just like a touch pan: drop the
+                            // free-drive follow, or driveFollowing re-centres the camera to the current
+                            // location on the next fix and the map "snaps back home" (issue #24). The
+                            // touch path does this from OnMoveListener.onMove, which a programmatic
+                            // easeCamera never triggers - so mirror it here.
+                            userPanned.value()
                         }
                     }
                     c.markZoom = { z ->

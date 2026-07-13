@@ -85,6 +85,7 @@ import app.vela.ui.theme.ThemeMode
 import app.vela.ui.dpadHighlight // D-pad-only operation (docs/dpad.md)
 import app.vela.ui.dpadFieldEscape
 import app.vela.ui.dpadSwallowHorizontal
+import app.vela.ui.dpadRowSibling
 import app.vela.ui.dpadAutoFocus
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -498,16 +499,21 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { vm.testVoice() }) { Text(stringResource(R.string.settings_voice_test)) }
+                    // D-pad L/R across the pair (issue #24 - Test voice unreachable). See dpadRowSibling.
+                    val voiceTestFocus = remember { List(2) { FocusRequester() } }
+                    OutlinedButton(modifier = Modifier.dpadRowSibling(voiceTestFocus, 0), onClick = { vm.testVoice() }) { Text(stringResource(R.string.settings_voice_test)) }
                     Spacer(Modifier.width(8.dp))
-                    OutlinedButton(onClick = {
-                        runCatching {
-                            context.startActivity(
-                                android.content.Intent("com.android.settings.TTS_SETTINGS")
-                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }
-                    }) { Text(stringResource(R.string.settings_voice_system_settings)) }
+                    OutlinedButton(
+                        modifier = Modifier.dpadRowSibling(voiceTestFocus, 1),
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent("com.android.settings.TTS_SETTINGS")
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        },
+                    ) { Text(stringResource(R.string.settings_voice_system_settings)) }
                 }
                 Hint(stringResource(R.string.settings_voice_test_hint))
             }
@@ -540,9 +546,11 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 Spacer(Modifier.height(6.dp))
                 val navSampleText = stringResource(R.string.settings_voice_nav_sample_text)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { vm.speakText(tryText) }, enabled = tryText.isNotBlank()) { Text(stringResource(R.string.settings_voice_speak)) }
+                    // D-pad L/R across the pair (issue #24). See dpadRowSibling.
+                    val playFocus = remember { List(2) { FocusRequester() } }
+                    OutlinedButton(modifier = Modifier.dpadRowSibling(playFocus, 0), onClick = { vm.speakText(tryText) }, enabled = tryText.isNotBlank()) { Text(stringResource(R.string.settings_voice_speak)) }
                     Spacer(Modifier.width(8.dp))
-                    OutlinedButton(onClick = {
+                    OutlinedButton(modifier = Modifier.dpadRowSibling(playFocus, 1), onClick = {
                         vm.speakText(navSampleText)
                     }) { Text(stringResource(R.string.settings_voice_nav_sample)) }
                 }
@@ -554,9 +562,10 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    OutlinedButton(onClick = { vm.setVoiceSpeed(-0.1f) }) { Text("−") }
+                    val speedFocus = remember { List(2) { FocusRequester() } }  // D-pad L/R across -/+ (issue #24)
+                    OutlinedButton(modifier = Modifier.dpadRowSibling(speedFocus, 0), onClick = { vm.setVoiceSpeed(-0.1f) }) { Text("−") }
                     Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { vm.setVoiceSpeed(0.1f) }) { Text("+") }
+                    OutlinedButton(modifier = Modifier.dpadRowSibling(speedFocus, 1), onClick = { vm.setVoiceSpeed(0.1f) }) { Text("+") }
                 }
                 Hint(stringResource(R.string.settings_voice_speed_hint))
                 // Multi-speaker Vela voices (libritts_r=904, VCTK=109, Arctic=18) - let the user audition +
@@ -571,9 +580,10 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
                         )
-                        OutlinedButton(onClick = { vm.stepSpeaker(-1) }) { Text("◀") }
+                        val speakerFocus = remember { List(2) { FocusRequester() } }  // D-pad L/R across ◀/▶ (issue #24)
+                        OutlinedButton(modifier = Modifier.dpadRowSibling(speakerFocus, 0), onClick = { vm.stepSpeaker(-1) }) { Text("◀") }
                         Spacer(Modifier.width(6.dp))
-                        OutlinedButton(onClick = { vm.stepSpeaker(1) }) { Text("▶") }
+                        OutlinedButton(modifier = Modifier.dpadRowSibling(speakerFocus, 1), onClick = { vm.stepSpeaker(1) }) { Text("▶") }
                     }
                     Spacer(Modifier.height(8.dp))
                     // Jump straight to a variant number (904 is a lot to step through).
@@ -878,15 +888,24 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 }
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                OutlinedButton(onClick = {
-                    val intent = vm.exportSavedIntent()
-                    if (intent != null) runCatching { context.startActivity(intent) }
-                    else android.widget.Toast.makeText(context, context.getString(R.string.settings_no_saved_places), android.widget.Toast.LENGTH_SHORT).show()
-                }) { Text(stringResource(R.string.settings_export)) }
+                // D-pad: the root Column swallows bare LEFT/RIGHT, so this button pair drives its OWN
+                // L/R (issue #24 - Import was unreachable). Same pattern as the vibrate chips.
+                val savedFocus = remember { List(2) { FocusRequester() } }
+                OutlinedButton(
+                    modifier = Modifier.dpadRowSibling(savedFocus, 0),
+                    onClick = {
+                        val intent = vm.exportSavedIntent()
+                        if (intent != null) runCatching { context.startActivity(intent) }
+                        else android.widget.Toast.makeText(context, context.getString(R.string.settings_no_saved_places), android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                ) { Text(stringResource(R.string.settings_export)) }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = {
-                    runCatching { importLauncher.launch(arrayOf("application/json", "*/*")) }
-                }) { Text(stringResource(R.string.settings_import)) }
+                OutlinedButton(
+                    modifier = Modifier.dpadRowSibling(savedFocus, 1),
+                    onClick = {
+                        runCatching { importLauncher.launch(arrayOf("application/json", "*/*")) }
+                    },
+                ) { Text(stringResource(R.string.settings_import)) }
             }
             Spacer(Modifier.height(8.dp))
 

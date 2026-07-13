@@ -1,5 +1,6 @@
 package app.vela.ui.search
 
+import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,9 +44,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import app.vela.ui.dpadHighlight
 import androidx.compose.ui.input.key.Key
@@ -53,8 +52,11 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.vela.R
 
@@ -78,25 +80,32 @@ fun SearchBar(
     // D-pad (docs/dpad.md): mere focus traversal must NOT fall into the text field (its
     // focus opens the full-screen search overlay - a trap when you're just walking the
     // chrome). In dpadMode the whole bar is ONE focus stop; pressing OK "arms" the field
-    // and focuses it. We deliberately do NOT raise the soft IME: on a keypad device the
-    // user types on hardware keys (which reach the focused field directly), and a shown
-    // soft IME holds an active InputConnection that SWALLOWS the BACK key - reproduced
-    // on-device as the "can't get out of search" trap. Hiding it lets BACK reach the app
-    // and close the overlay in one press.
+    // and focuses it. Whether arming ALSO raises the soft IME depends on the device (see the
+    // hasTouchscreen note below): a touchscreen/T9 phone needs it to type; a truly touchless
+    // hardware-keyboard phone keeps it hidden so a shown IME can't swallow the BACK key.
     var fieldArmed by remember { mutableStateOf(false) }
     val fieldFocus = remember { FocusRequester() }
+    // The field is driven by a TextFieldValue (not the bare String) so we OWN the caret: on a D-pad
+    // device LEFT/RIGHT then move the cursor WITHIN the text and only escape to Back/X at the ends
+    // (issue #24 - L/R jumped straight out of the field). Kept in sync with the external String query
+    // (voice result, clear, programmatic set) without a feedback loop via the text-equality guard.
+    var fieldValue by remember { mutableStateOf(TextFieldValue(query, TextRange(query.length))) }
+    LaunchedEffect(query) {
+        if (fieldValue.text != query) fieldValue = TextFieldValue(query, TextRange(query.length))
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val inputMode = LocalInputModeManager.current
+    val context = LocalContext.current
+    // A device with NO touchscreen types via hardware CHARACTER keys that reach the focused field
+    // directly, and a soft IME there holds an InputConnection that swallows BACK (the "can't get out
+    // of search" trap) - so only there do we keep the IME hidden. Every device WITH a touchscreen
+    // (incl. hybrid touch+keypad phones like the Qin F25, whose T9/soft keypad IS how you type) needs
+    // the IME shown to enter text - hiding it left them unable to type at all (issue #24).
+    val hasTouchscreen = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
     LaunchedEffect(fieldArmed) {
         if (fieldArmed) {
             runCatching { fieldFocus.requestFocus() }
-            // Show/hide the soft keyboard by HOW the field was armed, not the static device type.
-            // On a hybrid touch+keypad phone dpadMode is always true, so keying off
-            // it hid the keyboard even when the user TAPPED the bar - they couldn't type by touch
-            // (alltechdev tester report 2026-07-08). Keying off the live input mode shows the
-            // keyboard for a touch tap and hides it for a D-pad OK, which is what each wants.
-            if (inputMode.inputMode == InputMode.Keyboard) keyboard?.hide() else keyboard?.show()
+            if (hasTouchscreen) keyboard?.show() else keyboard?.hide()
         }
     }
     // Match the darker tone of the category chips (elevated chips sit on
@@ -162,8 +171,11 @@ fun SearchBar(
                     )
                 }
                 BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
+                    value = fieldValue,
+                    onValueChange = {
+                        fieldValue = it
+                        if (it.text != query) onQueryChange(it.text)
+                    },
                     // Until armed in dpadMode the field is DISABLED, so it doesn't swallow a TOUCH tap
                     // (a live but unfocusable field ate the tap and did nothing - the "can't tap the
                     // search bar" bug on hybrid touch+keypad phones). Disabled lets the tap
@@ -206,6 +218,25 @@ fun SearchBar(
                                         focusManager.moveFocus(FocusDirection.Down)
                                     }
                                     true
+                                }
+                                // LEFT/RIGHT move the CARET within the text (issue #24). Only when the
+                                // caret is already at the matching end do we fall through (return false)
+                                // so focus can escape to Back (left) / the clear X (right) - so the
+                                // chrome stays reachable but typing-then-editing works like any field.
+                                dpadMode && (ev.key == Key.DirectionLeft || ev.key == Key.DirectionRight) -> {
+                                    val sel = fieldValue.selection
+                                    val canMove =
+                                        if (ev.key == Key.DirectionLeft) sel.start > 0
+                                        else sel.end < fieldValue.text.length
+                                    if (!canMove) {
+                                        false
+                                    } else {
+                                        if (ev.type == KeyEventType.KeyDown) {
+                                            val pos = if (ev.key == Key.DirectionLeft) sel.start - 1 else sel.end + 1
+                                            fieldValue = fieldValue.copy(selection = TextRange(pos))
+                                        }
+                                        true
+                                    }
                                 }
                                 else -> false
                             }
