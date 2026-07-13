@@ -79,6 +79,7 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsSubway
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.DirectionsTransit
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Tram
@@ -983,6 +984,7 @@ fun DirectionsPanel(
     onStartTransit: (TransitItinerary) -> Unit = {},
     onClose: () -> Unit,
     onTimeSelected: (Int, Long?) -> Unit = { _, _ -> },
+    flockOnRoute: List<Int> = emptyList(), // opt-in: ALPR camera count per route (index-aligned)
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -1170,7 +1172,7 @@ fun DirectionsPanel(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         routes.forEachIndexed { i, r ->
                             val selected = r === activeRoute || (activeRoute == null && i == 0)
-                            RouteOption(r, selected, fastestEtaSeconds = fastestEta, isFastest = i == 0, dark = dark, ink = ink, dim = dim) { onSelectRoute(i) }
+                            RouteOption(r, selected, fastestEtaSeconds = fastestEta, isFastest = i == 0, dark = dark, ink = ink, dim = dim, flockCount = flockOnRoute.getOrElse(i) { 0 }) { onSelectRoute(i) }
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -1326,7 +1328,7 @@ private fun DepartTimeChooser(
  * via, highlighted when it's the active one. The fastest carries a "Fastest" tag; each slower
  * alternate shows how much longer it is ("+5 min") so the choice is legible at a glance. */
 @Composable
-private fun RouteOption(r: Route, selected: Boolean, fastestEtaSeconds: Double, isFastest: Boolean, dark: Boolean, ink: Color, dim: Color, onClick: () -> Unit) {
+private fun RouteOption(r: Route, selected: Boolean, fastestEtaSeconds: Double, isFastest: Boolean, dark: Boolean, ink: Color, dim: Color, flockCount: Int = 0, onClick: () -> Unit) {
     val etaSeconds = r.durationInTrafficSeconds ?: r.durationSeconds
     val eta = formatDuration(etaSeconds)
     val etaColor = trafficEtaColor(r) ?: ink
@@ -1380,6 +1382,18 @@ private fun RouteOption(r: Route, selected: Boolean, fastestEtaSeconds: Double, 
                 if (r.hasLiveTraffic) stringResource(R.string.place_live_traffic) else null,
             ).joinToString("  ·  ")
             Text(sub, style = MaterialTheme.typography.bodySmall, color = dim)
+            // Opt-in surveillance-camera warning: how many ALPR/Flock cameras this route passes.
+            if (flockCount > 0) {
+                Spacer(Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Videocam, contentDescription = null, tint = SheetPalette.TrafficAmber, modifier = Modifier.size(14.dp))
+                    Text(
+                        stringResource(R.string.dir_cameras_on_route, flockCount),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SheetPalette.TrafficAmber,
+                    )
+                }
+            }
         }
         if (selected) Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
     }
