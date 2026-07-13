@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Vela Maps</string>
+    <string name="app_name" translatable="false">Vela Maps</string>
 
     <!-- shared search-category chip labels (map + along-route); the search QUERY stays English in code -->
     <string name="cat_restaurants">Restaurants</string>
@@ -225,6 +225,9 @@
     <string name="place_live_traffic">live traffic</string>
     <string name="place_finding_transit">Finding transit routes…</string>
     <string name="place_no_transit">No transit routes found</string>
+    <string name="place_transit_now">Departing</string>
+    <string name="place_transit_in_min">in %1$d min</string> <!-- format -->
+    <string name="place_transit_live">Live</string>
     <string name="place_hide_steps">Hide steps</string>
     <string name="place_show_steps">Show steps</string>
     <string name="place_walk">Walk</string>
@@ -247,7 +250,9 @@
     <string name="place_from_the_owner">From the owner</string>
     <string name="place_share_place">Share place</string>
     <string name="place_share">Share</string>
-    <string name="place_share_gmaps_link">Google Maps link</string>
+    <string name="place_open_web">Open on the web</string>
+    <string name="place_copy_link">Copy link</string>
+    <string name="place_link_copied">Link copied</string>
     <string name="place_share_map_pin">Map pin (geo:)</string>
     <string name="place_share_coordinates">Coordinates</string>
     <string name="place_copy_coordinates">Copy coordinates</string>
@@ -381,7 +386,9 @@
     <string name="mapvm_search_failed_reason">Search failed: %1$s</string> <!-- format -->
     <string name="mapvm_none_found_along_route">No \"%1$s\" found along your route</string> <!-- format -->
     <string name="mapvm_search_failed">Search failed</string>
+    <string name="mapvm_no_results">No results for \"%1$s\".</string> <!-- format -->
     <string name="mapvm_dropped_pin">Dropped pin</string>
+    <string name="mapvm_stop_added">Stop added</string>
     <string name="mapvm_no_mode_route_found">No %1$s route found</string> <!-- format -->
     <string name="mapvm_directions_need_recalibration">Directions need recalibration: %1$s</string> <!-- format -->
     <string name="mapvm_routing_failed_reason">Routing failed: %1$s</string> <!-- format -->
