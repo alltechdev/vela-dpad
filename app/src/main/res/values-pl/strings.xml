@@ -216,6 +216,8 @@
     <string name="place_transit_live">Na żywo</string>
     <string name="place_departures">Odjazdy</string>
     <string name="place_every">Co %1$s</string> <!-- format -->
+    <string name="place_transit_more_times">jeszcze %1$d</string> <!-- format -->
+    <string name="place_transit_view_stops">Przystanki</string>
     <string name="route_detail_unavailable">Szczegóły linii niedostępne</string>
     <string name="place_hide_steps">Ukryj etapy</string>
     <string name="place_show_steps">Pokaż etapy</string>

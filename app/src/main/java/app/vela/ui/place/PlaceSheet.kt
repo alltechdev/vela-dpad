@@ -1448,6 +1448,16 @@ private fun TransitBoard(
     }
 }
 
+/** A weekday marker ("Sat") for a departure that lands on a DIFFERENT day than now - the
+ *  after-midnight case where "12:05 AM" would read as five minutes ago instead of tonight.
+ *  Null when the departure is today (the normal case, no marker). */
+private fun departureDayLabel(depEpochSec: Long?, nowSec: Long): String? {
+    val dep = depEpochSec ?: return null
+    val dayKey = java.text.SimpleDateFormat("yyyyDDD", java.util.Locale.US)
+    if (dayKey.format(java.util.Date(dep * 1000)) == dayKey.format(java.util.Date(nowSec * 1000))) return null
+    return java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault()).format(java.util.Date(dep * 1000))
+}
+
 /** "Departing" / "in 7 min" from a departure epoch, or null when there's nothing useful to
  *  show - no epoch, already gone (>1 min past), or too far out (>90 min, where the printed
  *  departure time carries it). Mirrors Google's leading countdown on the transit board. */
@@ -1811,7 +1821,8 @@ private fun StopDepartureBoard(
     val nowSec by produceState(initialValue = System.currentTimeMillis() / 1000L) {
         while (true) { delay(30_000L); value = System.currentTimeMillis() / 1000L }
     }
-    // Google-style clean list: plain tappable rows separated by hairline dividers.
+    // Google-style clean list: plain tappable rows separated by hairline dividers (no per-row
+    // chevron - the row itself opens the route, and its Material ripple is the affordance).
     Column(Modifier.padding(top = 6.dp)) {
         val lines = d.lines.take(24)
         lines.forEachIndexed { i, line ->
@@ -1856,6 +1867,21 @@ private fun DepartureLineRow(
             line.headwayText?.let {
                 Text(stringResource(R.string.place_every, it), style = MaterialTheme.typography.labelMedium, color = dim)
             }
+            // Explicit "Stops ›" action: the bare row ripple wasn't discoverable enough as "tap to see
+            // where this route goes" (user 2026-07-13, overruling the earlier chevron removal).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.place_transit_view_stops),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
         if (line.upcoming.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1875,9 +1901,43 @@ private fun DepartureLineRow(
                         color = if (live) SheetPalette.TrafficGreen else dim,
                     )
                 }
+                departureDayLabel(next.epochSec, nowSec)?.let {
+                    Text("· $it", style = MaterialTheme.typography.bodyMedium, color = dim)
+                }
                 if (live) Box(Modifier.size(6.dp).clip(CircleShape).background(SheetPalette.TrafficGreen))
-                line.upcoming.drop(1).take(3).forEach {
-                    Text(it.clockText.orEmpty(), style = MaterialTheme.typography.bodySmall, color = dim)
+            }
+            // The rest of the upcoming departures as a VERTICAL LIST — one per line, each with its own
+            // countdown/day marker. Capped at a handful with an "N more" expander: an agency can embed 25+
+            // times, and the full wall scrolled the route pill + headsign clean out of view, which read as
+            // "the bus number is missing" (user 2026-07-13). Expanding shows everything.
+            val rest = line.upcoming.drop(1)
+            if (rest.isNotEmpty()) {
+                var showAll by remember(line.label, line.headsign) { mutableStateOf(false) }
+                val shown = if (showAll) rest else rest.take(5)
+                Column(Modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    shown.forEach { dep ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(dep.clockText.orEmpty(), style = MaterialTheme.typography.bodySmall, color = dim)
+                            departsInLabel(dep.epochSec, nowSec)?.let {
+                                Text("· $it", style = MaterialTheme.typography.bodySmall, color = dim)
+                            }
+                            departureDayLabel(dep.epochSec, nowSec)?.let {
+                                Text("· $it", style = MaterialTheme.typography.bodySmall, color = dim)
+                            }
+                        }
+                    }
+                    if (!showAll && rest.size > 5) {
+                        Text(
+                            stringResource(R.string.place_transit_more_times, rest.size - 5),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .dpadHighlight(RoundedCornerShape(6.dp))
+                                .clickable { showAll = true }
+                                .padding(vertical = 4.dp, horizontal = 2.dp),
+                        )
+                    }
                 }
             }
         }
