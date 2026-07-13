@@ -71,11 +71,9 @@ class WebStopDeparturesFetcher @Inject constructor(
         } finally {
             pending.remove(id)
         }
-        // Diagnostic via FILE (this MTK device mutes logcat for live pids after logcat -c):
-        // filesDir/departures_debug.txt accumulates one line per fetch; raw payload saved alongside
-        // for the parser-shape diff. Debug builds only concern; tiny and overwritten per fetch.
+        // One-line trace via FILE, not logcat (some devices mute a live pid's logcat after
+        // `adb logcat -c`; that muting cost a full debugging session). Capped small below.
         dbg("raw len=${raw?.length ?: -1}")
-        if (!raw.isNullOrEmpty()) runCatching { java.io.File(context.filesDir, "departures_raw.txt").writeText(raw) }
         if (raw.isNullOrEmpty()) null
         else runCatching { StopDeparturesParser.parse(raw) }
             .onFailure { dbg("parse threw: ${it.message?.take(120)}") }
@@ -85,7 +83,11 @@ class WebStopDeparturesFetcher @Inject constructor(
 
     private fun dbg(msg: String) {
         android.util.Log.i("VelaDepartures", msg)
-        runCatching { java.io.File(context.filesDir, "departures_debug.txt").appendText("${System.currentTimeMillis()} $msg\n") }
+        runCatching {
+            val fdbg = java.io.File(context.filesDir, "departures_debug.txt")
+            if (fdbg.length() > 64_000) fdbg.delete() // tiny rolling trace, never unbounded
+            fdbg.appendText("${System.currentTimeMillis()} $msg\n")
+        }
     }
 
     /** cid = LOW half of the `0xHIGH:0xLOW` feature id as unsigned decimal (the `?cid=` deep-link). */

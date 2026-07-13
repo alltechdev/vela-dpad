@@ -1473,7 +1473,11 @@ class MapViewModel @Inject constructor(
     // after `adb logcat -c`, so the gate diagnostics go to a file that cannot be muted.
     private fun depDbg(msg: String) {
         android.util.Log.i("VelaDepartures", msg)
-        runCatching { java.io.File(appContext.filesDir, "departures_debug.txt").appendText("${System.currentTimeMillis()} $msg\n") }
+        runCatching {
+            val fdbg = java.io.File(appContext.filesDir, "departures_debug.txt")
+            if (fdbg.length() > 64_000) fdbg.delete() // tiny rolling trace, never unbounded
+            fdbg.appendText("${System.currentTimeMillis()} $msg\n")
+        }
     }
 
     /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
