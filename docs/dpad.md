@@ -245,9 +245,15 @@ auto-engage that Choose-on-map depended on, so pick mode opened dead.
 - Fix: the reusable **`Modifier.dpadSwallowHorizontal()`** (`DpadFocus.kt`) on the Settings root
   `Column` AND on the top-bar back button (it lives outside the Column, so it needs it too). It
   fires AFTER a focused child's own handler.
-- The ONE horizontal row, the vibrate FilterChips, drives its OWN LEFT/RIGHT via per-chip
-  `FocusRequester`s (`requestFocus` never clears at the ends, and consuming the key stops it
-  reaching the root swallow), so it still walks Driving↔Walking↔Cycling↔Transit.
+- Any HORIZONTAL row of focusable siblings inside that swallowing Column must drive its OWN
+  LEFT/RIGHT, or the swallow strands every sibling but the one DOWN happens to land on (issue #24:
+  Import + Test-voice were unreachable on a qin f25). Use the reusable
+  **`Modifier.dpadRowSibling(requesters, index)`** (`DpadFocus.kt`) on EACH sibling: it takes that
+  index's `FocusRequester` and moves L/R by `requestFocus` (never clears at the ends) while consuming
+  the key so it can't reach the root swallow. Applied to the vibrate chips (inline, the original), and
+  the Export/Import, Test-voice/System-settings, Speak/Nav-sample and voice speed `-`/`+` &
+  speaker `◀`/`▶` button rows. **When you add a button/chip row to a vertical-list screen, wire it with
+  `dpadRowSibling` - do not re-inline the pattern.**
 - `SelectableRow`'s RadioButton is also `onClick = null` (display-only) so the row is a single
   focus stop. Any new *vertical-list* screen with a lone horizontal row wants the same shape.
 
