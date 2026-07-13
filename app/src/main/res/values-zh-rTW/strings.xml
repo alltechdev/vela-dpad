@@ -73,6 +73,8 @@
     <string name="settings_live_traffic_hint">瀏覽地圖時依壅塞程度為道路上色。導航時路線本來就會依交通狀況顯示顏色。</string>
     <string name="settings_transit_layer">突顯大眾運輸路線</string>
     <string name="settings_transit_layer_hint">在地圖上繪出火車和捷運路線。</string>
+    <string name="settings_topography">地形陰影</string>
+    <string name="settings_topography_hint">在地圖上為丘陵和山脈加上陰影。預設關閉。</string>
     <string name="settings_read_all_reviews">「閱讀所有評論」按鈕</string>
     <string name="settings_read_all_reviews_hint">新增「閱讀所有評論」按鈕，在應用程式內開啟 Google 的完整評論頁面，包含每一篇評論。關閉時只顯示 Vela 自己的評論清單。</string>
     <string name="settings_buildings_3d">3D 建築物</string>

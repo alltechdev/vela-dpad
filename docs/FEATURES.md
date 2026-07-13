@@ -50,7 +50,7 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] **Voice settings decluttered + default speed 0.8x** - essentials shown, playground/speed/variant behind an Advanced header.
 - [x] **Replay uses the selected voice, not the system fallback**; all POI tiers hide during turn-by-turn.
 - [x] **Buildings** (footprints + 3D massing) from OSM Liberty tiles, keyless; gaps in new suburbs filled by the Microsoft building overlay for downloaded regions.
-- [x] **Terrain relief (hillshade)** from the keyless open terrarium DEM, under the road layers, capped at z16, tuned per theme.
+- [x] **Terrain relief (hillshade)** from the keyless open terrarium DEM, under the road layers, capped at z16, tuned per theme. **A Settings → Map "Terrain shading" toggle turns it on/off (OFF by default, Google-style)** - a live layer-visibility flip (no rebake, and the DEM tiles only fetch when it's on).
 - [x] **Two-finger tilt to 3D** - pitch the map up to 70 degrees; the tilt sticks across browse moves.
 - [x] **Ambient Google POIs on the map** - the visible area's prominent Google places drawn as native-style category dots, zoom >= 14 on a bare map, viewport-tracking with a category fan-out.
 - [~] Self-hosted PMTiles - the no-key, no-quota Google-look path - remains for later.
