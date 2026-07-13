@@ -184,10 +184,16 @@ fun ManeuverBanner(
                             modifier = Modifier.padding(top = 2.dp, bottom = 1.dp),
                         ) { signs.forEach { SignChip(it) } }
                     }
+                    // Every text line is CAPPED: on a feature-phone-width screen an uncapped long
+                    // instruction (or the arrive step's name+address below) wrapped to many lines and
+                    // the banner swallowed half the map, burying the nav arrow under its bottom edge
+                    // (issue #41, F21 Pro). Google ellipsizes; so do we - the map stays visible.
                     Text(
                         text.ifEmpty { stringResource(R.string.nav_maneuver_continue) },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     // The arrive step names WHERE you're arriving (Google-style): the business or
                     // label, and its address when that adds anything. Skip a line that would just
@@ -201,10 +207,18 @@ fun ManeuverBanner(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.padding(top = 2.dp),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         addr?.let {
-                            Text(it, style = MaterialTheme.typography.bodyMedium, color = content.copy(alpha = 0.85f))
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = content.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 }
