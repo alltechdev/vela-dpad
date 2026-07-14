@@ -477,7 +477,7 @@ fun VelaMapView(
                 val layer =
                     SymbolLayer("vela-addr-$i", srcId).apply {
                         setSourceLayer("address") // tippecanoe layer name (build-address-region.sh: -l address)
-                        setMinZoom(17.5f) // Google shows house numbers only at STREET level (~z17.5-18); 16 carpeted the map in numbers ("too soon")
+                        setMinZoom(19f) // numbers only when truly close (~50 ft scale bar); 17.5 still carpeted whole blocks (user 2026-07-13)
                         setProperties(
                             PropertyFactory.textField(Expression.get("number")),
                             PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
@@ -1391,7 +1391,7 @@ private fun ensureLayers(style: Style) {
                 // live TileJSON + z14 tiles), so this renders where OSM has `addr:housenumber`.
                 // 17.5 matches Google: house numbers only at true street level, not neighbourhood zoom
                 // (16 carpeted the map - user 2026-07-06). Keep in lockstep with the vela-addr overlay.
-                setMinZoom(17.5f)
+                setMinZoom(19f) // ~50 ft scale, in lockstep with the basemap vela-housenumber layer
                 setProperties(
                     PropertyFactory.textField(Expression.get("housenumber")),
                     PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
