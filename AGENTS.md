@@ -247,6 +247,13 @@ non-negotiable rules for any ported commit:
   colour) makes a layer unqueryable - the speed-limit sign silently died this way. The
   invisible-but-queryable pattern is `lineOpacity(0.004f)` (1/255 alpha: imperceptible on screen,
   still rasterized, still queryable). Applies to ANY query-only layer.
+- **MapLibre's pmtiles path will NOT cold-fetch tiles clamped 2+ levels below the camera.** A layer
+  whose minZoom sits far above its archive's max tile zoom (address PMTiles: tiles at z16-17, layer
+  at 19) never triggers a fetch on a cold source - querySourceFeatures stays 0 forever, no log, no
+  error. Resident tiles overzoom fine, which makes it look intermittent. Keep the LAYER's minZoom
+  inside (or within ~1 of) the archive's native range and gate visuals with stepped `textOpacity`
+  instead. First probe when a pmtiles layer draws nothing: `querySourceFeatures` (0 = tiles never
+  loaded), and read the archive's real zoom range from its header (bytes 100-101).
 - **A fetch gate and its render layer's minZoom must move in lockstep.** Upstream lowered the Flock
   camera FETCH to z11 for route overview but left the SymbolLayer at `setMinZoom(13.5f)` - fetched
   cameras never drew. Grep for the layer's minZoom whenever a zoom gate changes.
@@ -262,11 +269,16 @@ User-Agent) that upstream's version would regress. Never `git cherry-pick` blind
 
 ## Known issues (live)
 
-- **House numbers render at NO zoom on current main** (found 2026-07-13 while porting the 50 ft
-  threshold; pre-change main shows the same in Seattle at 50 ft - POI pins fine, zero numbers).
-  Pre-existing, NOT the threshold port. Prime suspect: the basemap `vela-housenumber` layer is
-  hidden whenever `addressOverlays` is non-empty, so a dead hosted OpenAddresses PMTiles stream
-  darkens BOTH number sources silently. Needs its own investigation.
+- **Cold camera at deep zoom can miss overlay house numbers** (residual edge of the 2026-07-14
+  fix). ROOT CAUSE of the earlier "numbers at no zoom" scare: the address PMTiles carry tiles ONLY
+  at z16-17, and MapLibre's pmtiles path will not cold-fetch a tile clamped 2+ levels below the
+  camera - so a layer minZoom of 19 meant the source never fetched on any cold path (the earlier
+  "pre-existing on main" reading was wrong: main's 17.5 test frame sat just UNDER its threshold, so
+  the layer was correctly invisible, not broken). The fix arms the layer at z17 (in-range = tiles
+  fetch, even at opacity 0) with a stepped-opacity 50 ft gate at z19; every zoom-through path
+  works. Residual: a process whose camera STARTS past ~z19 without ever dipping lower fetches
+  nothing (rare - the camera restores to browse zoom). Upstream has the unfixed version (layer
+  minZoom 19 -> their overlay numbers never render on any cold path).
 
 ## Build
 
