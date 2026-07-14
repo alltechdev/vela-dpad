@@ -1592,7 +1592,9 @@ private fun ensureLayers(style: Style) {
     // ALPR / "Flock" surveillance cameras (community DeFlock mapping in OSM). Its own symbol layer,
     // populated only when the Settings toggle is on (empty source otherwise). Drawn ABOVE the ambient
     // POIs so a camera you're trying to spot isn't hidden behind a shop icon; sparse enough that
-    // allowOverlap is fine. minZoom matches the neighbourhood-level fetch gate (FLOCK_MIN_ZOOM).
+    // allowOverlap is fine. minZoom matches the fetch gate (FLOCK_MIN_ZOOM = 11): upstream 17a32d76
+    // lowered the FETCH to route-overview zoom but left this render layer at 13.5, so the fetched
+    // cameras still never drew below 13.5 - the layer must drop with it or the fix is half-done.
     if (style.getImage(FLOCK_IMG) == null) style.addImage(FLOCK_IMG, alprCameraBitmap())
     if (style.getSource(FLOCK_SRC) == null) {
         style.addSource(GeoJsonSource(FLOCK_SRC))
@@ -1604,7 +1606,7 @@ private fun ensureLayers(style: Style) {
         )
         style.addLayer(
             SymbolLayer(FLOCK_LAYER, FLOCK_SRC).apply {
-                setMinZoom(13.5f)
+                setMinZoom(11f)
                 setProperties(
                     PropertyFactory.iconImage(FLOCK_IMG),
                     PropertyFactory.iconSize(flockSize),
