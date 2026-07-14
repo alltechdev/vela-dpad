@@ -334,6 +334,8 @@ fun MapScreen(
     // left the speedo half-covered by the bar (GitHub issue #2). Falls back to the old constant until
     // the first layout pass measures it.
     var navBarHeightPx by remember { mutableStateOf(0) }
+    // In-nav search-along-route: the controls-bar magnifier arms a chip row above the bar.
+    var navSearchOpen by remember { mutableStateOf(false) }
     val navBarClearance = with(LocalDensity.current) {
         // bar height + its 16dp bottom padding + a 16dp gap - reproduces the old 132dp at default font scale
         if (navBarHeightPx > 0) navBarHeightPx.toDp() + 32.dp else 132.dp
@@ -367,6 +369,10 @@ fun MapScreen(
             searchOpen -> { searchExpanded = false; focusManager.clearFocus(); vm.cancelPickOrigin(); vm.cancelPickStop() }
             state.editingStops -> vm.closeStopsEditor()
             state.showSteps -> vm.closeSteps()
+            // In-nav search: BACK peels the results list / the chip row before it can end the
+            // whole drive - ending nav because you browsed gas stations would be brutal.
+            state.navigating && state.results.isNotEmpty() -> vm.clearSearch()
+            state.navigating && navSearchOpen -> navSearchOpen = false
             state.navigating -> vm.stopNav()
             state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty() ||
                 state.transit.isNotEmpty() || state.transitLoading -> vm.clearRoute()
@@ -1139,23 +1145,36 @@ fun MapScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
-            state.navigating -> NavControls(
-                remainingDistanceMeters = state.nav.remainingDistance,
-                remainingSeconds = state.nav.remainingDuration,
-                offRoute = state.nav.offRoute,
-                onStop = vm::stopNav,
-                onSteps = vm::openSteps,
-                voiceMuted = state.voiceMuted,
-                onToggleVoice = vm::toggleVoice,
-                trafficRatio = state.activeRoute?.trafficRatio,
-                modifier = Modifier
+            // While an in-nav search has results, the results branch below takes the bottom
+            // slot (Google's in-nav list does the same); clearing it brings the bar back.
+            state.navigating && state.results.isEmpty() -> Column(
+                Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(16.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (navSearchOpen) {
+                    app.vela.ui.nav.NavSearchChips(onPick = { q ->
+                        navSearchOpen = false
+                        vm.searchAlongRoute(q)
+                    })
+                }
+                NavControls(
+                    remainingDistanceMeters = state.nav.remainingDistance,
+                    remainingSeconds = state.nav.remainingDuration,
+                    offRoute = state.nav.offRoute,
+                    onStop = vm::stopNav,
+                    onSteps = vm::openSteps,
+                    voiceMuted = state.voiceMuted,
+                    onToggleVoice = vm::toggleVoice,
+                    trafficRatio = state.activeRoute?.trafficRatio,
+                    onSearchAlong = { navSearchOpen = !navSearchOpen },
                     // Measured AFTER the padding → the bar surface itself; navBarClearance adds the
                     // padding + gap back. Everything stacked above the bar keys off this.
-                    .onGloballyPositioned { navBarHeightPx = it.size.height },
-            )
+                    modifier = Modifier.onGloballyPositioned { navBarHeightPx = it.size.height },
+                )
+            }
 
             // The dedicated stops editor covers the directions panel while open (drag to
             // reorder, remove, add; one reroute on Done).

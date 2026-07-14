@@ -1169,7 +1169,7 @@ class MapViewModel @Inject constructor(
                     resultsCollapsed = false, recents = recentStore.recent(),
                     // Stash the trip's destination: browsing stop candidates must not lose the trip.
                     // While this is set, picking a result ADDS IT AS A STOP and returns to the panel.
-                    alongRouteDest = it.selected ?: it.alongRouteDest,
+                    alongRouteDest = if (it.navigating) null else (it.selected ?: it.alongRouteDest),
                 )
             }
             try {
@@ -1237,13 +1237,15 @@ class MapViewModel @Inject constructor(
 
     fun selectPlace(p: Place) {
         if (consumeAssign(SavedPlace.of(p))) return
-        // NAVIGATING: map taps are INERT during a live drive (upstream a17eded6) - every tap
+        // NAVIGATING (upstream a17eded6): map taps are INERT during a live drive - every tap
         // funnels here too (ambient dots, resolved POIs), and a stray tap used to run the
         // normal selection path below, nulling activeRoute/opening sheets nav's bottom slot
-        // doesn't render. Upstream turns an in-nav RESULTS pick into a stop on the drive; the
-        // fork gates only when no results list is open because the in-nav search-along-route
-        // pick (addStopDuringNav) is a later upstream feature not yet ported.
-        if (_state.value.navigating && _state.value.results.isEmpty()) return
+        // doesn't render. A pick from the in-nav search-along-route RESULTS list, though,
+        // becomes a stop on the LIVE drive (Google's in-nav pick does the same).
+        if (_state.value.navigating) {
+            if (_state.value.results.isNotEmpty()) addStopDuringNav(p)
+            return
+        }
         // Search-along-route pick: the tapped place becomes a STOP on the stashed trip (Google's
         // flow), not a new destination - tapping "Directions" on it would otherwise silently replace
         // the whole trip. Restore the destination first so the panel reopens showing the real trip;
@@ -2250,6 +2252,21 @@ class MapViewModel @Inject constructor(
     }
 
     fun cancelPickStop() = _state.update { it.copy(pickingStop = false) }
+
+    /** In-nav stop insert: hand the pick to the session (it replans the drive through it) and
+     *  clear the search chrome so the nav view is what's on screen again. The chooser's waypoint
+     *  list gains it too, so ending nav back into the panel shows the real trip. */
+    fun addStopDuringNav(p: Place) {
+        val loc = _state.value.myLocation ?: return
+        navSession.addStop(NavSession.NavStop(p.location, p.name), loc)
+        _state.update {
+            it.copy(
+                directionsWaypoints = it.directionsWaypoints + p,
+                results = emptyList(), query = "", suggestions = emptyList(),
+                selected = null, alongRouteDest = null, resultsCollapsed = false,
+            )
+        }
+    }
 
     /** Append an intermediate stop and re-route through it. */
     fun addStop(p: Place) {

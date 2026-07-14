@@ -4,6 +4,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,12 +21,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocalCafe
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.LocalGroceryStore
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -63,7 +72,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.focusRequester
 import app.vela.ui.dpadHighlight
+import app.vela.ui.rememberDpadAutoFocus
 
 /**
  * Top banner during navigation, styled like Google's: a large directional turn
@@ -492,6 +503,57 @@ private fun DrawScope.laneHead(indication: String, color: Color, baseX: Float, b
     }
 }
 
+/** In-nav search-along-route chips: one row above the controls bar while the search button is
+ *  armed. Same one-shot categories as the route chooser's row; a pick searches the REMAINING
+ *  route and the results list takes the bottom slot. */
+@Composable
+fun NavSearchChips(onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+    val dark = isAppInDarkTheme()
+    // D-pad (docs/dpad.md): the row appears on the magnifier toggle - land focus on the first
+    // chip so it is walkable immediately (a wasted first keypress is a bug).
+    val firstChipFocus = rememberDpadAutoFocus()
+    Card(
+        modifier,
+        shape = RoundedCornerShape(28.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = SheetPalette.bg(dark),
+            contentColor = SheetPalette.ink(dark),
+        ),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // (localized label, STABLE English query, icon) - the query is the logic key, only
+            // the label localizes (same dual-purpose-literal rule as the map category chips).
+            listOf(
+                Triple(R.string.cat_gas, "Gas", Icons.Default.LocalGasStation),
+                Triple(R.string.cat_food, "Food", Icons.Default.Restaurant),
+                Triple(R.string.cat_coffee, "Coffee", Icons.Default.LocalCafe),
+                Triple(R.string.cat_groceries, "Groceries", Icons.Default.LocalGroceryStore),
+            ).forEachIndexed { i, (labelRes, query, icon) ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onPick(query) },
+                    border = null,
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = if (dark) Color(0xFF333539) else Color(0xFFF1F3F4),
+                        labelColor = SheetPalette.ink(dark),
+                    ),
+                    label = { Text(stringResource(labelRes)) },
+                    leadingIcon = {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = SheetPalette.dim(dark))
+                    },
+                    modifier = (if (i == 0) Modifier.focusRequester(firstChipFocus) else Modifier)
+                        .dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                )
+            }
+        }
+    }
+}
+
 /** Bottom bar during navigation: remaining time/distance + an End button. */
 @Composable
 fun NavControls(
@@ -503,6 +565,7 @@ fun NavControls(
     voiceMuted: Boolean = false,
     onToggleVoice: () -> Unit = {},
     trafficRatio: Double? = null,
+    onSearchAlong: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -535,6 +598,12 @@ fun NavControls(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = etaColor,
+                    // Never wrap the headline: squeezed by the button row it broke into a
+                    // vertical "14 mi n" - ellipsize instead (the next commit floats the
+                    // search button off the bar, which is the real de-crowding).
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     formatDistance(remainingDistanceMeters) +
@@ -550,6 +619,14 @@ fun NavControls(
             // Steps is icon-only so the row stays compact (the left ETA column can
             // grow with a longer "X mi · 7:42 PM"); End keeps its label.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onSearchAlong != null) {
+                    FilledTonalIconButton(onClick = onSearchAlong) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = stringResource(R.string.place_search_along_route),
+                        )
+                    }
+                }
                 FilledTonalIconButton(onClick = onToggleVoice) {
                     Icon(
                         if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
