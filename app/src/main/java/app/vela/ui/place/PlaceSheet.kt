@@ -94,8 +94,6 @@ import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocalGroceryStore
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material.icons.filled.TripOrigin
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
@@ -966,20 +964,15 @@ fun PlaceSheet(
 
 /**
  * The directions preview - a dedicated bottom panel (not buried in the place
- * sheet) that opens when you tap "Directions": destination header, travel-mode
- * tabs, the route option(s) with traffic-aware ETAs (alternates are selectable),
- * and a prominent Start. Transit shows the results board instead.
+ * sheet) that opens when you tap "Directions": travel-mode tabs, the route
+ * option(s) with traffic-aware ETAs (alternates are selectable), and a
+ * prominent Start. Transit shows the results board instead. The endpoint rows
+ * (origin / stops / destination, swap, close) live in RouteTopCard at the top
+ * of the screen.
  */
 @Composable
 fun DirectionsPanel(
-    originName: String,
     destinationName: String,
-    onEditOrigin: (() -> Unit)? = null,
-    onEditDestination: (() -> Unit)? = null,
-    stops: List<String> = emptyList(),
-    onAddStop: (() -> Unit)? = null,
-    onEditStops: () -> Unit = {},
-    onSwap: () -> Unit,
     currentMode: TravelMode,
     routes: List<Route>,
     activeRoute: Route?,
@@ -992,7 +985,6 @@ fun DirectionsPanel(
     onSearchAlongRoute: (String) -> Unit,
     onWalkDirections: suspend (LatLng, LatLng) -> List<String> = { _, _ -> emptyList() },
     onStartTransit: (TransitItinerary) -> Unit = {},
-    onClose: () -> Unit,
     onTimeSelected: (Int, Long?) -> Unit = { _, _ -> },
     flockOnRoute: List<Int> = emptyList(), // opt-in: ALPR camera count per route (index-aligned)
     modifier: Modifier = Modifier,
@@ -1026,101 +1018,9 @@ fun DirectionsPanel(
             ) {
                 Box(Modifier.width(36.dp).height(4.dp).clip(CircleShape).background(dim.copy(alpha = 0.4f)))
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    // The "From" row - tappable to route from a different place (Google
-                    // shows an edit affordance; here a pencil + accent text when editable).
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = if (onEditOrigin != null) {
-                            Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onEditOrigin() }.padding(vertical = 2.dp)
-                        } else Modifier,
-                    ) {
-                        Icon(Icons.Default.TripOrigin, contentDescription = null, tint = dim, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            originName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (onEditOrigin != null) MaterialTheme.colorScheme.primary else dim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        if (onEditOrigin != null) {
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.place_change_start), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    // Intermediate stops (multi-stop), between From and To like Google - each removable,
-                    // then an "Add stop" row. Only shown for drive/walk/bike (transit has no waypoints).
-                    if (currentMode != TravelMode.TRANSIT) {
-                        // Stops live in the dedicated editor now (drag to reorder, one reroute on
-                        // Done) - the header shows ONE compact tappable summary row instead of
-                        // stacking every stop with arrow/X buttons (that cram didn't scale past
-                        // two stops and invited mis-taps; user 2026-07-08).
-                        if (stops.isNotEmpty()) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onEditStops() }.padding(vertical = 2.dp),
-                            ) {
-                                Box(Modifier.size(8.dp).clip(CircleShape).background(dim))
-                                Spacer(Modifier.width(11.dp))
-                                Text(
-                                    stops.joinToString("  ·  "),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = dim,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false),
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.stops_edit), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                            }
-                            Spacer(Modifier.height(3.dp))
-                        }
-                        if (onAddStop != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onAddStop() }.padding(vertical = 2.dp),
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.place_add_stop), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                            }
-                            Spacer(Modifier.height(3.dp))
-                        }
-                    }
-                    // The "To" row - editable in the same way as "From", used when the
-                    // route is *reversed* (then the custom endpoint is the destination).
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = if (onEditDestination != null) {
-                            Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onEditDestination() }.padding(vertical = 2.dp)
-                        } else Modifier,
-                    ) {
-                        Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            destinationName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ink,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        if (onEditDestination != null) {
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.place_change_destination), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-                IconButton(onClick = onSwap) {
-                    Icon(Icons.Default.SwapVert, contentDescription = stringResource(R.string.place_swap_start_destination), tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close_directions), tint = dim) }
-            }
+            // The endpoint rows (origin / stops / destination, swap, close) live in the
+            // Google-style RouteTopCard at the top of the screen now - this panel keeps the
+            // mode chips, time chooser, routes and Start.
             AnimatedVisibility(visible = !collapsed.value) {
               // Cap the expandable body to ~58% of the screen and let it scroll - on short screens the
               // mode chips + route/transit list + Start button are taller than the bottom-anchored card,

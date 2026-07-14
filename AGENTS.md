@@ -551,6 +551,16 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   Cards with elevation 6dp, 54dp turn glyph, headlineMedium-bold distance, titleMedium-medium road
   name, FilledTonalIconButton for mute/steps. On screens under 500dp tall the banner runs COMPACT (36dp glyph, titleLarge distance, tighter padding - issue #41; every text line is maxLines-capped so a long arrive card can never bury the map). Keep new nav chrome on this treatment (no flat
   default-radius cards, no OutlinedIconButton circles - that was the "dated" look).
+- **Directions endpoints live in a TOP card (`ui/place/RouteTopCard.kt`):** while the route chooser
+  is open the search bar swaps for a Google-style endpoints card (origin ring / stops / red
+  destination pin down a glyph rail, back arrow left, swap right, an Add stop row when no stops
+  exist); `DirectionsPanel` LOST its header params (originName/onEdit*/stops/onAddStop/onEditStops/
+  onSwap/onClose) and keeps mode chips / time chooser / routes / Start, plus the fork-only
+  `flockOnRoute`. The card hides while the search overlay, pick-on-map, steps preview or stops
+  editor own the screen; it uses colorScheme tokens (it replaces the search bar), NOT SheetPalette.
+  MapScreen measures its bottom edge (`topCardBottomPx`) and passes `cameraTopInsetPx` to
+  VelaMapView so the route fit frames below the card. The card has NO auto-focus on purpose - the
+  panel's Drive tab keeps `rememberDpadAutoFocus()`.
 - **Chip style = stadium pills:** EVERY chip (map CategoryChips, results-panel filter
   chips Open-now/top-rated/price/sort + the collapsed "N results" pill, PlaceSheet travel-mode chips
   now with a leading `Icons.Default.Directions*` glyph, Settings vibrate-on-turns FilterChips) sets
