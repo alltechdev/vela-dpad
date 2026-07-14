@@ -238,6 +238,10 @@ object PoiIcons {
         return String.format("#%02X%02X%02X", ch(16), ch(8), ch(0))
     }
 
+    /** Public single-group variant of [labelColor] for layers styled outside this file
+     * (the canonical GTFS stop labels take the transit category colour per theme). */
+    fun labelColorFor(group: String, dark: Boolean): String = labelColor(group, dark)
+
     /** The label colour for a category [group] per theme: the icon colour in light, its pastel
      * tint in dark (Google's own dark-mode treatment - full saturation vanishes on a dark map). */
     private fun labelColor(group: String, dark: Boolean): String {

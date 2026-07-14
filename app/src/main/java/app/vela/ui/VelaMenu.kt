@@ -22,6 +22,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -81,9 +86,13 @@ fun VelaMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composab
  * (auto-focused if it's the first) under D-pad. [onClick] should also dismiss the menu, exactly
  * as it did for the DropdownMenuItem it replaces. */
 @Composable
-fun VelaMenuScope.item(text: String, onClick: () -> Unit) {
+fun VelaMenuScope.item(text: String, icon: ImageVector? = null, onClick: () -> Unit) {
     if (!dpad) {
-        DropdownMenuItem(text = { Text(text) }, onClick = onClick)
+        DropdownMenuItem(
+            text = { Text(text) },
+            leadingIcon = icon?.let { { Icon(it, contentDescription = null) } },
+            onClick = onClick,
+        )
         return
     }
     val autoFocus = index == 0
@@ -98,10 +107,8 @@ fun VelaMenuScope.item(text: String, onClick: () -> Unit) {
             }
         }
     }
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurface,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(fr)
@@ -119,5 +126,15 @@ fun VelaMenuScope.item(text: String, onClick: () -> Unit) {
             .focusable()
             .pointerInput(Unit) { detectTapGestures { onClick() } }
             .padding(horizontal = 20.dp, vertical = 12.dp),
-    )
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
 }

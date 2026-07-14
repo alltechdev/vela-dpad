@@ -157,6 +157,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import app.vela.R
 import androidx.compose.ui.text.SpanStyle
@@ -1179,10 +1180,14 @@ fun DirectionsPanel(
                     // so the "+N min" deltas are robust even if two tie) → each slower route shows how much
                     // longer it is, Google-style, so you can weigh the alternates at a glance.
                     val fastestEta = routes.minOf { it.durationInTrafficSeconds ?: it.durationSeconds }
+                    // The tag follows the ETA, not the position: with avoid-cameras on, the
+                    // low-camera pick leads the list and the true fastest can sit below it -
+                    // tagging row 0 called a slower route "Fastest" (upstream d28782bf).
+                    val fastestIdx = routes.indexOfFirst { (it.durationInTrafficSeconds ?: it.durationSeconds) == fastestEta }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         routes.forEachIndexed { i, r ->
                             val selected = r === activeRoute || (activeRoute == null && i == 0)
-                            RouteOption(r, selected, fastestEtaSeconds = fastestEta, isFastest = i == 0, dark = dark, ink = ink, dim = dim, flockCount = flockOnRoute.getOrElse(i) { 0 }) { onSelectRoute(i) }
+                            RouteOption(r, selected, fastestEtaSeconds = fastestEta, isFastest = i == fastestIdx, dark = dark, ink = ink, dim = dim, flockCount = flockOnRoute.getOrElse(i) { 0 }) { onSelectRoute(i) }
                         }
                     }
                     Spacer(Modifier.height(14.dp))
@@ -1734,7 +1739,7 @@ private fun TransitStepRow(s: TransitStep, ink: Color, dim: Color, onWalkDirecti
             s.boardStop?.let { StopLine(it, ink, dim, emphasize = true, delay = s.delayText) }
             val rideLabel = listOfNotNull(
                 s.durationText,
-                s.numStops?.let { stringResource(R.string.place_transit_stops, it) },
+                s.numStops?.let { pluralStringResource(R.plurals.place_transit_stops, it, it) },
             ).joinToString("  ·  ")
             if (s.intermediateStops.isNotEmpty()) {
                 Row(
@@ -2011,7 +2016,7 @@ fun RouteDetailSheet(
             }
             step?.numStops?.let { n ->
                 Text(
-                    stringResource(R.string.place_transit_stops, n),
+                    pluralStringResource(R.plurals.place_transit_stops, n, n),
                     style = MaterialTheme.typography.labelMedium, color = dim,
                     modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
                 )
@@ -2597,7 +2602,7 @@ private fun ReviewsTab(
                 RatingStars(r)
                 place.reviewCount?.let {
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.place_review_count, it), style = MaterialTheme.typography.bodyMedium, color = dim)
+                    Text(pluralStringResource(R.plurals.place_review_count, it, it), style = MaterialTheme.typography.bodyMedium, color = dim)
                 }
             }
         }
