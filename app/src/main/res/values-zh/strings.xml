@@ -200,6 +200,9 @@
     <string name="place_move_stop_down">下移经停点</string>
     <string name="place_remove_stop">移除经停点</string>
     <string name="place_add_stop">添加经停点</string>
+    <string name="stops_editor_title">经停点</string>
+    <string name="stops_edit">编辑经停点</string>
+    <string name="stops_drag_reorder">拖动以重新排序</string>
     <string name="place_change_destination">更改目的地</string>
     <string name="place_swap_start_destination">交换起点和目的地</string>
     <string name="place_close_directions">关闭路线</string>
