@@ -285,6 +285,21 @@ issue #131 and then iterated there):
   BELOW the ambient POIs and flipped `iconIgnorePlacement` to false, so cameras always draw but
   claim their collision box - street names dodge the badge, POIs (placed earlier) still win on top.
 
+Satellite batch (2026-07-14 port of upstream 68570ba6..bb271d94, applied as the net final
+state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
+
+- **`VelaMenu.toggleItem` touch row carries `dpadHighlight` (fork-only line).** Upstream's touch
+  branch was a bare `.clickable` Row; a hybrid touch+keypad phone can key-walk the anchored
+  DropdownMenu, so the fork adds the focus ring (the static auditor flags it otherwise). D-pad
+  branch is upstream's verbatim.
+- **Address-overlay satellite styling merged INTO the fork's layer, not over it.** Upstream's
+  47897018 makes overlay house numbers white-on-black-halo over imagery; the fork's `vela-addr-*`
+  layer keeps its minZoom 17 + empty-text-below-z19 textField gate and Timber logs, with only the
+  colour/halo/width picking up the `satelliteOn` branch and `satelliteOn` joining the
+  LaunchedEffect keys.
+- **styleKey has no `pal=` here.** Upstream's key also carries a MapColors palette the fork never
+  ported; the fork's key is `"$styleUri|dark=$darkTheme|sat=$satelliteOn"`.
+
 ## Transit + speed-display rules (2026-07-14)
 
 - **Transit category checks go through `isTransitCategory()` - NEVER bare `TRANSIT_CAT`.** The gate

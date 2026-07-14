@@ -487,4 +487,8 @@
     <string name="parking_history_clear_all">Alles wissen</string>
     <string name="parking_history_current">Huidig</string>
     <string name="parking_history_delete">Verwijderen</string>
+    <string name="map_satellite_toggle">Satellietweergave</string>
+    <string name="map_layers">Lagen</string>
+    <string name="settings_layers_button">Lagenknop tonen</string>
+    <string name="settings_layers_button_hint">De kaartknop voor satelliet, verkeer, ov en terrein.</string>
 </resources>

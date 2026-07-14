@@ -60,7 +60,7 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] **Ambient Google POIs on the map** - the visible area's prominent Google places drawn as native-style category dots, zoom >= 14 on a bare map, viewport-tracking with a category fan-out.
 - [~] Self-hosted PMTiles - the no-key, no-quota Google-look path - remains for later.
 - [ ] Protomaps "Google-Maps-ify" bundled style (road hierarchy, hillshade, POI icons done).
-- [ ] Satellite / aerial imagery layer.
+- [x] **Satellite view + a layers panel (2026-07-13/14, ported from upstream)** - a map-corner Layers button (optional, Settings toggle) opens a Google-style panel: **Satellite view** (open Esri World Imagery tiles, keyless, attribution shown with the area's **capture year** under it), plus the live traffic, transit-lines and terrain overlays in one place. Satellite mode is a real hybrid: translucent **ghost roads** keep the network readable under tree cover (freeways tinted yellow like the Google app), every map label flips to **white with a black halo**, and the POI teardrops go white so icons read over imagery. Overlays layer correctly above the photo; toggling back restores the normal palette cleanly. The panel is a VelaMenu, so it opens focused and fully works on a key-only device.
 - [x] Map rotation/tilt + heading-up mode during nav.
 
 ## Search & POIs (live Google data)

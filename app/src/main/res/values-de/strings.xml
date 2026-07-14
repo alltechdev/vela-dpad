@@ -487,4 +487,8 @@
     <string name="parking_history_clear_all">Alle löschen</string>
     <string name="parking_history_current">Aktuell</string>
     <string name="parking_history_delete">Löschen</string>
+    <string name="map_satellite_toggle">Satellitenansicht</string>
+    <string name="map_layers">Ebenen</string>
+    <string name="settings_layers_button">Ebenen-Schaltfläche anzeigen</string>
+    <string name="settings_layers_button_hint">Die Karten-Schaltfläche für Satellit, Verkehr, Nahverkehr und Gelände.</string>
 </resources>
