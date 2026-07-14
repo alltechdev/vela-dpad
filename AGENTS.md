@@ -237,6 +237,37 @@ non-negotiable rules for any ported commit:
   surface by hand and look at it. A port that regresses D-pad or small-screen operability
   does not land.
 
+## MapLibre gotchas (hard-won 2026-07-13, do not relearn)
+
+- **An 8-digit hex string is NOT transparent.** `PropertyFactory.lineColor("#00000000")` renders
+  OPAQUE BLACK (MapLibre's colour parser rejects the string and falls back) - this painted black
+  bars over every road once the maxspeed tiles carried features. Use the `@ColorInt` overload
+  (`android.graphics.Color.*`), never an 8-digit hex string.
+- **queryRenderedFeatures EXCLUDES invisible features.** `lineOpacity(0f)` (or a fully transparent
+  colour) makes a layer unqueryable - the speed-limit sign silently died this way. The
+  invisible-but-queryable pattern is `lineOpacity(0.004f)` (1/255 alpha: imperceptible on screen,
+  still rasterized, still queryable). Applies to ANY query-only layer.
+- **A fetch gate and its render layer's minZoom must move in lockstep.** Upstream lowered the Flock
+  camera FETCH to z11 for route overview but left the SymbolLayer at `setMinZoom(13.5f)` - fetched
+  cameras never drew. Grep for the layer's minZoom whenever a zoom gate changes.
+
+## Porting upstream commits (hard rule, 2026-07-13)
+
+**Read every upstream diff critically before adapting - upstream ships bugs.** Three found in one
+day: the opaque-"transparent" query layer (black roads), the unqueryable opacity-0 fix (dead speed
+sign), and the half-done route-overview zoom (fetch gate lowered, render layer clamped). Porting
+means: read the full diff, reason about edge cases (races, gates, parsers), verify the claim
+on-device, and keep fork-specific behaviour (45 s WebView ceiling, file-sink diagnostics, fork
+User-Agent) that upstream's version would regress. Never `git cherry-pick` blind.
+
+## Known issues (live)
+
+- **House numbers render at NO zoom on current main** (found 2026-07-13 while porting the 50 ft
+  threshold; pre-change main shows the same in Sacramento at 50 ft - POI pins fine, zero numbers).
+  Pre-existing, NOT the threshold port. Prime suspect: the basemap `vela-housenumber` layer is
+  hidden whenever `addressOverlays` is non-empty, so a dead hosted OpenAddresses PMTiles stream
+  darkens BOTH number sources silently. Needs its own investigation.
+
 ## Build
 
 - **Build variants (reworked).**
@@ -397,7 +428,7 @@ non-negotiable rules for any ported commit:
   in the section it serves, not at the end; place-content settings go under Place pages, not Map.
 - **Nav UI style:** ManeuverBanner + NavControls are RoundedCornerShape(24/28dp)
   Cards with elevation 6dp, 54dp turn glyph, headlineMedium-bold distance, titleMedium-medium road
-  name, FilledTonalIconButton for mute/steps. Keep new nav chrome on this treatment (no flat
+  name, FilledTonalIconButton for mute/steps. On screens under 500dp tall the banner runs COMPACT (36dp glyph, titleLarge distance, tighter padding - issue #41; every text line is maxLines-capped so a long arrive card can never bury the map). Keep new nav chrome on this treatment (no flat
   default-radius cards, no OutlinedIconButton circles - that was the "dated" look).
 - **Chip style = stadium pills:** EVERY chip (map CategoryChips, results-panel filter
   chips Open-now/top-rated/price/sort + the collapsed "N results" pill, PlaceSheet travel-mode chips
@@ -506,7 +537,7 @@ non-negotiable rules for any ported commit:
     flat fill carries the browse-zoom footprint look; extrusion is the per-pixel-expensive part on a
     Pixel 5a).
   - (2) **House numbers** render via the runtime `vela-housenumber` SymbolLayer (OMT `housenumber`
-    source-layer, `minZoom 17.5` - Google shows house numbers only at street level) - OpenFreeMap
+    source-layer, `minZoom 19` - house numbers only at the ~50 ft scale; 17.5 still carpeted whole blocks, 2026-07-13) - OpenFreeMap
     **does** serve that source-layer (verified vs the live TileJSON + z14 tiles), so it works;
     coverage is OSM `addr:housenumber` (partial), not a render bug.
   - (3) The runtime loads the style from the **LIVE** URL `MapStyle.LIBERTY.uri =
@@ -1215,8 +1246,8 @@ non-negotiable rules for any ported commit:
     Points with `number`/`street`; **42 US states have a `statewide` source**).
   - Render: `VelaMapView`'s `LaunchedEffect(addressOverlays, …)` adds a `VectorSource` (the URI) + a
     **`SymbolLayer`** `setSourceLayer("address")`, `textField(get("number"))`, `textFont(["Noto Sans
-    Regular"])`, size 10, grey + white halo, **minZoom 17.5** (in lockstep with the basemap
-    `vela-housenumber` layer - Google shows house numbers only at true street level ~z17.5-18) - inserted
+    Regular"])`, size 10, grey + white halo, **minZoom 19** (in lockstep with the basemap
+    `vela-housenumber` layer - numbers only at the ~50 ft scale, raised from 17.5 on 2026-07-13) - inserted
     below `vela-controls` (see the LAYER ORDER warning below).
   - **Streams online exactly like buildings** (`MapViewModel.refreshAddressOverlays(center)` on every
     camera-idle → the union of up to the 3 smallest covering regions' `pmtiles://https://…` URIs - same

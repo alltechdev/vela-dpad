@@ -35,7 +35,7 @@ class MapLinkParserTest {
     }
 
     /** The exact shape Vela's "Map pin (geo:)" share emits: a labelled point that
-     * also pins the coordinates - must round-trip back to name + coords. */
+     *  also pins the coordinates — must round-trip back to name + coords. */
     @Test fun geoSelfShareRoundTrips() {
         val l = MapLinkParser.parse("geo:38.5449,-121.7405?q=38.5449,-121.7405(Temple%20Coffee)")!!
         assertEquals("Temple Coffee", l.query)
@@ -72,5 +72,22 @@ class MapLinkParserTest {
 
     @Test fun hasTargetGate() {
         assertTrue(MapLinkParser.parse("geo:38.5,-121.7")!!.hasTarget)
+    }
+
+    @Test fun bareTypedCoordinates() {
+        val ok = MapLinkParser.parseBareCoordinate("38.6097, -122.3331")!!
+        assertEquals(38.6097, ok.lat!!, 1e-9)
+        assertEquals(-122.3331, ok.lng!!, 1e-9)
+        // geo: prefix works too
+        assertEquals(31.7767, MapLinkParser.parseBareCoordinate("geo:31.7767,35.2274")!!.lat!!, 1e-9)
+        // an address with numbers is NOT a coordinate
+        assertNull(MapLinkParser.parseBareCoordinate("1451 W Covell Blvd, Davis"))
+        // trailing text disqualifies (must be the whole string)
+        assertNull(MapLinkParser.parseBareCoordinate("38.6, -122.3 area"))
+        // out-of-range values are rejected
+        assertNull(MapLinkParser.parseBareCoordinate("91.0, 10.0"))
+        assertNull(MapLinkParser.parseBareCoordinate("38.0, 181.0"))
+        // integers without a decimal point stay a search
+        assertNull(MapLinkParser.parseBareCoordinate("5, 7"))
     }
 }
