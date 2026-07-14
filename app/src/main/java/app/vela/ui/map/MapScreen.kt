@@ -333,7 +333,11 @@ fun MapScreen(
     // In-nav search-along-route: the map search FAB arms a panel (text field + chips) above
     // the bar. Reset when nav ends so a stale-open panel can't greet the next drive.
     var navSearchOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(state.navigating) { if (!state.navigating) navSearchOpen = false }
+    var navSearchQuery by remember { mutableStateOf("") }
+    var navSearchFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(state.navigating) {
+        if (!state.navigating) { navSearchOpen = false; navSearchQuery = ""; navSearchFocused = false }
+    }
     // Measured height of the nav BOTTOM bar (ETA + End) → everything stacked above it (speedometer,
     // speed-limit sign, re-center FAB, GPS-lost chip) offsets from the REAL height instead of a fixed
     // 132dp guess. The bar grows with the system font size, and at a larger font scale the fixed offset
@@ -376,7 +380,9 @@ fun MapScreen(
             // In-nav search: BACK peels the results list / the chip row before it can end the
             // whole drive - ending nav because you browsed gas stations would be brutal.
             state.navigating && state.results.isNotEmpty() -> vm.clearSearch()
-            state.navigating && navSearchOpen -> navSearchOpen = false
+            state.navigating && navSearchOpen -> {
+                navSearchOpen = false; navSearchFocused = false; focusManager.clearFocus()
+            }
             state.navigating -> vm.stopNav()
             state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty() ||
                 state.transit.isNotEmpty() || state.transitLoading -> vm.clearRoute()
@@ -618,12 +624,21 @@ fun MapScreen(
             navMode = state.navigating,
             navFollowing = !state.navCameraDetached,
             driveFollowing = driveFollowing,
-            // Grabbing the map is an explicit "let me look around" - stop tracking until the
-            // locate tap re-arms it (Google drops follow the moment you pan).
-            onUserPan = { followMe = false },
+            onUserPan = {
+                // Grabbing the map is an explicit "let me look around" - stop tracking until the
+                // locate tap re-arms it (Google drops follow the moment you pan).
+                followMe = false
+                // Grabbing the map also dismisses the along-route search panel (upstream aaa13d5d).
+                if (navSearchOpen) { navSearchOpen = false; navSearchFocused = false; focusManager.clearFocus() }
+            },
             parkingSpot = state.parkingSpot,
             onParkingTap = { vm.showParkedCar(context.getString(R.string.map_parked_car)) },
-            onNavPanned = vm::onNavPanned,
+            onNavPanned = {
+                vm.onNavPanned()
+                // The fork routes NAV pans here (browse pans go through onUserPan), so the
+                // along-route panel's grab-to-dismiss must live in this path too.
+                if (navSearchOpen) { navSearchOpen = false; navSearchFocused = false; focusManager.clearFocus() }
+            },
             onScaleChanged = { metersPerPixel = it },
             darkTheme = darkTheme,
             applyKeylessTheme = !hasMapTiler,
@@ -1001,6 +1016,36 @@ fun MapScreen(
             )
         }
 
+        // The along-route search panel: above the bottom bar normally, and at the TOP of the
+        // screen while the field has focus so the keyboard can't cover it (upstream aaa13d5d).
+        // ONE call site with a switched modifier - moving it between slots would remount the
+        // text field and drop its focus, bouncing the panel straight back down.
+        if (state.navigating && navSearchOpen && state.results.isEmpty()) {
+            val panelBannerBottom = with(LocalDensity.current) { navBannerBottomPx.toDp() }
+            app.vela.ui.nav.NavSearchChips(
+                query = navSearchQuery,
+                onQueryChange = { navSearchQuery = it },
+                onFieldFocused = { navSearchFocused = it },
+                onPick = { q ->
+                    navSearchOpen = false
+                    navSearchFocused = false
+                    navSearchQuery = ""
+                    focusManager.clearFocus()
+                    vm.searchAlongRoute(q)
+                },
+                modifier = if (navSearchFocused) {
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = panelBannerBottom + 10.dp, start = 12.dp, end = 12.dp)
+                } else {
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, bottom = navBarClearance)
+                },
+            )
+        }
+
         // Right-edge nav FAB stack: volume + search live ON THE MAP (the bottom bar was
         // cramming four controls - user 2026-07-14; Google floats these there too), with the
         // re-center button joining the stack when panned away / previewing a step. Hidden
@@ -1030,7 +1075,10 @@ fun MapScreen(
                     )
                 }
                 FloatingActionButton(
-                    onClick = { navSearchOpen = !navSearchOpen },
+                    onClick = {
+                        navSearchOpen = !navSearchOpen
+                        if (!navSearchOpen) { navSearchFocused = false; focusManager.clearFocus() }
+                    },
                     modifier = Modifier.dpadHighlight(RoundedCornerShape(16.dp)),
                 ) { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.place_search_along_route)) }
             }
@@ -1178,12 +1226,6 @@ fun MapScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (navSearchOpen) {
-                    app.vela.ui.nav.NavSearchChips(onPick = { q ->
-                        navSearchOpen = false
-                        vm.searchAlongRoute(q)
-                    })
-                }
                 NavControls(
                     remainingDistanceMeters = state.nav.remainingDistance,
                     remainingSeconds = state.nav.remainingDuration,
