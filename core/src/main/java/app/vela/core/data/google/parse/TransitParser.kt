@@ -170,12 +170,18 @@ object TransitParser {
         val realtime = n.at(2, 2).str() ?: n.at(3, 2).str()
         val scheduled = n.at(7, 2).str() ?: n.at(8, 2).str()
         val lat = n.at(4, 2).dbl(); val lng = n.at(4, 3).dbl()
+        // Signed minutes off the timetable (negative = early) so the row can colour a late call
+        // differently from an early one - the feed carries both.
+        val rtEpoch = n.at(2, 0).long() ?: n.at(3, 0).long()
+        val schedEpoch = n.at(7, 0).long() ?: n.at(8, 0).long()
+        val moved = realtime != null && scheduled != null && realtime != scheduled
         return TransitStopTime(
             name = name,
             code = n.at(1).str()?.takeIf { it.isNotBlank() },
             timeText = realtime ?: scheduled,
             scheduledText = scheduled?.takeIf { realtime != null && it != realtime },
             location = if (lat != null && lng != null) LatLng(lat, lng) else null,
+            delayMin = if (moved && rtEpoch != null && schedEpoch != null) ((rtEpoch - schedEpoch) / 60.0).roundToInt() else null,
         )
     }
 

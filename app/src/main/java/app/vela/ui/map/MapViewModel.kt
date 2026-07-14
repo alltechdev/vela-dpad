@@ -365,11 +365,13 @@ class MapViewModel @Inject constructor(
             )
         }
         refreshNotices() // any cached notices, shown immediately
+        adoptKeywordTables()
         // Pull the latest scraper calibration from the repo (non-blocking, once),
         // then surface any freshly-pushed notices.
         viewModelScope.launch {
             runCatching { calibration.refresh() }
             refreshNotices()
+            adoptKeywordTables()
         }
         maybeCheckForUpdate()
 
@@ -1344,7 +1346,7 @@ class MapViewModel @Inject constructor(
         if (!app.vela.ui.ShowReviews.on.value) return
         // A BARE transit stop (no rating) has no review content and its sheet suppresses the review
         // tab - skip the 40s scrape entirely (its WebView/mutex would just delay the board fetch).
-        if (p.rating == null && p.category?.let { TRANSIT_CAT.containsMatchIn(it) } == true) return
+        if (p.rating == null && p.category?.let { isTransitCategory(it) } == true) return
         // Supersede any in-flight scrape: the fetcher serializes on a Mutex, so an abandoned
         // 40 s Taco Bell grind would otherwise make the NEXT place's reviews queue behind it
         // (~90 s worst case to first review). Cancelling frees the mutex immediately, and this
@@ -1483,12 +1485,47 @@ class MapViewModel @Inject constructor(
      * details (hours, rating, …) from a search for that name nearby. */
     // Basemap POI classes/subclasses that mean "a transit stop" - threaded from the map tap as the
     // kind hint so a bus stop resolves to the OPERATING stop, not the road intersection at its spot.
-    private val TRANSIT_CAT = Regex(
+    private val TRANSIT_CAT_COMPILED = Regex(
         """station|stop|subway|metro|transit|transport|\bhub\b|\bbus\b|train|\brail\b|tram|light rail|terminal|ferry|""" +
             """bahnhof|haltestelle|gare|estaci|estaç|stazione|fermata|estação|halte|stanice|""" +
             """지하철|вокзал|станц|остановка|停|駅|车站|車站""",
         RegexOption.IGNORE_CASE,
     )
+
+    // Categories that must NOT count as transit even though a gate word matches - "Gas station" /
+    // "Charging station" / "Fire station" all contain "station", and a fuel stop beside a bus stop
+    // cheerfully showed that stop's departures (upstream device report 2026-07-13). Localized like
+    // the gate: fuel/EV/emergency/broadcast words across the app languages.
+    private val NON_TRANSIT_CAT_COMPILED = Regex(
+        """gas|fuel|petrol|filling|gasolin|benzin|essence|carburant|paliw|бензин|заправ|азс|tank|""" +
+            """station-service|servicio|serviço|servizio|加油|ガソリン|주유|דלק|""" +
+            """charging|laadstation|ladestation|recharge|recarga|ricarica|зарядн|טעינה|充电|充電|""" +
+            """fire|police|power|pumping|weigh|radio|television|\btv\b|pompiers|bomberos|feuerwehr""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    // Remote-overridable via the signed calibration bundle (transitCategoryWords /
+    // transitExcludeWords - each term joins one case-insensitive alternation): a missing or wrong
+    // word in some language becomes a config edit, not an app release. Falls back to the compiled
+    // regexes when absent or unbuildable.
+    @Volatile private var TRANSIT_CAT = TRANSIT_CAT_COMPILED
+    @Volatile private var NON_TRANSIT_CAT = NON_TRANSIT_CAT_COMPILED
+
+    /** The ONE transit-category predicate: a gate word must match AND no exclusion word may. */
+    private fun isTransitCategory(cat: String): Boolean =
+        TRANSIT_CAT.containsMatchIn(cat) && !NON_TRANSIT_CAT.containsMatchIn(cat)
+
+    /** Push the calibration bundle's keyword-table overrides into their consumers (called at init
+     *  and again after the remote refresh). Absent fields leave the compiled tables in place. */
+    private fun adoptKeywordTables() {
+        val cal = calibration.current()
+        TRANSIT_CAT = cal.transitCategoryWords?.takeIf { it.isNotEmpty() }?.let { words ->
+            runCatching { Regex(words.joinToString("|"), RegexOption.IGNORE_CASE) }.getOrNull()
+        } ?: TRANSIT_CAT_COMPILED
+        NON_TRANSIT_CAT = cal.transitExcludeWords?.takeIf { it.isNotEmpty() }?.let { words ->
+            runCatching { Regex(words.joinToString("|"), RegexOption.IGNORE_CASE) }.getOrNull()
+        } ?: NON_TRANSIT_CAT_COMPILED
+    }
 
     // Debug sink shared with WebStopDeparturesFetcher: this device mutes logcat for live pids
     // after `adb logcat -c`, so the gate diagnostics go to a file that cannot be muted.
@@ -1506,7 +1543,7 @@ class MapViewModel @Inject constructor(
     private fun nearestLiveStop(results: List<Place>, at: LatLng, radiusM: Double = 250.0): Place? =
         results.asSequence()
             .filter { !it.permanentlyClosed && it.location.distanceTo(at) < radiusM }
-            .filter { p -> p.category?.let { TRANSIT_CAT.containsMatchIn(it) } == true }
+            .filter { p -> p.category?.let { isTransitCategory(it) } == true }
             .minByOrNull { it.location.distanceTo(at) }
 
     /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
@@ -1518,12 +1555,36 @@ class MapViewModel @Inject constructor(
         val cat = p.category ?: ""
         when {
             // A real transit listing: its own place page carries the board.
-            TRANSIT_CAT.containsMatchIn(cat) -> fetchBoardFrom(fid, selectedFid = fid)
+            isTransitCategory(cat) -> fetchBoardFrom(fid, selectedFid = fid)
             // A bus stop named by its intersection ("Main St & 1st Ave") that Google resolved to
             // the ROAD JUNCTION ("Intersection") rather than the co-located Stop - so its own page has NO
             // board. Re-resolve to the stop and pull ITS board, the same way onPoiTap does for a
             // tapped stop icon. The board attaches to the intersection sheet.
             cat.contains("intersection", ignoreCase = true) -> resolveIntersectionStopBoard(p)
+        }
+    }
+
+    private var boardRefreshJob: Job? = null
+
+    /** Keep a departure board fresh while its sheet is open: the board was a snapshot, so leaving
+     *  the sheet open a few minutes let the times drift from the agency feed. Re-fetch on the
+     *  countdown clock's cadence (30 s between rounds; the loop is sequential, so a slow WebView
+     *  load just stretches the interval instead of piling up) and swap the board in place. Ends
+     *  itself the moment the selection changes. */
+    private fun startBoardRefresh(boardFid: String, selectedFid: String?) {
+        boardRefreshJob?.cancel()
+        boardRefreshJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(30_000)
+                if (_state.value.selected?.featureId != selectedFid) return@launch
+                val fresh = runCatching { webStopDepartures.fetch(boardFid) }.getOrNull()
+                depDbg("board refresh lines=${fresh?.lines?.size ?: -1}")
+                if (fresh != null && fresh.lines.isNotEmpty()) {
+                    _state.update { st ->
+                        if (st.selected?.featureId == selectedFid) st.copy(stopDepartures = fresh) else st
+                    }
+                }
+            }
         }
     }
 
@@ -1538,6 +1599,7 @@ class MapViewModel @Inject constructor(
                 if (st.selected?.featureId != selectedFid) st
                 else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
             }
+            if (board != null && board.lines.isNotEmpty()) startBoardRefresh(boardFid, selectedFid)
         }
     }
 
@@ -1568,6 +1630,7 @@ class MapViewModel @Inject constructor(
                 if (st.selected?.featureId != selectedFid) st
                 else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
             }
+            if (board != null && board.lines.isNotEmpty()) startBoardRefresh(stopFid, selectedFid)
         }
     }
 
@@ -1687,7 +1750,7 @@ class MapViewModel @Inject constructor(
     fun onPoiTap(name: String, location: LatLng, kind: String? = null) {
         if (consumeAssign(SavedPlace(id = "poi:" + name.hashCode(), name = name, lat = location.lat, lng = location.lng))) return
         // A transit-kind basemap tap ("bus_stop"/"railway" class) biases the resolve below.
-        val transitHint = kind?.takeIf { TRANSIT_CAT.containsMatchIn(it) }
+        val transitHint = kind?.takeIf { isTransitCategory(it) }
         val searchQuery = if (transitHint != null && !name.lowercase().contains(transitHint)) "$name $transitHint" else name
         // Picking the route origin (or a stop) by tapping the map → adopt this POI, don't open it.
         if (_state.value.pickingStop) {

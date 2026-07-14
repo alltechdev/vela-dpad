@@ -267,6 +267,23 @@ means: read the full diff, reason about edge cases (races, gates, parsers), veri
 on-device, and keep fork-specific behaviour (45 s WebView ceiling, file-sink diagnostics, fork
 User-Agent) that upstream's version would regress. Never `git cherry-pick` blind.
 
+## Transit + speed-display rules (2026-07-14)
+
+- **Transit category checks go through `isTransitCategory()` - NEVER bare `TRANSIT_CAT`.** The gate
+  regex matches "station", which also matches "Gas station" / "Charging station" / "Fire station" -
+  a fuel stop next to a bus stop fetched and showed that stop's departures until the exclusion
+  regex (`NON_TRANSIT_CAT`) landed. Both keyword tables are remote-overridable via the calibration
+  bundle (`transitCategoryWords` / `transitExcludeWords`); compiled fallbacks carry the behaviour
+  when the bundle lacks them. Any NEW transit-category test must call the one predicate.
+- **Open departure boards auto-refresh every ~30 s** (`startBoardRefresh` in MapViewModel):
+  SEQUENTIAL delay-then-fetch, deliberately - the fork's board source is the hidden WebView with a
+  45 s ceiling, so a slow fetch stretches the cadence instead of piling requests up. Feature-id
+  gated; cancels when the selection changes. Keep any new board source on this loop shape.
+- **Speed display = TWO separate stacked cards (user design, 2026-07-14):** the regulatory SPEED
+  LIMIT sign is a free-standing card ABOVE its own speedometer card; no limit -> the speedo stands
+  alone. Not one shared box, not upstream's side-by-side row (squat on narrow screens - a
+  deliberate fork divergence from b5f54ad0's layout). Keep it this way through rebases.
+
 ## Known issues (live)
 
 - **Cold camera at deep zoom can miss overlay house numbers** (residual edge of the 2026-07-14
