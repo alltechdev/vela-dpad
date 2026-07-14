@@ -560,7 +560,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   editor own the screen; it uses colorScheme tokens (it replaces the search bar), NOT SheetPalette.
   MapScreen measures its bottom edge (`topCardBottomPx`) and passes `cameraTopInsetPx` to
   VelaMapView so the route fit frames below the card. The card has NO auto-focus on purpose - the
-  panel's Drive tab keeps `rememberDpadAutoFocus()`.
+  panel's Drive tab keeps `rememberDpadAutoFocus()`. Heads-up InfoCards sit UNDER the measured card
+  in directions mode (the 96dp constant was tuned for the search bar); with stops present a compact
+  + button under the swap adds another stop (upstream cc691c0f). DIFF-ONLY verdict on cc691c0f's
+  third change: upstream deleted the "Rerouted to avoid cameras" flash, the fork KEEPS it (kept
+  once already in the 2026-07-14 smalls batch; the under-card offset removes upstream's overlap
+  complaint, and the flash is real information when the list auto-picks a different route).
 - **Chip style = stadium pills:** EVERY chip (map CategoryChips, results-panel filter
   chips Open-now/top-rated/price/sort + the collapsed "N results" pill, PlaceSheet travel-mode chips
   now with a leading `Icons.Default.Directions*` glyph, Settings vibrate-on-turns FilterChips) sets

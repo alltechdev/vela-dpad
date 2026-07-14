@@ -1537,8 +1537,19 @@ fun MapScreen(
                 onAction = vm::clearStatus,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 96.dp, start = 12.dp, end = 12.dp),
+                    .then(
+                        // In directions mode the endpoints card is taller than the search bar the
+                        // 96dp constant was tuned for, so heads-up cards printed over it - sit
+                        // them under the measured card instead (upstream cc691c0f).
+                        if (state.directionsOpen && !searchOpen && topCardBottomPx > 0) {
+                            Modifier.padding(
+                                top = with(LocalDensity.current) { topCardBottomPx.toDp() } + 10.dp,
+                                start = 12.dp, end = 12.dp,
+                            )
+                        } else {
+                            Modifier.statusBarsPadding().padding(top = 96.dp, start = 12.dp, end = 12.dp)
+                        },
+                    ),
                 // A voice problem carries its fix. Normally a pill straight to Vela's voice library;
                 // for a language with no Vela voice (Japanese, Hebrew) it opens the phone's own voice
                 // settings instead, where the user can add a system voice.
