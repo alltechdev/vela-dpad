@@ -136,6 +136,7 @@ data class MapUiState(
     val pickingOrigin: Boolean = false,      // the next search pick sets the origin, not a destination
     val directionsWaypoints: List<Place> = emptyList(), // intermediate stops, in order (multi-stop)
     val pickingStop: Boolean = false,        // the next search pick is added as a stop
+    val editingStops: Boolean = false,       // the dedicated stops editor sheet is open
     // Set while browsing search-along-route results: the trip's DESTINATION, stashed so the trip
     // survives the browse. A result pick adds a STOP to the trip (Google-style) instead of opening
     // the place's own sheet, and closing the results returns to the directions panel.
@@ -1236,6 +1237,13 @@ class MapViewModel @Inject constructor(
 
     fun selectPlace(p: Place) {
         if (consumeAssign(SavedPlace.of(p))) return
+        // NAVIGATING: map taps are INERT during a live drive (upstream a17eded6) - every tap
+        // funnels here too (ambient dots, resolved POIs), and a stray tap used to run the
+        // normal selection path below, nulling activeRoute/opening sheets nav's bottom slot
+        // doesn't render. Upstream turns an in-nav RESULTS pick into a stop on the drive; the
+        // fork gates only when no results list is open because the in-nav search-along-route
+        // pick (addStopDuringNav) is a later upstream feature not yet ported.
+        if (_state.value.navigating && _state.value.results.isEmpty()) return
         // Search-along-route pick: the tapped place becomes a STOP on the stashed trip (Google's
         // flow), not a new destination - tapping "Directions" on it would otherwise silently replace
         // the whole trip. Restore the destination first so the panel reopens showing the real trip;
@@ -1515,7 +1523,7 @@ class MapViewModel @Inject constructor(
                 showSteps = false, previewStepIndex = null,
                 directionsOrigin = null, pickingOrigin = false, directionsReversed = false,
                 directionsWaypoints = emptyList(), pickingStop = false, pickOnMap = null,
-                alongRouteDest = null,
+                alongRouteDest = null, editingStops = false,
             )
         }
     }
@@ -2040,6 +2048,9 @@ class MapViewModel @Inject constructor(
     /** Long-press the map (or a building) → drop a pin and reverse-geocode it
      * to an address, like Google's press-and-hold. */
     fun onMapLongPress(location: LatLng) {
+        // Dead during a live drive, same as onPoiTap: building/unnamed-POI taps route here too,
+        // and an invisible dropped pin surfacing after the drive read as a ghost selection.
+        if (_state.value.navigating) return
         // "Choose on map" is active → a long-press sets that endpoint directly (the quick half of the
         // crosshair flow) instead of dropping a destination pin.
         val pick = _state.value.pickOnMap
@@ -2088,6 +2099,11 @@ class MapViewModel @Inject constructor(
                 loadingDetails = false,
                 pickingOrigin = false,
                 pickingStop = false,
+                // A pin dropped right after viewing a transit stop kept that stop's departure
+                // board (and its loading spinner) on the pin sheet - the board fields were the
+                // one pair this reset missed (device 2026-07-13).
+                stopDepartures = null,
+                stopDeparturesLoading = false,
             )
         }
         viewModelScope.launch {
@@ -2104,6 +2120,7 @@ class MapViewModel @Inject constructor(
      * reverse-geocode can snap to a neighbour (tapped 1020, got 1040), which is exactly the "doesn't
      * snap to the house number" complaint. A real business sitting on the point still wins. */
     fun onAddressLabelTap(number: String, location: LatLng) {
+        if (_state.value.navigating) return // dead during a live drive, like onPoiTap
         if (_state.value.pickOnMap != null) { onMapLongPress(location); return } // pick-mode reuses the endpoint flow
         reviewsJob?.cancel()
         val id = "addr:$number@${location.lat},${location.lng}"
@@ -2217,7 +2234,20 @@ class MapViewModel @Inject constructor(
 
     /** Tapped "Add stop" → the next search pick becomes an intermediate stop (multi-stop routing).
      * [addStop]/[cancelPickStop] ends the mode. */
-    fun beginPickStop() = _state.update { it.copy(pickingStop = true, query = "", suggestions = emptyList()) }
+    fun beginPickStop() = _state.update { it.copy(pickingStop = true, editingStops = false, query = "", suggestions = emptyList()) }
+
+    /** The dedicated stops editor (reorder / remove / add in one sheet, one reroute on Done). */
+    fun openStopsEditor() = _state.update { it.copy(editingStops = true) }
+
+    fun closeStopsEditor() = _state.update { it.copy(editingStops = false) }
+
+    /** Apply the editor's final ordering in ONE shot - a single reroute per visit, not one per
+     * micro-edit like the old inline arrows. */
+    fun applyStops(stops: List<Place>) {
+        val changed = stops != _state.value.directionsWaypoints
+        _state.update { it.copy(directionsWaypoints = stops, editingStops = false) }
+        if (changed) route(_state.value.travelMode)
+    }
 
     fun cancelPickStop() = _state.update { it.copy(pickingStop = false) }
 
@@ -2231,23 +2261,6 @@ class MapViewModel @Inject constructor(
                 // directionsOpen BEFORE route() also keeps its stillWanted() guard satisfied.
                 directionsOpen = true, results = emptyList(), query = "", resultsCollapsed = false,
             )
-        }
-        route(_state.value.travelMode)
-    }
-
-    /** Remove the stop at [index] and re-route. */
-    fun removeStop(index: Int) {
-        _state.update { it.copy(directionsWaypoints = it.directionsWaypoints.filterIndexed { i, _ -> i != index }) }
-        route(_state.value.travelMode)
-    }
-
-    /** Move the stop at [index] by [delta] (−1 up / +1 down) and re-route through the new order. */
-    fun moveStop(index: Int, delta: Int) {
-        _state.update { s ->
-            val list = s.directionsWaypoints.toMutableList()
-            val to = index + delta
-            if (index in list.indices && to in list.indices) list.add(to, list.removeAt(index))
-            s.copy(directionsWaypoints = list)
         }
         route(_state.value.travelMode)
     }
@@ -2498,6 +2511,10 @@ class MapViewModel @Inject constructor(
                             routes = emptyList(), activeRoute = null, directionsOpen = false,
                             showSteps = false, previewStepIndex = null,
                             myLocation = resumeLoc ?: it.myLocation,
+                            // The last simulated speed otherwise outlives the drive: parked with
+                            // sim-location on, no fresh fix ever zeroes it, so the speed readout
+                            // (movingFree keys on mySpeed) stuck on screen (device 2026-07-13).
+                            mySpeed = null, mySpeedRaw = null,
                         )
                     }
                     startLocation()
@@ -2730,6 +2747,9 @@ class MapViewModel @Inject constructor(
                                 showSteps = false, previewStepIndex = null,
                                 myLocation = resumeLoc ?: it.myLocation,
                                 center = resumeLoc ?: it.center,
+                                // Same stale-speed hole the demo teardown had: the trace's last
+                                // speed outlives the replay when no fresh fix follows to zero it.
+                                mySpeed = null, mySpeedRaw = null,
                             )
                         } else {
                             // Replay rode an already-active nav session - leave its route/location alone.
@@ -3489,6 +3509,7 @@ class MapViewModel @Inject constructor(
     /** A tapped Transitous stop icon: open a lightweight place at the stop and fetch its board
      *  DIRECTLY by stop id - no Google resolution, no name correlation. */
     fun onTransitStopTap(stop: app.vela.core.data.transit.Transitous.MapStop) {
+        if (_state.value.navigating) return // dead during a live drive, like onPoiTap
         val placeholder = Place(
             id = "gtfs:${stop.stopId}",
             name = stop.name,

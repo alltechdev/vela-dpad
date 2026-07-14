@@ -64,10 +64,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.ContentCopy
@@ -79,7 +76,6 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.DirectionsSubway
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.DirectionsWalk
@@ -94,8 +90,6 @@ import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocalGroceryStore
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material.icons.filled.TripOrigin
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
@@ -129,7 +123,6 @@ import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 // D-pad-only operation (docs/dpad.md) - one import block so upstream merges stay clean.
@@ -266,7 +259,6 @@ fun PlaceSheet(
     // scroll handler watches the body - when it's at the top, a downward drag first
     // collapses an expanded sheet, then dismisses it. Upward / mid-list drags scroll.
     val bodyScroll = rememberScrollState()
-    val onCloseUpdated = rememberUpdatedState(onClose)
     val dismissConn = remember(place.id) {
         object : NestedScrollConnection {
             private var acc = 0f
@@ -282,7 +274,7 @@ fun PlaceSheet(
                             // steps want a more deliberate pull so a gentle swipe doesn't overshoot.
                             expandedState.value && acc > 90f -> { expandedState.value = false; steppedThisGesture = true; acc = 0f }
                             !minimizedState.value && acc > 150f -> { minimizedState.value = true; steppedThisGesture = true; acc = 0f }
-                            minimizedState.value && acc > 150f -> { steppedThisGesture = true; acc = 0f; onCloseUpdated.value() }
+                            // Minimized is the floor — a swipe never closes the sheet (X / back do).
                         }
                     }
                     return available
@@ -298,14 +290,14 @@ fun PlaceSheet(
                 return Offset.Zero
             }
             // The fling phase runs at the end of every drag (even at zero velocity) - use it as the
-            // gesture boundary that re-arms stepping for the next swipe. A hard downward flick from
-            // peek/minimized dismisses outright (the "dramatic swipe closes" case); an expanded flick
-            // just collapses to peek via onPreScroll above.
+            // gesture boundary that re-arms stepping for the next swipe. Google's grammar: the
+            // fling VELOCITY picks the detent, and the hardest downward flick lands on MINIMIZED
+            // from anywhere (skipping peek) - a swipe never closes the sheet outright.
             override suspend fun onPreFling(available: Velocity): Velocity {
-                val dramatic = available.y > 2400f && bodyScroll.value == 0 && !expandedState.value
+                val dramatic = available.y > 2400f && bodyScroll.value == 0
                 acc = 0f
                 steppedThisGesture = false
-                if (dramatic) onCloseUpdated.value()
+                if (dramatic) { expandedState.value = false; minimizedState.value = true }
                 return Velocity.Zero
             }
         }
@@ -334,7 +326,7 @@ fun PlaceSheet(
                     when {
                         expandedState.value && pull[0] > 90f -> { expandedState.value = false; reviewsEngaged.value = false; pull[0] = 0f; pull[2] = 1f }
                         !minimizedState.value && pull[0] > 150f -> { minimizedState.value = true; reviewsEngaged.value = false; pull[0] = 0f; pull[2] = 1f }
-                        minimizedState.value && pull[0] > 150f -> { pull[0] = 0f; pull[2] = 1f; reviewsEngaged.value = false; onCloseUpdated.value() }
+                        // Minimized is the floor here too — a pull never closes the sheet.
                     }
                 }
             }
@@ -415,13 +407,14 @@ fun PlaceSheet(
                                         if (minimizedState.value) minimizedState.value = false
                                         else expandedState.value = true
                                     }
-                                    // A big deliberate swipe down closes outright ("dramatic swipe").
-                                    total > 220f -> onClose()
-                                    // A gentle swipe down shrinks one detent (expanded→peek→minimized→close).
+                                    // A big deliberate swipe down goes straight to MINIMIZED (Google:
+                                    // the strongest fling minimises, a swipe NEVER closes the sheet —
+                                    // only the X / back do, so a flick can't destroy your place).
+                                    total > 220f -> { expandedState.value = false; minimizedState.value = true }
+                                    // A gentle swipe down shrinks one detent (expanded→peek→minimized).
                                     total > 40f -> when {
                                         expandedState.value -> expandedState.value = false
-                                        !minimizedState.value -> minimizedState.value = true
-                                        else -> onClose()
+                                        else -> minimizedState.value = true
                                     }
                                 }
                             },
@@ -966,21 +959,15 @@ fun PlaceSheet(
 
 /**
  * The directions preview - a dedicated bottom panel (not buried in the place
- * sheet) that opens when you tap "Directions": destination header, travel-mode
- * tabs, the route option(s) with traffic-aware ETAs (alternates are selectable),
- * and a prominent Start. Transit shows the results board instead.
+ * sheet) that opens when you tap "Directions": travel-mode tabs, the route
+ * option(s) with traffic-aware ETAs (alternates are selectable), and a
+ * prominent Start. Transit shows the results board instead. The endpoint rows
+ * (origin / stops / destination, swap, close) live in RouteTopCard at the top
+ * of the screen.
  */
 @Composable
 fun DirectionsPanel(
-    originName: String,
     destinationName: String,
-    onEditOrigin: (() -> Unit)? = null,
-    onEditDestination: (() -> Unit)? = null,
-    stops: List<String> = emptyList(),
-    onAddStop: (() -> Unit)? = null,
-    onRemoveStop: (Int) -> Unit = {},
-    onMoveStop: (Int, Int) -> Unit = { _, _ -> },
-    onSwap: () -> Unit,
     currentMode: TravelMode,
     routes: List<Route>,
     activeRoute: Route?,
@@ -993,9 +980,9 @@ fun DirectionsPanel(
     onSearchAlongRoute: (String) -> Unit,
     onWalkDirections: suspend (LatLng, LatLng) -> List<String> = { _, _ -> emptyList() },
     onStartTransit: (TransitItinerary) -> Unit = {},
-    onClose: () -> Unit,
     onTimeSelected: (Int, Long?) -> Unit = { _, _ -> },
     flockOnRoute: List<Int> = emptyList(), // opt-in: ALPR camera count per route (index-aligned)
+    onCollapsedChange: (Boolean) -> Unit = {}, // MapScreen shrinks the route-fit camera inset while minimized
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -1004,6 +991,9 @@ fun DirectionsPanel(
     // Keyed to the destination so opening directions for a different place starts
     // expanded again instead of inheriting the previous session's collapsed state.
     val collapsed = remember(destinationName) { mutableStateOf(false) }
+    // Report the minimized state up so MapScreen can shrink the route-fit camera inset -
+    // collapsing to the Start bar re-frames the route over the freed screen (upstream a17eded6).
+    LaunchedEffect(collapsed.value) { onCollapsedChange(collapsed.value) }
     Card(
         modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
@@ -1027,99 +1017,9 @@ fun DirectionsPanel(
             ) {
                 Box(Modifier.width(36.dp).height(4.dp).clip(CircleShape).background(dim.copy(alpha = 0.4f)))
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    // The "From" row - tappable to route from a different place (Google
-                    // shows an edit affordance; here a pencil + accent text when editable).
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = if (onEditOrigin != null) {
-                            Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onEditOrigin() }.padding(vertical = 2.dp)
-                        } else Modifier,
-                    ) {
-                        Icon(Icons.Default.TripOrigin, contentDescription = null, tint = dim, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            originName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (onEditOrigin != null) MaterialTheme.colorScheme.primary else dim,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        if (onEditOrigin != null) {
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.place_change_start), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    // Intermediate stops (multi-stop), between From and To like Google - each removable,
-                    // then an "Add stop" row. Only shown for drive/walk/bike (transit has no waypoints).
-                    if (currentMode != TravelMode.TRANSIT) {
-                        stops.forEachIndexed { i, stopName ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(8.dp).clip(CircleShape).background(dim))
-                                Spacer(Modifier.width(11.dp))
-                                Text(stopName, style = MaterialTheme.typography.bodyMedium, color = dim, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                // Reorder arrows (only with 2+ stops): up unless first, down unless last.
-                                // IconButtons (like the Swap/Close controls in this header), NOT raw 18-20dp
-                                // clickable Icons - three tiny targets 2dp apart invite remove-instead-of-
-                                // reorder mis-taps, and removal re-routes immediately with no undo.
-                                if (stops.size > 1) {
-                                    if (i > 0) IconButton(onClick = { onMoveStop(i, -1) }, modifier = Modifier.size(36.dp)) {
-                                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.place_move_stop_up), tint = dim, modifier = Modifier.size(20.dp))
-                                    }
-                                    if (i < stops.size - 1) IconButton(onClick = { onMoveStop(i, 1) }, modifier = Modifier.size(36.dp)) {
-                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.place_move_stop_down), tint = dim, modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                                IconButton(onClick = { onRemoveStop(i) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_remove_stop), tint = dim, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                        if (onAddStop != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onAddStop() }.padding(vertical = 2.dp),
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.place_add_stop), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                            }
-                            Spacer(Modifier.height(3.dp))
-                        }
-                    }
-                    // The "To" row - editable in the same way as "From", used when the
-                    // route is *reversed* (then the custom endpoint is the destination).
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = if (onEditDestination != null) {
-                            Modifier.clip(RoundedCornerShape(6.dp)).dpadHighlight(RoundedCornerShape(6.dp)).clickable { onEditDestination() }.padding(vertical = 2.dp)
-                        } else Modifier,
-                    ) {
-                        Icon(Icons.Default.Place, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            destinationName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ink,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        if (onEditDestination != null) {
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.place_change_destination), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-                IconButton(onClick = onSwap) {
-                    Icon(Icons.Default.SwapVert, contentDescription = stringResource(R.string.place_swap_start_destination), tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close_directions), tint = dim) }
-            }
+            // The endpoint rows (origin / stops / destination, swap, close) live in the
+            // Google-style RouteTopCard at the top of the screen now - this panel keeps the
+            // mode chips, time chooser, routes and Start.
             AnimatedVisibility(visible = !collapsed.value) {
               // Cap the expandable body to ~58% of the screen and let it scroll - on short screens the
               // mode chips + route/transit list + Start button are taller than the bottom-anchored card,

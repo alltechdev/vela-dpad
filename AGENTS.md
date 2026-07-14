@@ -551,6 +551,21 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   Cards with elevation 6dp, 54dp turn glyph, headlineMedium-bold distance, titleMedium-medium road
   name, FilledTonalIconButton for mute/steps. On screens under 500dp tall the banner runs COMPACT (36dp glyph, titleLarge distance, tighter padding - issue #41; every text line is maxLines-capped so a long arrive card can never bury the map). Keep new nav chrome on this treatment (no flat
   default-radius cards, no OutlinedIconButton circles - that was the "dated" look).
+- **Directions endpoints live in a TOP card (`ui/place/RouteTopCard.kt`):** while the route chooser
+  is open the search bar swaps for a Google-style endpoints card (origin ring / stops / red
+  destination pin down a glyph rail, back arrow left, swap right, an Add stop row when no stops
+  exist); `DirectionsPanel` LOST its header params (originName/onEdit*/stops/onAddStop/onEditStops/
+  onSwap/onClose) and keeps mode chips / time chooser / routes / Start, plus the fork-only
+  `flockOnRoute`. The card hides while the search overlay, pick-on-map, steps preview or stops
+  editor own the screen; it uses colorScheme tokens (it replaces the search bar), NOT SheetPalette.
+  MapScreen measures its bottom edge (`topCardBottomPx`) and passes `cameraTopInsetPx` to
+  VelaMapView so the route fit frames below the card. The card has NO auto-focus on purpose - the
+  panel's Drive tab keeps `rememberDpadAutoFocus()`. Heads-up InfoCards sit UNDER the measured card
+  in directions mode (the 96dp constant was tuned for the search bar); with stops present a compact
+  + button under the swap adds another stop (upstream cc691c0f). DIFF-ONLY verdict on cc691c0f's
+  third change: upstream deleted the "Rerouted to avoid cameras" flash, the fork KEEPS it (kept
+  once already in the 2026-07-14 smalls batch; the under-card offset removes upstream's overlap
+  complaint, and the flash is real information when the list auto-picks a different route).
 - **Chip style = stadium pills:** EVERY chip (map CategoryChips, results-panel filter
   chips Open-now/top-rated/price/sort + the collapsed "N results" pill, PlaceSheet travel-mode chips
   now with a leading `Icons.Default.Directions*` glyph, Settings vibrate-on-turns FilterChips) sets

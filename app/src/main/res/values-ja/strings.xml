@@ -200,6 +200,9 @@
     <string name="place_move_stop_down">経由地を下へ移動</string>
     <string name="place_remove_stop">経由地を削除</string>
     <string name="place_add_stop">経由地を追加</string>
+    <string name="stops_editor_title">経由地</string>
+    <string name="stops_edit">経由地を編集</string>
+    <string name="stops_drag_reorder">ドラッグして並べ替え</string>
     <string name="place_change_destination">目的地を変更</string>
     <string name="place_swap_start_destination">出発地と目的地を入れ替え</string>
     <string name="place_close_directions">経路を閉じる</string>
@@ -512,4 +515,7 @@
     <string name="map_layers">レイヤ</string>
     <string name="settings_layers_button">レイヤボタンを表示</string>
     <string name="settings_layers_button_hint">航空写真・交通状況・路線・地形を切り替える地図上のボタン。</string>
+    <plurals name="topcard_more_stops">
+        <item quantity="other">+%d件の経由地</item>
+    </plurals>
 </resources>
