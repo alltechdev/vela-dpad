@@ -477,7 +477,14 @@ fun VelaMapView(
                 val layer =
                     SymbolLayer("vela-addr-$i", srcId).apply {
                         setSourceLayer("address") // tippecanoe layer name (build-address-region.sh: -l address)
-                        setMinZoom(19f) // numbers only when truly close (~50 ft scale bar); 17.5 still carpeted whole blocks (user 2026-07-13)
+                        // Layer minZoom stays INSIDE the archive's native tile range (the address PMTiles
+                        // carry tiles ONLY at z16-17): with minZoom 19 a COLD source's first tile request
+                        // lands 2+ levels past the archive max and MapLibre's pmtiles path never fetches -
+                        // the source stays empty forever and numbers render at NO zoom (the 2026-07-14
+                        // hunt; once tiles are resident from a lower zoom, overzooming past 19 is fine).
+                        // So the layer arms at 17 - being in zoom-range is what drives tile FETCHING, even
+                        // while the text is invisible - and the 50 ft UX gate lives in a stepped opacity.
+                        setMinZoom(17f)
                         setProperties(
                             PropertyFactory.textField(Expression.get("number")),
                             PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
@@ -490,6 +497,10 @@ fun VelaMapView(
                             // number, and keeping hundreds of them out of the index makes each placement
                             // pass at street zoom cheaper (they're the densest symbols on screen there).
                             PropertyFactory.textIgnorePlacement(true),
+                            // the 50 ft gate (see minZoom comment): invisible below z19, on at 19+
+                            PropertyFactory.textOpacity(
+                                Expression.step(Expression.zoom(), Expression.literal(0f), Expression.stop(19f, 1f)),
+                            ),
                         )
                     }
                 if (style.getLayer(CONTROLS_LAYER) != null) {
