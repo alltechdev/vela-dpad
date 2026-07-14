@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
@@ -169,6 +170,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -1968,10 +1970,13 @@ fun RouteDetailSheet(
     val ink = if (dark) InkDark else InkLight
     val dim = if (dark) DimDark else DimLight
     val lineColor = parseHexColor(step?.line?.colorHex) ?: MaterialTheme.colorScheme.primary
-    // The full ordered call list: board first, then the in-betweens, then alight (stitched + de-duped).
+    // The full ordered call list: the stops the run ALREADY passed (greyed above, Google-style),
+    // then board, the in-betweens, and alight (stitched + de-duped).
+    val prior = step?.priorStops ?: emptyList()
     val stops = remember(step) {
         val mid = step?.intermediateStops ?: emptyList()
         buildList {
+            addAll(prior)
             step?.boardStop?.let { add(it) }
             addAll(mid)
             step?.alightStop?.let { a -> if (mid.none { it.name == a.name } && step.boardStop?.name != a.name) add(a) }
@@ -2011,9 +2016,11 @@ fun RouteDetailSheet(
                 }
                 return@Column
             }
-            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
+            // Open ON the boarding stop; the already-passed stops are a scroll-up away.
+            val listState = rememberLazyListState(initialFirstVisibleItemIndex = prior.size)
+            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 4.dp), state = listState) {
                 itemsIndexed(stops) { i, stop ->
-                    RouteStopRow(stop, lineColor, ink, dim, i == 0, i == stops.lastIndex, onClick = { onStopTap(stop) })
+                    RouteStopRow(stop, lineColor, ink, dim, isFirst = i == prior.size, isLast = i == stops.lastIndex, past = i < prior.size, isTop = i == 0, onClick = { onStopTap(stop) })
                 }
             }
         }
@@ -2028,6 +2035,8 @@ private fun RouteStopRow(
     dim: Color,
     isFirst: Boolean,
     isLast: Boolean,
+    past: Boolean = false, // the run already called here - greyed, Google-style
+    isTop: Boolean = isFirst, // first VISIBLE row (no rail above); differs from isFirst when priors show
     onClick: () -> Unit,
 ) {
     Row(
@@ -2041,22 +2050,51 @@ private fun RouteStopRow(
     ) {
         // Vertical rail + node, continuous between rows; board/alight get the big node.
         val big = isFirst || isLast
+        // Passed stops grey their node and the rail segments touching them, so the coloured
+        // line visually STARTS at the boarding stop (Google's treatment).
+        val nodeColor = if (past) dim.copy(alpha = 0.45f) else lineColor
+        val topRail = if (past || isFirst) dim.copy(alpha = 0.45f) else lineColor
+        val bottomRail = if (past) dim.copy(alpha = 0.45f) else lineColor
         Box(Modifier.width(24.dp).height(48.dp), contentAlignment = Alignment.Center) {
-            if (!isFirst) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.TopCenter).background(lineColor))
-            if (!isLast) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.BottomCenter).background(lineColor))
-            Box(Modifier.size(if (big) 14.dp else 9.dp).clip(CircleShape).background(lineColor))
+            if (!isTop) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.TopCenter).background(topRail))
+            if (!isLast) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.BottomCenter).background(bottomRail))
+            Box(Modifier.size(if (big) 14.dp else 9.dp).clip(CircleShape).background(nodeColor))
         }
         Spacer(Modifier.width(10.dp))
         Text(
             stop.name,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (isFirst || isLast) FontWeight.SemiBold else FontWeight.Normal,
-            color = ink,
+            color = if (past) dim else ink,
             maxLines = 2,
             modifier = Modifier.weight(1f).padding(vertical = 10.dp),
         )
-        stop.timeText?.let {
-            Text(it, style = MaterialTheme.typography.labelMedium, color = dim, modifier = Modifier.padding(start = 8.dp))
+        stop.timeText?.let { time ->
+            // Realtime = the feed gave this stop an adjusted time distinct from the timetable.
+            val live = stop.scheduledText != null && stop.scheduledText != time
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp)) {
+                // Google's treatment for a moved time: the timetable time crossed out beside the
+                // live one, green when on time or early, red when late.
+                if (live && !past) {
+                    Text(
+                        stop.scheduledText!!,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = dim,
+                        textDecoration = TextDecoration.LineThrough,
+                        modifier = Modifier.padding(end = 6.dp),
+                    )
+                }
+                Text(
+                    time,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = when {
+                        past -> dim
+                        live && (stop.delayMin ?: 0) > 0 -> SheetPalette.TrafficRed
+                        live -> SheetPalette.TrafficGreen
+                        else -> dim
+                    },
+                )
+            }
         }
     }
 }

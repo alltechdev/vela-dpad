@@ -2488,9 +2488,9 @@ private fun FasterRouteCard(
 }
 
 /**
- * The unified Google-style speed box shown while moving (nav AND free-drive): the posted speed limit
- * as a regulatory sign on top (US MUTCD "SPEED LIMIT" square in imperial, EU/RoW red roundel in
- * metric) WHEN known, and the current speed always below. Reads clean as just a speed when no limit
+ * The Google-style speed display shown while moving (nav AND free-drive): TWO separate stacked
+ * cards - the posted limit as a free-standing regulatory sign (US MUTCD "SPEED LIMIT" square in
+ * imperial, EU/RoW red roundel in metric) WHEN known, the speedometer card below. Reads clean as just a speed when no limit
  * is available. The readout turns amber when the current GPS speed exceeds the limit by a tolerance
  * (GPS speed is noisy, so a plain > would flap). [limitKmh] is the OSM/GraphHopper value in km/h.
  */
@@ -2518,50 +2518,60 @@ private fun SpeedWidget(
     val overColor = Color(0xFFE8514A)
     val signInk = Color(0xFF202124)
 
-    // ONE box: the posted limit as a regulatory sign on top when known, the current speed always below.
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = SheetPalette.bg(dark),
-        contentColor = SheetPalette.ink(dark),
-        shadowElevation = 4.dp,
-        modifier = modifier.widthIn(min = 58.dp),
+    // TWO SEPARATE cards, stacked (user 2026-07-14, Google's own look): the regulatory sign is its
+    // own free-standing card on top when a limit is known, and the speedometer is its own card
+    // below - not one shared box (that read as a single mixed widget) and not a side-by-side row
+    // (squat, eats horizontal map on the fork's narrow target screens).
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-            modifier = Modifier.padding(6.dp),
-        ) {
-            if (limitDisp != null) {
-                if (imperial) {
-                    Surface(
-                        shape = RoundedCornerShape(7.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.5.dp, signInk),
+        if (limitDisp != null) {
+            if (imperial) {
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.5.dp, signInk),
+                    shadowElevation = 4.dp,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                        ) {
-                            Text("SPEED", color = Color(0xFF3C4043), fontSize = 7.sp, fontWeight = FontWeight.SemiBold, lineHeight = 8.sp)
-                            Text("LIMIT", color = Color(0xFF3C4043), fontSize = 7.sp, fontWeight = FontWeight.SemiBold, lineHeight = 8.sp)
-                            Text("$limitDisp", color = if (over) overColor else signInk, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 21.sp)
-                        }
+                        Text("SPEED", color = Color(0xFF3C4043), fontSize = 7.sp, fontWeight = FontWeight.SemiBold, lineHeight = 8.sp)
+                        Text("LIMIT", color = Color(0xFF3C4043), fontSize = 7.sp, fontWeight = FontWeight.SemiBold, lineHeight = 8.sp)
+                        Text("$limitDisp", color = if (over) overColor else signInk, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 21.sp)
                     }
-                } else {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        border = BorderStroke(3.5.dp, Color(0xFFD32F2F)),
-                        modifier = Modifier.size(42.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text("$limitDisp", color = if (over) overColor else signInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                        }
+                }
+            } else {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = BorderStroke(3.5.dp, Color(0xFFD32F2F)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text("$limitDisp", color = if (over) overColor else signInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
-            Text("$value", fontSize = 25.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp, color = if (over) overColor else SheetPalette.ink(dark))
-            Text(unit, fontSize = 9.sp, color = SheetPalette.dim(dark), lineHeight = 10.sp)
+        }
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = SheetPalette.bg(dark),
+            contentColor = SheetPalette.ink(dark),
+            shadowElevation = 4.dp,
+            modifier = Modifier.widthIn(min = 58.dp),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            ) {
+                Text("$value", fontSize = 25.sp, fontWeight = FontWeight.Bold, lineHeight = 27.sp, color = if (over) overColor else SheetPalette.ink(dark))
+                Text(unit, fontSize = 9.sp, color = SheetPalette.dim(dark), lineHeight = 10.sp)
+            }
         }
     }
 }
