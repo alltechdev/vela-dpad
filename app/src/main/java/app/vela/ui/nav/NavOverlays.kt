@@ -26,8 +26,6 @@ import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocalGroceryStore
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +36,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -512,6 +517,7 @@ fun NavSearchChips(onPick: (String) -> Unit, modifier: Modifier = Modifier) {
     // D-pad (docs/dpad.md): the row appears on the magnifier toggle - land focus on the first
     // chip so it is walkable immediately (a wasted first keypress is a bug).
     val firstChipFocus = rememberDpadAutoFocus()
+    var query by remember { mutableStateOf("") }
     Card(
         modifier,
         shape = RoundedCornerShape(28.dp),
@@ -521,8 +527,38 @@ fun NavSearchChips(onPick: (String) -> Unit, modifier: Modifier = Modifier) {
             contentColor = SheetPalette.ink(dark),
         ),
     ) {
+      Column(Modifier.padding(vertical = 6.dp)) {
+        // Free-text along-route search above the canned chips - the chips cover the common
+        // stops, the field covers everything else (user 2026-07-14). Same search either way.
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 6.dp).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        ) {
+            Icon(Icons.Default.Search, contentDescription = null, tint = SheetPalette.dim(dark), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = SheetPalette.ink(dark)),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank()) onPick(query.trim()) }),
+                decorationBox = { inner ->
+                    if (query.isEmpty()) {
+                        Text(
+                            stringResource(R.string.place_search_along_route),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = SheetPalette.dim(dark),
+                        )
+                    }
+                    inner()
+                },
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+            )
+        }
+        Row(
+            Modifier.padding(horizontal = 12.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // (localized label, STABLE English query, icon) - the query is the logic key, only
@@ -551,6 +587,7 @@ fun NavSearchChips(onPick: (String) -> Unit, modifier: Modifier = Modifier) {
                 )
             }
         }
+      }
     }
 }
 
@@ -562,10 +599,7 @@ fun NavControls(
     offRoute: Boolean,
     onStop: () -> Unit,
     onSteps: () -> Unit,
-    voiceMuted: Boolean = false,
-    onToggleVoice: () -> Unit = {},
     trafficRatio: Double? = null,
-    onSearchAlong: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -619,20 +653,6 @@ fun NavControls(
             // Steps is icon-only so the row stays compact (the left ETA column can
             // grow with a longer "X mi · 7:42 PM"); End keeps its label.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (onSearchAlong != null) {
-                    FilledTonalIconButton(onClick = onSearchAlong) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = stringResource(R.string.place_search_along_route),
-                        )
-                    }
-                }
-                FilledTonalIconButton(onClick = onToggleVoice) {
-                    Icon(
-                        if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                        contentDescription = if (voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
-                    )
-                }
                 FilledTonalIconButton(onClick = onSteps) {
                     Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResource(R.string.nav_steps))
                 }
