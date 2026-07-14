@@ -57,6 +57,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -77,6 +78,9 @@ data class TransitNavState(
 
 data class MapUiState(
     val center: LatLng? = null,
+    // Camera zoom requested by a deep link (geo:...?z=17); one-shot - any ordinary selection
+    // (place tap, long-press, search) clears it back to the default framing zooms.
+    val centerZoom: Double? = null,
     val recenterTick: Int = 0, // bumped per recenter tap so the map force-moves even if "centered"
     val myLocation: LatLng? = null,
     val myBearing: Float? = null,
@@ -742,7 +746,20 @@ class MapViewModel @Inject constructor(
             val near = mapCenter ?: _state.value.myLocation // suggestions near the viewport, like search
             val res = runCatching { dataSource.search(term, near).places }.getOrDefault(emptyList())
             if (_state.value.query.trim() == term) { // ignore if the query changed meanwhile
-                _state.update { it.copy(suggestions = res.take(6)) }
+                // Google gets the viewport bias, but keyless ranking for a PARTIAL address is
+                // weak - "123 main st" happily led with matches states away while the one in
+                // town sat below (upstream d2901d56). Bucket by metro distance (stable sort:
+                // within each bucket Google's own relevance order is preserved) so nearby
+                // matches surface first and a famous far match still shows, just lower.
+                // ...but never demote Google's TOP suggestion or an exact name match: for a
+                // plain entity query ("tacoma") the #1 result IS the entity - the city itself -
+                // and bucketing it under every nearby Tacoma-named business pushed it off the
+                // list entirely (upstream 17f2cdc0).
+                val ranked = if (near == null) res else res.withIndex().sortedBy { (i, p) ->
+                    val entity = i == 0 || p.name.equals(term, ignoreCase = true)
+                    if (entity || p.location.distanceTo(near) <= SUGGEST_NEAR_M) 0 else 1
+                }.map { it.value }
+                _state.update { it.copy(suggestions = ranked.take(6)) }
             }
         }
     }
@@ -1174,15 +1191,44 @@ class MapViewModel @Inject constructor(
     /** Handle an external `geo:` / Google-Maps link (Vela as the system maps
      * handler): a query runs a search biased to any coordinates in the link; a
      * bare point drops a reverse-geocoded pin there. */
+    /** Text SHARED to Vela (the system share sheet): a maps/geo link opens like a deep link,
+     *  and anything else - an address, a place name someone texted you - just searches. Share
+     *  payloads are usually "Check out X! https://..." so the link is fished out of the prose
+     *  first. */
+    fun openSharedText(raw: String) {
+        val token = raw.trim().split(Regex("\\s+")).firstOrNull {
+            it.startsWith("http", ignoreCase = true) || it.startsWith("geo:", ignoreCase = true)
+        }
+        when {
+            token != null -> {
+                val link = MapLinkParser.parse(token)
+                if (link != null) openDeepLink(link)
+                else runSearch(raw.trim(), _state.value.myLocation ?: _state.value.center)
+            }
+            raw.isNotBlank() -> {
+                _state.update { it.copy(query = raw.trim()) }
+                runSearch(raw.trim(), _state.value.myLocation ?: _state.value.center)
+            }
+        }
+    }
+
     fun openDeepLink(link: MapLink) {
         val near = link.lat?.let { la -> link.lng?.let { ln -> LatLng(la, ln) } }
         val q = link.query
         when {
             !q.isNullOrBlank() -> {
-                _state.update { it.copy(query = q, center = near ?: it.center) }
+                _state.update { it.copy(query = q, center = near ?: it.center, centerZoom = link.zoom) }
                 runSearch(q, near ?: _state.value.myLocation ?: _state.value.center)
             }
-            near != null -> onMapLongPress(near)
+            near != null -> {
+                // A long-press pin assumes the camera is already there (the user pressed the
+                // screen); a deep link's coordinate is usually far away, so move the camera
+                // too (honouring its z= when given) - without this the pin sheet opened while
+                // the map stayed put (upstream, device 2026-07-13). Setting center also trips
+                // the follow-disarm rule, correctly: a coordinate link means "look over there".
+                _state.update { it.copy(center = near, centerZoom = link.zoom) }
+                onMapLongPress(near)
+            }
         }
     }
 
@@ -1204,7 +1250,7 @@ class MapViewModel @Inject constructor(
         suggestJob?.cancel()
         _state.update {
             it.copy(
-                selected = p, center = p.location, reviews = emptyList(), suggestions = emptyList(),
+                selected = p, center = p.location, centerZoom = null, reviews = emptyList(), suggestions = emptyList(),
                 placesHere = othersAt(p, it.results), loadingDetails = false, photosLoading = false,
             )
         }
@@ -1526,6 +1572,7 @@ class MapViewModel @Inject constructor(
         val cal = calibration.current()
         app.vela.core.data.google.parse.SearchParser.remoteClosedWords = cal.statusClosedWords
         app.vela.core.data.google.parse.SearchParser.remoteOpenWords = cal.statusOpenWords
+        app.vela.core.data.google.parse.StopDeparturesParser.remoteIndices = cal.stopBoardIndices
         TRANSIT_CAT = cal.transitCategoryWords?.takeIf { it.isNotEmpty() }?.let { words ->
             runCatching { Regex(words.joinToString("|"), RegexOption.IGNORE_CASE) }.getOrNull()
         } ?: TRANSIT_CAT_COMPILED
@@ -1603,6 +1650,10 @@ class MapViewModel @Inject constructor(
         boardRefreshJob = viewModelScope.launch {
             while (true) {
                 kotlinx.coroutines.delay(30_000)
+                // Backgrounding with a stop sheet open used to keep this polling every 30 s
+                // (viewModelScope outlives the screen). Park until the app is visible again;
+                // the first tick after coming back refreshes immediately.
+                app.vela.ui.AppVisibility.foreground.first { it }
                 if (_state.value.selected?.id != selId) return@launch
                 val fresh = withContext(Dispatchers.IO) {
                     runCatching { app.vela.core.data.transit.Transitous.board(http, lat, lng) }.getOrNull()
@@ -1627,6 +1678,10 @@ class MapViewModel @Inject constructor(
         boardRefreshJob = viewModelScope.launch {
             while (true) {
                 kotlinx.coroutines.delay(30_000)
+                // Backgrounding with a stop sheet open used to keep this polling every 30 s
+                // (viewModelScope outlives the screen). Park until the app is visible again;
+                // the first tick after coming back refreshes immediately.
+                app.vela.ui.AppVisibility.foreground.first { it }
                 if (_state.value.selected?.featureId != selectedFid) return@launch
                 val fresh = runCatching { webStopDepartures.fetch(boardFid) }.getOrNull()
                 depDbg("board refresh lines=${fresh?.lines?.size ?: -1}")
@@ -1724,7 +1779,19 @@ class MapViewModel @Inject constructor(
                 val extra = eta(cur[best]) - eta0
                 val cap = minOf(eta0 * 0.25, 600.0)
                 if (counts[best] < counts[0] && extra <= cap && best != 0) {
-                    selectRoute(best)
+                    // The avoided route LEADS the list (upstream 250afa86): with avoid-cameras on
+                    // the ranking is augmented by camera counts, not pure ETA - the low-camera
+                    // pick moves to the top for visibility and its count badge moves with it.
+                    // The "Fastest" tag still lands on the true fastest row (it keys off the
+                    // shown ETA, not list position), so the tradeoff stays legible.
+                    val order = listOf(best) + counts.indices.filter { it != best }
+                    _state.update {
+                        it.copy(
+                            routes = order.map { i -> cur[i] },
+                            flockOnRoute = order.map { i -> counts[i] },
+                        )
+                    }
+                    selectRoute(0)
                     flashStatus(appContext.getString(R.string.mapvm_flock_avoided))
                 }
             }
@@ -3295,8 +3362,9 @@ class MapViewModel @Inject constructor(
                     .sortedBy { (it.n - it.s) * (it.e - it.w) }
                     .take(3)
                     .map { "pmtiles://${it.url}" }
+                timber.log.Timber.i("addrOverlay: center=%.4f,%.4f manifest=%d covering=%s", c.lat, c.lng, man.size, list)
                 if (list != _state.value.addressOverlays) _state.update { it.copy(addressOverlays = list) }
-            }
+            }.onFailure { timber.log.Timber.w(it, "addrOverlay: refresh failed") }
         }
     }
 
@@ -3842,6 +3910,7 @@ class MapViewModel @Inject constructor(
         // overview sits at ~z11-12, under the old z13 gate. The tag is rare, so the wider Overpass box
         // stays light (and the on-screen count is capped).
         const val FLOCK_MIN_ZOOM = 11.0
+        const val SUGGEST_NEAR_M = 80_000.0 // ~a metro radius: suggestions inside it rank first
         const val CONTROLS_ONSCREEN_CAP = 400 // max controls handed to the map (nearest-to-center wins) - a
                                               // dense metro's padded box can carry 1000+, and every handed
                                               // symbol is re-collided per drag frame (budget-GPU jank)

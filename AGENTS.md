@@ -267,6 +267,24 @@ means: read the full diff, reason about edge cases (races, gates, parsers), veri
 on-device, and keep fork-specific behaviour (45 s WebView ceiling, file-sink diagnostics, fork
 User-Agent) that upstream's version would regress. Never `git cherry-pick` blind.
 
+Diff-only verdicts from the 2026-07-14 smalls batch (both were OUR fixes offered upstream in
+issue #131 and then iterated there):
+
+- **House-number cold-start gate (upstream 425ca71b + a162c3a7 vs the fork's fix):** identical
+  thresholds on both sides (layer arms at z17 inside the archive's z16-17 tile range; numbers show
+  from z19). Upstream's second commit moved the 50 ft gate from a stepped `textOpacity` into the
+  TEXT FIELD itself (`Expression.step` -> empty string below z19, `get("number")` at 19+).
+  ADOPTED upstream's mechanism: empty text means NO symbols exist in the z17-18.9 band at all,
+  so the densest symbol band on the map stops doing invisible placement work per frame, and
+  `onAddressLabelTap` can never resolve a label the user was never shown. Visible behaviour and
+  the fork's thresholds are unchanged.
+- **Flock route-overview zoom (upstream f1009cee vs the fork's fix):** same fetch gate
+  (`FLOCK_MIN_ZOOM = 11.0`) and same layer `setMinZoom(11f)` on both sides - kept ours. Adopted
+  the one real delta: a z11 `iconSize` stop (0.55) so a metro's worth of badges reads as dots at
+  overview zoom. Upstream's follow-ups 0a8bc537 + f1ddb341 (ported) then moved the flock layer
+  BELOW the ambient POIs and flipped `iconIgnorePlacement` to false, so cameras always draw but
+  claim their collision box - street names dodge the badge, POIs (placed earlier) still win on top.
+
 ## Transit + speed-display rules (2026-07-14)
 
 - **Transit category checks go through `isTransitCategory()` - NEVER bare `TRANSIT_CAT`.** The gate

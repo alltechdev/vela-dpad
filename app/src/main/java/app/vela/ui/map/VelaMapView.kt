@@ -176,6 +176,7 @@ fun VelaMapView(
     compassHeading: Float? = null, // device facing (sensor); points the browse cone when stopped
     locationStale: Boolean = false,
     cameraTarget: LatLng?,
+    cameraTargetZoom: Double? = null, // deep-link z= override for the target fly (null = default framing)
     recenterTick: Int = 0, // bumped on each recenter tap → force a move even if already "centered"
     cameraBottomInsetPx: Int = 0,
     routePolyline: List<LatLng>,
@@ -481,6 +482,7 @@ fun VelaMapView(
         }
         val txt = if (darkTheme) "#9aa0a6" else "#8a8a8a"
         val halo = if (darkTheme) "#1b2432" else "#ffffff"
+        timber.log.Timber.i("addrOverlay: map applying %d overlay(s): %s", addressOverlays.size, addressOverlays)
         addressOverlays.forEachIndexed { i, uri ->
             runCatching {
                 val srcId = "vela-addr-src-$i"
@@ -493,11 +495,26 @@ fun VelaMapView(
                         // lands 2+ levels past the archive max and MapLibre's pmtiles path never fetches -
                         // the source stays empty forever and numbers render at NO zoom (the 2026-07-14
                         // hunt; once tiles are resident from a lower zoom, overzooming past 19 is fine).
-                        // So the layer arms at 17 - being in zoom-range is what drives tile FETCHING, even
-                        // while the text is invisible - and the 50 ft UX gate lives in a stepped opacity.
+                        // So the layer arms at 17 - being in zoom-range is what drives tile FETCHING -
+                        // and the 50 ft UX gate lives in the TEXT FIELD itself: empty below z19, the
+                        // number at 19+ (upstream a162c3a7's mechanism). Empty text means NO symbols
+                        // exist in the 17-18.9 band at all. The first cut here used a stepped textOpacity,
+                        // which kept the fetch fix but left every number doing invisible placement work
+                        // per frame in the densest symbol band, and the invisible-but-placed labels were
+                        // still queryable by onAddressLabelTap (a tap could snap to a number never shown).
+                        // Device-verified 2026-07-14 (Yonkers): the zoom-in path across the z19 boundary
+                        // relayouts and shows numbers, identical to the textOpacity gate. NB no numbers in
+                        // NYC is a DATA gap, not this gate: OpenAddresses us/ny/statewide excludes the five
+                        // boroughs (probed new-york.pmtiles: Albany/Buffalo/Yonkers have tiles, NYC none),
+                        // and the active overlay hides the basemap OSM layer that does cover NYC.
                         setMinZoom(17f)
                         setProperties(
-                            PropertyFactory.textField(Expression.get("number")),
+                            PropertyFactory.textField(
+                                Expression.step(
+                                    Expression.zoom(), Expression.literal(""),
+                                    Expression.stop(19f, Expression.get("number")),
+                                ),
+                            ),
                             PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
                             PropertyFactory.textSize(10f),
                             PropertyFactory.textColor(txt),
@@ -508,10 +525,6 @@ fun VelaMapView(
                             // number, and keeping hundreds of them out of the index makes each placement
                             // pass at street zoom cheaper (they're the densest symbols on screen there).
                             PropertyFactory.textIgnorePlacement(true),
-                            // the 50 ft gate (see minZoom comment): invisible below z19, on at 19+
-                            PropertyFactory.textOpacity(
-                                Expression.step(Expression.zoom(), Expression.literal(0f), Expression.stop(19f, 1f)),
-                            ),
                         )
                     }
                 if (style.getLayer(CONTROLS_LAYER) != null) {
@@ -519,7 +532,9 @@ fun VelaMapView(
                 } else {
                     style.addLayer(layer) // controls layer missing (defensive) - top is better than absent
                 }
-            }
+            }.onSuccess {
+                timber.log.Timber.i("addrOverlay: layer vela-addr-%d added for %s", i, uri)
+            }.onFailure { timber.log.Timber.w(it, "addrOverlay: layer vela-addr-%d FAILED for %s", i, uri) }
         }
     }
 
@@ -1339,9 +1354,21 @@ fun VelaMapView(
                 // (and its greyed alternates) frames ABOVE it, not behind it (Google-style).
                 val pad = 140
                 val bottom = if (cameraBottomInsetPx > 0) cameraBottomInsetPx + pad else pad
+                val bounds = builder.build()
+                // A continental trip fit zooms out until nothing has context; past ~12 degrees
+                // of span, frame the DESTINATION area instead - the end point is the part worth
+                // seeing (upstream b6b7bbd1), and the route line still leads off-screen toward it.
+                val huge = bounds.latitudeSpan > 12.0 || bounds.longitudeSpan > 14.0
                 runCatching {
+                    if (huge) {
+                        val end = routePolyline.last()
+                        map.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(MLLatLng(end.lat, end.lng), 9.0), 800,
+                        )
+                        return@runCatching
+                    }
                     map.animateCamera(
-                        CameraUpdateFactory.newLatLngBounds(builder.build(), pad, pad, pad, bottom), 800,
+                        CameraUpdateFactory.newLatLngBounds(bounds, pad, pad, pad, bottom), 800,
                     )
                 }
             }
@@ -1394,8 +1421,8 @@ fun VelaMapView(
                 if (target != null && target != lastCameraTarget) {
                     lastCameraTarget = target
                     // Zoom in closer when a place sheet is up (focusing a single pin),
-                    // looser for a plain recenter.
-                    val zoom = if (cameraBottomInsetPx > 0) 16.5 else 14.5
+                    // looser for a plain recenter - unless a deep link asked for its own zoom.
+                    val zoom = cameraTargetZoom ?: if (cameraBottomInsetPx > 0) 16.5 else 14.5
                     map.animateCamera(
                         CameraUpdateFactory.newLatLngZoom(MLLatLng(target.lat, target.lng), zoom),
                     )
@@ -1623,7 +1650,7 @@ private fun ensureLayers(style: Style) {
     }
     // Canonical GTFS transit stops (Transitous). One icon per station (bays dedupe in the VM);
     // replaces the OSM basemap bus icons wherever this layer has coverage (poi_transit filter flips
-    // in applyData). Drawn beneath the flock layer, above the ambient POIs.
+    // in applyData). Drawn above the ambient POIs (and above the flock layer, which yields to both).
     if (style.getImage(TRANSIT_STOP_IMG) == null) style.addImage(TRANSIT_STOP_IMG, transitStopBitmap())
     if (style.getSource(TRANSIT_STOPS_SRC) == null) {
         style.addSource(GeoJsonSource(TRANSIT_STOPS_SRC))
@@ -1653,37 +1680,55 @@ private fun ensureLayers(style: Style) {
                     PropertyFactory.textColor("#7f8ba0"),
                     PropertyFactory.textHaloColor("#0e1626"),
                     PropertyFactory.textHaloWidth(1.1f),
+                    // Google-style: bare badges from z15, NAMES only from z17 (upstream 4d8cf684) -
+                    // a stop every block meant a wall of grey text at street zoom. Opacity step,
+                    // not a second layer: the label still participates in collision (textOptional
+                    // keeps the icon when a name can't fit), it's just invisible until close.
+                    PropertyFactory.textOpacity(
+                        Expression.step(Expression.zoom(), Expression.literal(0f), Expression.stop(17f, 1f)),
+                    ),
                 )
             },
         )
     }
-    // ALPR / "Flock" surveillance cameras (community DeFlock mapping in OSM). Its own symbol layer,
-    // populated only when the Settings toggle is on (empty source otherwise). Drawn ABOVE the ambient
-    // POIs so a camera you're trying to spot isn't hidden behind a shop icon; sparse enough that
-    // allowOverlap is fine. minZoom matches the fetch gate (FLOCK_MIN_ZOOM = 11): upstream 17a32d76
-    // lowered the FETCH to route-overview zoom but left this render layer at 13.5, so the fetched
-    // cameras still never drew below 13.5 - the layer must drop with it or the fix is half-done.
+    // ALPR / "Flock" surveillance cameras (community DeFlock mapping in OSM). Its own symbol
+    // layer, populated only when the Settings toggle is on (empty source otherwise). Drawn BELOW
+    // the ambient POIs (upstream 0a8bc537, was above): where a camera and a business icon/label
+    // share a spot the business wins. The camera itself always draws (allowOverlap) AND claims
+    // its collision box (ignorePlacement=false, upstream f1ddb341): symbols placing after it -
+    // the basemap street names and labels below this layer - dodge the badge instead of rendering
+    // half-covered under it. The POI stack places before this layer, so it is unaffected by the
+    // claim and still wins on top. minZoom matches the fetch gate (FLOCK_MIN_ZOOM = 11): upstream
+    // 17a32d76 lowered the FETCH to route-overview zoom but left this render layer at 13.5, so the
+    // fetched cameras still never drew below 13.5 - the layer must drop with it or the fix is
+    // half-done. Badges scale down a notch at overview zoom (z11 stop) so a metro's worth of
+    // cameras reads as dots, not clutter.
     if (style.getImage(FLOCK_IMG) == null) style.addImage(FLOCK_IMG, alprCameraBitmap())
     if (style.getSource(FLOCK_SRC) == null) {
         style.addSource(GeoJsonSource(FLOCK_SRC))
         val flockSize = Expression.interpolate(
             Expression.linear(), Expression.zoom(),
+            Expression.stop(11f, 0.55f),
             Expression.stop(14f, 0.7f),
             Expression.stop(17f, 1.0f),
             Expression.stop(19f, 1.35f),
         )
-        style.addLayer(
+        val flockLayer =
             SymbolLayer(FLOCK_LAYER, FLOCK_SRC).apply {
                 setMinZoom(11f)
                 setProperties(
                     PropertyFactory.iconImage(FLOCK_IMG),
                     PropertyFactory.iconSize(flockSize),
-                    PropertyFactory.iconAllowOverlap(true),
-                    PropertyFactory.iconIgnorePlacement(true),
+                    PropertyFactory.iconAllowOverlap(true), // never yields itself...
+                    PropertyFactory.iconIgnorePlacement(false), // ...and later symbols (street names) dodge it
                     PropertyFactory.iconPadding(2f),
                 )
-            },
-        )
+            }
+        if (style.getLayer(AMBIENT_LAYER) != null) {
+            style.addLayerBelow(flockLayer, AMBIENT_LAYER)
+        } else {
+            style.addLayer(flockLayer)
+        }
     }
     if (style.getSource(ME_SRC) == null) {
         style.addSource(GeoJsonSource(ME_SRC))
@@ -1850,6 +1895,14 @@ private fun applyMapTheme(style: Style, dark: Boolean) {
     // pastel tints in dark (see PoiIcons.labelColor). Search-result pins stay plain (Google does too).
     (style.getLayer(AMBIENT_LAYER) as? SymbolLayer)?.setProperties(
         PropertyFactory.textColor(PoiIcons.ambientLabelColor(dark)),
+        PropertyFactory.textHaloColor(if (dark) "#11161C" else "#FFFFFF"),
+    )
+    // Canonical GTFS stop names take the TRANSIT category colour per theme - blue in light,
+    // its pastel tint in dark, the same grammar every POI label follows. The creation-time
+    // colours in ensureLayers were hardcoded for dark (no theme there) and read as grey with
+    // a navy halo on the light map (upstream 7c885ad6).
+    (style.getLayer(TRANSIT_STOPS_LAYER) as? SymbolLayer)?.setProperties(
+        PropertyFactory.textColor(PoiIcons.labelColorFor("transit", dark)),
         PropertyFactory.textHaloColor(if (dark) "#11161C" else "#FFFFFF"),
     )
     // Hide Liberty's dashed clutter that Google doesn't draw: footpaths/sidewalks,
