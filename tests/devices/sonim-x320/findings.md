@@ -10,9 +10,9 @@
 - **Auditor:** `VELA_SMALL=480x854 VELA_SMALL_DPI=320 bash tests/small_screen/audit_smallscreen.sh`
   (the clipping check works in physical px, so it must run at the real 480x854 geometry).
 
-## Status: FULLY COVERED at SIMULATED 480x854 @ 320dpi (16/16 surfaces; not real hardware)
+## Status: FULLY COVERED at SIMULATED 480x854 @ 320dpi (20/20 surfaces; not real hardware)
 
-`bash tests/devices/full_coverage.sh sonim-x320` (with a mock GPS fix) reports **16 COVERED, 0
+`bash tests/devices/full_coverage.sh sonim-x320` (with a mock GPS fix) reports **20 COVERED, 0
 MISSED / RESULT: FULLY COVERED** - every surface reachable, D-pad-navigable and clip-free at the
 device's geometry. Screenshots in [`screenshots/full/`](screenshots/full/):
 
@@ -34,6 +34,10 @@ device's geometry. Screenshots in [`screenshots/full/`](screenshots/full/):
 | 14 | Settings -> Voice library | 14-settings-voice-library.png |
 | 15 | Settings -> Offline | 15-settings-offline.png |
 | 16 | Settings -> Saved places | 16-settings-saved-places.png |
+| 17 | Voice search (capture sheet / system recognizer) | 17-voice-capture-sheet.png |
+| 18 | Parking spot saved | 18-parking-saved.png |
+| 19 | Parking hub menu | 19-parking-menu.png |
+| 20 | Parked-car sheet | 20-parking-car-sheet.png |
 
 Confirms `AdaptiveDensity` works on logical dp, not pixels - so it generalizes across resolutions: at
 480x854 @ 320dpi it scales the same ~240dp logical width up to ~360dp and the whole app fits exactly
@@ -51,5 +55,5 @@ by `tests/dpad/audit_dynamic.sh`.
 ### Iterating
 Re-capture a single phase without redoing the whole ~13-min tour, e.g. the Settings block:
 `PHASES=settings bash tests/devices/full_coverage.sh sonim-x320` (writes the same 12..16 frames,
-leaves the rest). Phases: `firstrun map search place directions settings`. Only a full run (no
-`PHASES`) prints the FULLY COVERED verdict.
+leaves the rest). Phases: `firstrun map search place directions settings voice parking`. Only a full
+run (no `PHASES`) prints the FULLY COVERED verdict.

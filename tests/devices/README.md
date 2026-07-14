@@ -36,11 +36,18 @@ takes `VELA_SMALL=WxH VELA_SMALL_DPI=<dpi>` to sweep each device.
 
 | Model | Screen | Resolution | Orientation | ~dpi (density) | Status | Notes |
 |---|---|---|---|---|---|---|
-| [Kyocera e4810](kyocera-e4810/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | verified | 6/7 auditor surfaces pass; Settings verified visually; adaptive density fits all chips |
-| [TCL Flip 2](tcl-flip-2/findings.md) | 2.8" | 240x320 | portrait | ~143 (160) | covered (240x320) | same emulated geometry as Kyocera |
-| [Sonim XP3 (XP3800)](sonim-xp3/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | covered (240x320) | same emulated geometry as Kyocera |
-| [Kyocera DuraXV](kyocera-duraxv/findings.md) | - | 240x320 | portrait | ~160 | covered (240x320) | same emulated geometry as Kyocera e4810 |
-| [Sonim X320 (XP3 Plus 5G)](sonim-x320/findings.md) | 2.95" | 480x854 | portrait | ~332 (320) | verified | driven at 480x854@320; AdaptiveDensity generalizes |
+| [Kyocera e4810](kyocera-e4810/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | FULLY COVERED (20/20) | own full_coverage run; frames in `kyocera-e4810/screenshots/full/` |
+| [TCL Flip 2](tcl-flip-2/findings.md) | 2.8" | 240x320 | portrait | ~143 (160) | FULLY COVERED (20/20) | own full_coverage run; frames in `tcl-flip-2/screenshots/full/` |
+| [Sonim XP3 (XP3800)](sonim-xp3/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | FULLY COVERED (20/20) | own full_coverage run; frames in `sonim-xp3/screenshots/full/` |
+| [Kyocera DuraXV](kyocera-duraxv/findings.md) | - | 240x320 | portrait | ~160 | FULLY COVERED (20/20) | own full_coverage run; frames in `kyocera-duraxv/screenshots/full/` |
+| [Sonim X320 (XP3 Plus 5G)](sonim-x320/findings.md) | 2.95" | 480x854 | portrait | ~332 (320) | FULLY COVERED (20/20) | driven at 480x854@320; AdaptiveDensity generalizes |
+
+Status meaning: FULLY COVERED (20/20) = a full `full_coverage.sh <id>` run at that profile's simulated
+geometry reported 20 COVERED, 0 MISSED (all surfaces: first-run x4, bare map, search x2, place x2,
+directions x2, Settings x5 including the deep Offline and Saved places sections, voice search, parking
+x3) and the frames were checked by eye. Every committed profile now runs as its OWN row in the gate -
+no profile stands in for another, even at the same geometry. Still simulated geometry on a test phone,
+not real hardware.
 
 Every target so far is **240x320 portrait** (the "320x240" written on some spec sheets is the same
 panel in portrait). So the auditor default (240x320) covers them all; densities differ slightly with
