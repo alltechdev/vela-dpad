@@ -121,6 +121,10 @@ class CalibrationStore @Inject constructor(
             )
         }.orEmpty()
         val transformsJs = (o["transformsJs"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+        // Keyword-table overrides: plain string arrays (regex alternation terms).
+        fun strList(k: String): List<String>? = (o[k] as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { s -> s.isNotBlank() } }
+            ?.takeIf { it.isNotEmpty() }
         Calibration(
             version = version,
             searchEndpoint = str("searchEndpoint", d.searchEndpoint),
@@ -138,6 +142,8 @@ class CalibrationStore @Inject constructor(
             defaultVoiceSpeaker = (o["defaultVoiceSpeaker"] as? JsonPrimitive)?.content?.toIntOrNull() ?: d.defaultVoiceSpeaker,
             defaultVoiceSpeed = (o["defaultVoiceSpeed"] as? JsonPrimitive)?.content?.toFloatOrNull() ?: d.defaultVoiceSpeed,
             defaultVoiceId = (o["defaultVoiceId"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: d.defaultVoiceId,
+            transitCategoryWords = strList("transitCategoryWords") ?: d.transitCategoryWords,
+            transitExcludeWords = strList("transitExcludeWords") ?: d.transitExcludeWords,
         )
     }.getOrNull()
 
