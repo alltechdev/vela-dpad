@@ -125,6 +125,13 @@ class CalibrationStore @Inject constructor(
         fun strList(k: String): List<String>? = (o[k] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { s -> s.isNotBlank() } }
             ?.takeIf { it.isNotEmpty() }
+        // Per-language word tables ({"en": ["Closed", ...], ...}) for the open/closed status parse.
+        fun wordMap(k: String): Map<String, List<String>>? = (o[k] as? JsonObject)
+            ?.mapNotNull { (lang, v) ->
+                val words = (v as? JsonArray)
+                    ?.mapNotNull { (it as? JsonPrimitive)?.content?.takeIf { s -> s.isNotBlank() } }
+                if (!words.isNullOrEmpty()) lang to words else null
+            }?.toMap()?.takeIf { it.isNotEmpty() }
         Calibration(
             version = version,
             searchEndpoint = str("searchEndpoint", d.searchEndpoint),
@@ -142,6 +149,8 @@ class CalibrationStore @Inject constructor(
             defaultVoiceSpeaker = (o["defaultVoiceSpeaker"] as? JsonPrimitive)?.content?.toIntOrNull() ?: d.defaultVoiceSpeaker,
             defaultVoiceSpeed = (o["defaultVoiceSpeed"] as? JsonPrimitive)?.content?.toFloatOrNull() ?: d.defaultVoiceSpeed,
             defaultVoiceId = (o["defaultVoiceId"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: d.defaultVoiceId,
+            statusClosedWords = wordMap("statusClosedWords") ?: d.statusClosedWords,
+            statusOpenWords = wordMap("statusOpenWords") ?: d.statusOpenWords,
             transitCategoryWords = strList("transitCategoryWords") ?: d.transitCategoryWords,
             transitExcludeWords = strList("transitExcludeWords") ?: d.transitExcludeWords,
         )
