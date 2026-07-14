@@ -987,6 +987,7 @@ fun DirectionsPanel(
     onStartTransit: (TransitItinerary) -> Unit = {},
     onTimeSelected: (Int, Long?) -> Unit = { _, _ -> },
     flockOnRoute: List<Int> = emptyList(), // opt-in: ALPR camera count per route (index-aligned)
+    onCollapsedChange: (Boolean) -> Unit = {}, // MapScreen shrinks the route-fit camera inset while minimized
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -995,6 +996,9 @@ fun DirectionsPanel(
     // Keyed to the destination so opening directions for a different place starts
     // expanded again instead of inheriting the previous session's collapsed state.
     val collapsed = remember(destinationName) { mutableStateOf(false) }
+    // Report the minimized state up so MapScreen can shrink the route-fit camera inset -
+    // collapsing to the Start bar re-frames the route over the freed screen (upstream a17eded6).
+    LaunchedEffect(collapsed.value) { onCollapsedChange(collapsed.value) }
     Card(
         modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
