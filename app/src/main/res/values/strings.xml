@@ -518,4 +518,9 @@
     <string name="parking_history_clear_all">Clear all</string>
     <string name="parking_history_current">Current</string>
     <string name="parking_history_delete">Delete</string>
+    <string name="map_satellite_toggle">Satellite view</string>
+    <string name="map_satellite_attribution" translatable="false">Esri, Maxar, Earthstar Geographics</string>
+    <string name="map_layers">Layers</string>
+    <string name="settings_layers_button">Show layers button</string>
+    <string name="settings_layers_button_hint">The button on the map that flips satellite, traffic, transit and terrain.</string>
 </resources>

@@ -493,4 +493,8 @@
     <string name="parking_history_clear_all">Очистити все</string>
     <string name="parking_history_current">Поточне</string>
     <string name="parking_history_delete">Видалити</string>
+    <string name="map_satellite_toggle">Супутниковий вигляд</string>
+    <string name="map_layers">Шари</string>
+    <string name="settings_layers_button">Показувати кнопку шарів</string>
+    <string name="settings_layers_button_hint">Кнопка на мапі для супутника, заторів, транспорту та рельєфу.</string>
 </resources>

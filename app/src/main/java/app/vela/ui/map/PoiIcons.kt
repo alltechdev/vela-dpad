@@ -43,6 +43,14 @@ object PoiIcons {
         Triple("default", 0xe55f, "#5F6368"),
     )
 
+    /** Set by VelaMapView at style load: over satellite imagery the teardrop backings render
+     *  WHITE (Google hybrid's treatment) instead of the muted grey - grey sank into rooftops.
+     *  A satellite toggle reloads the style (it's in the styleKey), so every bitmap regenerates
+     *  through this flag. */
+    @Volatile var satellite: Boolean = false
+
+    private fun backing(): Int = Color.parseColor(if (satellite) "#FFFFFF" else "#9AA0A6")
+
     fun addTo(context: Context, style: Style) {
         val tf = runCatching {
             Typeface.createFromAsset(context.assets, "fonts/MaterialIcons-Regular.ttf")
@@ -300,7 +308,7 @@ object PoiIcons {
         })
         canvas.restore()
         // Grey teardrop backing.
-        canvas.drawPath(teardrop, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#9AA0A6") })
+        canvas.drawPath(teardrop, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = backing() })
         // Category-coloured dot.
         canvas.drawCircle(cx, bodyCy, dotR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor(colorHex) })
         // White Material glyph centred on the dot.

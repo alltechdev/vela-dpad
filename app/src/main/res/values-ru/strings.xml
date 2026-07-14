@@ -493,4 +493,8 @@
     <string name="parking_history_clear_all">Очистить всё</string>
     <string name="parking_history_current">Текущая</string>
     <string name="parking_history_delete">Удалить</string>
+    <string name="map_satellite_toggle">Спутниковый вид</string>
+    <string name="map_layers">Слои</string>
+    <string name="settings_layers_button">Показывать кнопку слоёв</string>
+    <string name="settings_layers_button_hint">Кнопка на карте для спутника, пробок, транспорта и рельефа.</string>
 </resources>

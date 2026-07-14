@@ -487,4 +487,8 @@
     <string name="parking_history_clear_all">Cancella tutto</string>
     <string name="parking_history_current">Attuale</string>
     <string name="parking_history_delete">Elimina</string>
+    <string name="map_satellite_toggle">Vista satellite</string>
+    <string name="map_layers">Livelli</string>
+    <string name="settings_layers_button">Mostra pulsante livelli</string>
+    <string name="settings_layers_button_hint">Il pulsante della mappa per satellite, traffico, trasporti e terreno.</string>
 </resources>
