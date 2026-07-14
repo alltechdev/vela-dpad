@@ -78,6 +78,15 @@ android {
             "\"${(project.findProperty("poiPackManifestUrl") as String?)
                 ?: "https://github.com/PimpinPumpkin/Vela/releases/download/poi-packs/poi-pack-manifest.json"}\"",
         )
+        // ALPR/Flock surveillance-camera dataset (DeFlock/OSM). A bundled floor ships in assets/, and the
+        // app refreshes from this hosted manifest so camera data updates WITHOUT an app release (weekly CI
+        // cron re-bakes + re-hosts). Same override pattern (-PflockManifestUrl=... via `adb reverse`).
+        buildConfigField(
+            "String",
+            "FLOCK_MANIFEST_URL",
+            "\"${(project.findProperty("flockManifestUrl") as String?)
+                ?: "https://github.com/PimpinPumpkin/Vela/releases/download/flock-cameras/flock-manifest.json"}\"",
+        )
     }
 
     // Real release signing comes from CI env vars; local dev falls back to the

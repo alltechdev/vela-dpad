@@ -17,6 +17,9 @@ import app.vela.ui.TransitLayer
 import app.vela.ui.Units
 import app.vela.ui.theme.AppTheme
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.concurrent.thread
 import timber.log.Timber
@@ -55,6 +58,13 @@ class VelaApp : Application() {
         app.vela.ui.Topography.init(this) // terrain-relief hillshade toggle (Settings > Map), off by default
         app.vela.ui.Flock.init(this) // ALPR/Flock camera layer toggle (Settings > Map), off by default
         app.vela.ui.FlockRouteAlert.init(this) // avoid-cameras routing toggle (Settings > Map), off by default
+        // Parse the bundled on-device ALPR/Flock camera dataset off the main thread (map layer draws
+        // instantly, route counts are reliable), then refresh from the hosted manifest so the data updates
+        // without an app release (weekly CI cron re-hosts a newer version; a bump swaps it in on next launch).
+        CoroutineScope(Dispatchers.IO).launch {
+            app.vela.data.FlockCameras.ensureLoaded(this@VelaApp)
+            app.vela.data.FlockCameras.refresh(this@VelaApp, app.vela.BuildConfig.FLOCK_MANIFEST_URL)
+        }
         app.vela.ui.SimLocation.init(this)
         app.vela.ui.VoiceSearch.init(this) // voice-search toggle + engine/provider prefs (mic in the search bar)
         app.vela.ui.LiveReviews.init(this)
