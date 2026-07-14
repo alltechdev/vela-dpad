@@ -14,6 +14,7 @@
 # Device geometry table - keep in sync with tests/devices/README.md.  id | WxH | density
 DEVICES="
 kyocera-e4810|240x320|160
+kyocera-duraxv|240x320|160
 tcl-flip-2|240x320|160
 sonim-xp3|240x320|160
 sonim-x320|480x854|320
