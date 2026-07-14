@@ -46,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalParking
 import androidx.compose.material.icons.filled.Place
@@ -567,6 +568,7 @@ fun MapScreen(
             compassHeading = state.compassHeading,
             locationStale = state.myLocationStale,
             cameraTarget = state.center,
+            cameraTargetZoom = state.centerZoom,
             recenterTick = state.recenterTick,
             cameraBottomInsetPx = cameraBottomInset,
             routePolyline = state.activeRoute?.polyline ?: emptyList(),
@@ -1346,20 +1348,20 @@ fun MapScreen(
                     )
                     // The parking hub, anchored to the button. Only reachable when a spot is set.
                     app.vela.ui.VelaMenu(expanded = showParkingMenu, onDismissRequest = { showParkingMenu = false }) {
-                        item(stringResource(R.string.map_parking_find)) { showParkingMenu = false; vm.showParkedCar(parkedCarLabel) }
+                        item(stringResource(R.string.map_parking_find), Icons.Default.DirectionsCar) { showParkingMenu = false; vm.showParkedCar(parkedCarLabel) }
                         // "Move parking here" overwrites the current spot with your live fix; the old
                         // one is not lost - saveParkingSpot archives it to history. Hidden with no fix.
                         if (state.myLocation != null) {
-                            item(stringResource(R.string.map_parking_move_here)) {
+                            item(stringResource(R.string.map_parking_move_here), Icons.Default.MyLocation) {
                                 showParkingMenu = false
                                 val msg = if (vm.saveParkingSpot()) parkingMovedMsg else parkingNoFixMsg
                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                             }
                         }
                         if (state.parkingHistory.size > 1) {
-                            item(stringResource(R.string.map_parking_earlier)) { showParkingMenu = false; showParkingHistory = true }
+                            item(stringResource(R.string.map_parking_earlier), Icons.Default.History) { showParkingMenu = false; showParkingHistory = true }
                         }
-                        item(stringResource(R.string.map_parking_clear)) {
+                        item(stringResource(R.string.map_parking_clear), Icons.Default.Delete) {
                             showParkingMenu = false
                             vm.clearParkingSpot()
                             Toast.makeText(context, parkingClearedMsg, Toast.LENGTH_SHORT).show()
