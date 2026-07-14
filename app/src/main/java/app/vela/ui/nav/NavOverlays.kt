@@ -41,7 +41,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -516,7 +515,6 @@ fun NavSearchChips(
     query: String,
     onQueryChange: (String) -> Unit,
     onPick: (String) -> Unit,
-    onFieldFocused: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -564,7 +562,6 @@ fun NavSearchChips(
                 modifier = Modifier
                     .weight(1f)
                     .padding(vertical = 8.dp)
-                    .onFocusChanged { onFieldFocused(it.isFocused) }
                     .dpadFieldEscape(),
             )
         }
