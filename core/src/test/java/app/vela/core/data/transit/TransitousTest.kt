@@ -128,9 +128,8 @@ class TransitousTest {
             ?: java.io.File("calibration.json")
         val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         val root = json.parseToJsonElement(raw.readText()).jsonObject
-        // This fork's shipped bundle does not carry transitCategoryWords yet (the compiled gate in
-        // MapViewModel covers all app languages); the guard arms itself the moment the words are
-        // pushed, so a bad edit then fails CI instead of the fleet.
+        // The fork's signed calibration bundle (v13) does not carry transitCategoryWords yet -
+        // the compiled regex covers the behaviour; this test self-arms when a bundle ships the key.
         val words = root["transitCategoryWords"]?.jsonArray?.map { it.jsonPrimitive.content } ?: return
         val gate = Regex(words.joinToString("|"), RegexOption.IGNORE_CASE)
         // must NOT match (the doubled-board report: a fuel stop next to a bus stop)
@@ -146,5 +145,29 @@ class TransitousTest {
             "Light rail station", "Treinstation", "Tågstation", "Gare", "Bahnhof",
             "Stazione ferroviaria", "Estación de tren", "Станция метро", "תחנת אוטובוס",
         )) assertTrue("should match: $good", gate.containsMatchIn(good))
+    }
+
+    @Test
+    fun `directional pairs merge into one stop with siblings`() {
+        fun stop(id: String, name: String, lat: Double, lng: Double, parent: String? = null) =
+            Transitous.MapStop(name = name, stopId = id, parentId = parent, lat = lat, lon = lng)
+        val merged = Transitous.mergeDirectionalPairs(
+            listOf(
+                // a directional pair ~25 m apart, same name -> one icon at the midpoint
+                stop("a1", "Main St & 1st Ave", 38.0000, -122.0000),
+                stop("a2", "Main St & 1st Ave", 38.0002, -122.0001),
+                // same name across town -> stays its own stop
+                stop("b1", "Main St & 1st Ave", 38.1000, -122.0000),
+                // direction-suffixed names differ -> never merged
+                stop("c1", "Hub NB Station", 38.0500, -122.0000),
+                stop("c2", "Hub SB Station", 38.0501, -122.0000),
+            ),
+        )
+        assertEquals(4, merged.size)
+        val pair = merged.first { it.stopId == "a1" }
+        assertEquals(listOf("a2"), pair.siblingIds)
+        assertEquals(38.0001, pair.lat, 1e-9)
+        assertTrue(merged.any { it.stopId == "b1" && it.siblingIds.isEmpty() })
+        assertTrue(merged.any { it.stopId == "c1" } && merged.any { it.stopId == "c2" })
     }
 }
