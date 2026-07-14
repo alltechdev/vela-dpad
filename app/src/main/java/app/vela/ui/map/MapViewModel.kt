@@ -118,6 +118,7 @@ data class MapUiState(
     val trafficControls: List<app.vela.core.data.TrafficControl> = emptyList(), // OSM lights+stop signs drawn at high zoom
     val flockCameras: List<app.vela.core.data.AlprCamera> = emptyList(), // ALPR/Flock cameras (DeFlock/OSM), neighbourhood zoom
     val flockOnRoute: List<Int> = emptyList(), // ALPR cameras near each route option (index-aligned with routes)
+    val transitStops: List<app.vela.core.data.transit.Transitous.MapStop> = emptyList(), // canonical GTFS stops (Transitous), street zoom
     val stopDepartures: app.vela.core.model.StopDepartures? = null, // a tapped transit stop's live board
     val stopDeparturesLoading: Boolean = false,
     val routeDetail: TransitStep? = null,         // the tapped board line's stop timeline (a ride leg)
@@ -1488,7 +1489,11 @@ class MapViewModel @Inject constructor(
     private val TRANSIT_CAT_COMPILED = Regex(
         """station|stop|subway|metro|transit|transport|\bhub\b|\bbus\b|train|\brail\b|tram|light rail|terminal|ferry|""" +
             """bahnhof|haltestelle|gare|estaci|estaç|stazione|fermata|estação|halte|stanice|""" +
-            """지하철|вокзал|станц|остановка|停|駅|车站|車站""",
+            """지하철|вокзал|станц|остановка|停|駅|车站|車站|""" +
+            // The gaps issue #71 exposed (a Hebrew-locale stop's category is "תחנת אוטובוס" and
+            // nothing here matched): Hebrew stems + the app languages that were missing entirely.
+            """תחנ|אוטובוס|רכבת|מסוף|רציף|""" + // he: stop/station stem, bus, rail, terminal, platform
+            """arrêt|parada|paragem|hållplats|przystanek|dworzec|зупинка|станція""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -1519,6 +1524,8 @@ class MapViewModel @Inject constructor(
      *  and again after the remote refresh). Absent fields leave the compiled tables in place. */
     private fun adoptKeywordTables() {
         val cal = calibration.current()
+        app.vela.core.data.google.parse.SearchParser.remoteClosedWords = cal.statusClosedWords
+        app.vela.core.data.google.parse.SearchParser.remoteOpenWords = cal.statusOpenWords
         TRANSIT_CAT = cal.transitCategoryWords?.takeIf { it.isNotEmpty() }?.let { words ->
             runCatching { Regex(words.joinToString("|"), RegexOption.IGNORE_CASE) }.getOrNull()
         } ?: TRANSIT_CAT_COMPILED
@@ -1546,25 +1553,69 @@ class MapViewModel @Inject constructor(
             .filter { p -> p.category?.let { isTransitCategory(it) } == true }
             .minByOrNull { it.location.distanceTo(at) }
 
-    /** A transit stop's live departure board, from the station's own place page (keyless, anonymous).
-     *  Only fired for places whose category reads like a transit stop AND that carry a feature id
-     *  (needed for the `?cid=` deep-link); guarded to the still-selected place when it returns. */
+    /** A transit stop's live departure board. PRIMARY: Transitous (open GTFS + realtime, keyless) -
+     *  one proximity lookup at the place's own coordinate, no name correlation against Google/OSM at
+     *  all, and unlike Google's anonymous page it returns EVERY route at the stop (a hub's parent
+     *  station merges all its bays). The Google place-page blob stays as the FALLBACK where the open
+     *  feeds lack the agency; guarded to the still-selected place when either returns. */
     private fun fetchStopDepartures(p: Place) {
         val fid = p.featureId
         if (fid.isNullOrBlank() || !fid.contains(":")) return
         val cat = p.category ?: ""
-        when {
-            // A real transit listing: its own place page carries the board.
-            isTransitCategory(cat) -> fetchBoardFrom(fid, selectedFid = fid)
-            // A bus stop named by its intersection ("Main St & 1st Ave") that Google resolved to
-            // the ROAD JUNCTION ("Intersection") rather than the co-located Stop - so its own page has NO
-            // board. Re-resolve to the stop and pull ITS board, the same way onPoiTap does for a
-            // tapped stop icon. The board attaches to the intersection sheet.
-            cat.contains("intersection", ignoreCase = true) -> resolveIntersectionStopBoard(p)
+        val isTransit = isTransitCategory(cat)
+        val isIntersection = cat.contains("intersection", ignoreCase = true)
+        if (!isTransit && !isIntersection) return
+        _state.update { if (it.selected?.featureId == fid) it.copy(stopDeparturesLoading = true) else it }
+        viewModelScope.launch {
+            val board = withContext(Dispatchers.IO) {
+                runCatching { app.vela.core.data.transit.Transitous.board(http, p.location.lat, p.location.lng) }.getOrNull()
+            }
+            depDbg("transitous lines=${board?.lines?.size ?: -1}")
+            if (board != null && board.lines.isNotEmpty()) {
+                _state.update { st ->
+                    if (st.selected?.featureId != fid) st
+                    else st.copy(stopDepartures = board, stopDeparturesLoading = false)
+                }
+                startTransitousBoardRefresh(p.id, p.location.lat, p.location.lng)
+                return@launch
+            }
+            // FALLBACK: the Google place-page blob (agency-dependent, one route at hubs - but better
+            // than nothing where the open feeds lack the agency).
+            when {
+                isTransit -> fetchBoardFrom(fid, selectedFid = fid)
+                // A stop named by its corner resolves to Google's "Intersection" entity, whose own page
+                // has no board - re-resolve to the co-located stop listing (device 2026-07-13).
+                else -> resolveIntersectionStopBoard(p)
+            }
         }
     }
 
     private var boardRefreshJob: Job? = null
+
+    /** Keep a TRANSITOUS board fresh while its sheet is open: re-query the open feed every 30 s (one
+     *  small JSON call, same cadence as the countdown clock) and swap the board in place. Ends itself
+     *  the moment the selection changes. Google-fallback boards use [startBoardRefresh] instead - that
+     *  path is a full WebView load, so it stays a SEQUENTIAL loop (a slow load stretches the interval
+     *  rather than piling up). Gated on the place ID, not the feature id - Transitous boards can attach
+     *  to id-only placeholders (a GTFS stop icon, a hinted tap with no Google listing). */
+    private fun startTransitousBoardRefresh(selId: String, lat: Double, lng: Double) {
+        boardRefreshJob?.cancel()
+        boardRefreshJob = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(30_000)
+                if (_state.value.selected?.id != selId) return@launch
+                val fresh = withContext(Dispatchers.IO) {
+                    runCatching { app.vela.core.data.transit.Transitous.board(http, lat, lng) }.getOrNull()
+                }
+                depDbg("transitous refresh lines=${fresh?.lines?.size ?: -1}")
+                if (fresh != null && fresh.lines.isNotEmpty()) {
+                    _state.update { st ->
+                        if (st.selected?.id == selId) st.copy(stopDepartures = fresh) else st
+                    }
+                }
+            }
+        }
+    }
 
     /** Keep a departure board fresh while its sheet is open: the board was a snapshot, so leaving
      *  the sheet open a few minutes let the times drift from the agency feed. Re-fetch on the
@@ -1688,39 +1739,54 @@ class MapViewModel @Inject constructor(
      *  No new keyless scraping. */
     fun openRouteDetail(line: app.vela.core.model.StopDepartureLine) {
         val origin = _state.value.selected?.location ?: return
-        val dest = line.headsign?.takeIf { it.isNotBlank() } ?: run {
-            flashStatus(appContext.getString(R.string.route_detail_unavailable)); return
-        }
-        val title = listOfNotNull(line.label, dest).joinToString(" · ")
+        val title = listOfNotNull(line.label, line.headsign?.takeIf { it.isNotBlank() }).joinToString(" · ")
         _state.update { it.copy(routeDetailLoading = true, routeDetailTitle = title, routeDetail = null) }
         routeDetailJob?.cancel()
         routeDetailJob = viewModelScope.launch {
-            // Aim at the route's destination (geocode the headsign near the stop), then ride transit there.
-            // A bare headsign is often ambiguous, so prefer a candidate that is itself a transit place
-            // and, among those, the one nearest the tapped stop.
-            val cands = runCatching { dataSource.search(dest, origin).places }.getOrDefault(emptyList())
-            val transitish = cands.filter { it.category?.let { c ->
-                listOf("station", "transit", "stop", "airport", "terminal", "bart", "metro", "rail")
-                    .any { k -> c.contains(k, ignoreCase = true) }
-            } == true }
-            val destLoc = (transitish.minByOrNull { it.location.distanceTo(origin) }
-                ?: cands.minByOrNull { it.location.distanceTo(origin) })?.location
-            if (destLoc == null) {
-                _state.update { it.copy(routeDetailLoading = false) }
-                flashStatus(appContext.getString(R.string.route_detail_unavailable)); return@launch
+            // PRIMARY: the GTFS trip itself. Transitous boards stamp each departure with its tripId,
+            // and /trip returns that run's REAL stop sequence with per-stop realtime and CANCELLED
+            // flags straight from the agency feed - exact where the itinerary reuse below has to
+            // guess at a matching leg, and no headsign geocode at all. Google-fallback boards carry
+            // no tripId, and a failed trip fetch falls through to the itinerary path.
+            val tripId = line.upcoming.firstOrNull { it.tripId != null }?.tripId
+            val gtfs = tripId?.let {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        app.vela.core.data.transit.Transitous.tripStops(http, it, origin.lat, origin.lng)
+                    }.getOrNull()
+                }
             }
-            val trips = runCatching { webDirections.transit(origin, destLoc) }.getOrDefault(emptyList())
-            val rides = trips.flatMap { it.steps }.filter { it.line != null && it.intermediateStops.isNotEmpty() }
-            // Pick the leg the user actually tapped: rank by the tapped LINE, then nearest board stop.
-            val boardDist = { st: TransitStep -> st.boardStop?.location?.distanceTo(origin) ?: Double.MAX_VALUE }
-            val step = rides.filter { lineLabelMatches(line.label, it.line?.name) }.minByOrNull { boardDist(it) }
-                ?: rides.filter { boardDist(it) <= 500.0 }.minByOrNull { boardDist(it) }
-                ?: rides.firstOrNull()
+            depDbg("route detail gtfs=${gtfs != null} tripId=${tripId != null}")
+            val step = gtfs ?: itineraryStep(line, origin)
             _state.update {
                 if (step == null) { flashStatus(appContext.getString(R.string.route_detail_unavailable)); it.copy(routeDetailLoading = false) }
                 else it.copy(routeDetail = step, routeDetailLoading = false)
             }
         }
+    }
+
+    /** The pre-GTFS fallback for the stop timeline: geocode the line's headsign near the stop and
+     *  reuse a transit itinerary's matching ride leg. Used for Google-fallback boards (their
+     *  departures carry no tripId) and when the trip fetch fails. Null when nothing usable. */
+    private suspend fun itineraryStep(line: app.vela.core.model.StopDepartureLine, origin: LatLng): TransitStep? {
+        val dest = line.headsign?.takeIf { it.isNotBlank() } ?: return null
+        // Aim at the route's destination (geocode the headsign near the stop), then ride transit there.
+        // A bare headsign is often ambiguous, so prefer a candidate that is itself a transit place
+        // and, among those, the one nearest the tapped stop.
+        val cands = runCatching { dataSource.search(dest, origin).places }.getOrDefault(emptyList())
+        val transitish = cands.filter { it.category?.let { c ->
+            listOf("station", "transit", "stop", "airport", "terminal", "bart", "metro", "rail")
+                .any { k -> c.contains(k, ignoreCase = true) }
+        } == true }
+        val destLoc = (transitish.minByOrNull { it.location.distanceTo(origin) }
+            ?: cands.minByOrNull { it.location.distanceTo(origin) })?.location ?: return null
+        val trips = runCatching { webDirections.transit(origin, destLoc) }.getOrDefault(emptyList())
+        val rides = trips.flatMap { it.steps }.filter { it.line != null && it.intermediateStops.isNotEmpty() }
+        // Pick the leg the user actually tapped: rank by the tapped LINE, then nearest board stop.
+        val boardDist = { st: TransitStep -> st.boardStop?.location?.distanceTo(origin) ?: Double.MAX_VALUE }
+        return rides.filter { lineLabelMatches(line.label, it.line?.name) }.minByOrNull { boardDist(it) }
+            ?: rides.filter { boardDist(it) <= 500.0 }.minByOrNull { boardDist(it) }
+            ?: rides.firstOrNull()
     }
 
     /** Does a departure-board line label ("N"/"42") match an itinerary line name ("N-Judah")? Exact,
@@ -1809,7 +1875,13 @@ class MapViewModel @Inject constructor(
                     // most-reviewed override (a defunct-but-reviewed shelter must not beat the live stop).
                     // No such listing -> null, so the lightweight name+location placeholder stays (a stop
                     // name beats a corner).
+                    // 250 m, not 80: the OSM icon and Google's stop listing routinely sit on
+                    // different corners of the junction. Name-first, then a bare proximity query -
+                    // OSM and Google often name the same stop differently, so the name-keyed search
+                    // can miss a listing that's right at the icon.
                     nearestLiveStop(results, location)
+                        ?: runCatching { dataSource.search(transitHint, location).places }.getOrNull()
+                            ?.let { nearestLiveStop(it, location) }
                 } else {
                     val canonical = results
                         .filter { it.location.distanceTo(location) < 35.0 }
@@ -1832,6 +1904,31 @@ class MapViewModel @Inject constructor(
                 fetchPlaceDetails(full) // popular times + editorial/owner, like a search-result tap
                 fetchStopDepartures(full) // a bus stop / station tapped on the MAP gets its live board
                 rememberRecentPlace(SavedPlace.of(full))
+            } else if (transitHint != null && _state.value.selected == placeholder) {
+                // Issue #71 (Jerusalem): a tapped stop with NO resolvable Google stop listing used to
+                // dead-end as a name-only sheet - no category, no board, nothing to swipe to. The TAP
+                // ITSELF says this is a transit stop (the basemap class, language-independent), and
+                // Transitous needs only the coordinate - so fetch the board by proximity regardless
+                // of what Google resolution did. The Google-page fallback is impossible here anyway
+                // (no feature id), so this is Transitous-or-nothing, which is correct.
+                _state.update { if (it.selected == placeholder) it.copy(stopDeparturesLoading = true) else it }
+                val board = withContext(Dispatchers.IO) {
+                    runCatching {
+                        app.vela.core.data.transit.Transitous.board(http, location.lat, location.lng)
+                    }.getOrNull()
+                }
+                depDbg("hinted-tap fallback lines=${board?.lines?.size ?: -1}")
+                _state.update {
+                    if (it.selected == placeholder) {
+                        it.copy(
+                            stopDepartures = board?.takeIf { b -> b.lines.isNotEmpty() },
+                            stopDeparturesLoading = false,
+                        )
+                    } else it
+                }
+                if (board != null && board.lines.isNotEmpty()) {
+                    startTransitousBoardRefresh(placeholder.id, location.lat, location.lng)
+                }
             }
         }
     }
@@ -2987,6 +3084,7 @@ class MapViewModel @Inject constructor(
         refreshAddressOverlays(center) // + house-number labels for that region
         refreshMaxspeedOverlay(center) // + the posted-speed-limit overlay (read under the puck for the sign)
         refreshTrafficControls(south, west, north, east, zoom) // + traffic lights / stop signs at high zoom
+        refreshTransitStops(south, west, north, east, zoom) // + canonical GTFS stop icons at street zoom
         lastFlockViewport = doubleArrayOf(south, west, north, east, zoom)
         refreshFlock(south, west, north, east, zoom) // + ALPR/Flock cameras when the layer is on
         // Half-diagonal of the visible box - used to hand the map only the POIs near the view (the
@@ -3223,6 +3321,91 @@ class MapViewModel @Inject constructor(
     private var flockBox: DoubleArray? = null
     private var lastFlockViewport: DoubleArray? = null
     private var flockJob: Job? = null
+
+    private var transitStopsBox: DoubleArray? = null
+    private var transitStopsJob: Job? = null
+    private val transitStopCache by lazy { app.vela.data.TransitStopCache(appContext) }
+
+    /** Canonical GTFS transit stops for the viewport (Transitous `map/stops`), the same area-cached,
+     *  350 ms-debounced contract as the traffic-controls layer. Every ONLINE fetch also refreshes the
+     *  DISK cache ([app.vela.data.TransitStopCache]) - the offline floor: with no network, a previously
+     *  visited area's stops still draw (the OSM basemap icons cover never-visited areas). Stops replace
+     *  the OSM bus icons wherever this layer has coverage (VelaMapView hides poi_transit's bus class then). */
+    private fun refreshTransitStops(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
+        if (zoom < TRANSIT_STOPS_MIN_ZOOM) {
+            transitStopsBox = null
+            transitStopsJob?.cancel()
+            if (_state.value.transitStops.isNotEmpty()) _state.update { it.copy(transitStops = emptyList()) }
+            return
+        }
+        val cLat = (south + north) / 2; val cLng = (west + east) / 2
+        transitStopsBox?.let { b ->
+            val insLat = (b[2] - b[0]) * 0.25; val insLng = (b[3] - b[1]) * 0.25
+            if (cLat in (b[0] + insLat)..(b[2] - insLat) && cLng in (b[1] + insLng)..(b[3] - insLng)) return
+        }
+        transitStopsJob?.cancel()
+        transitStopsJob = viewModelScope.launch {
+            delay(350)
+            val padLat = (north - south) * 0.5; val padLng = (east - west) * 0.5
+            val s0 = south - padLat; val n0 = north + padLat; val w0 = west - padLng; val e0 = east + padLng
+            val live = withContext(Dispatchers.IO) {
+                runCatching { app.vela.core.data.transit.Transitous.stopsInBox(http, s0, w0, n0, e0) }.getOrNull()
+            }
+            val stops = if (live != null) {
+                withContext(Dispatchers.IO) { runCatching { transitStopCache.store(s0, w0, n0, e0, live) } }
+                live
+            } else {
+                // Offline / fetch failed: the disk cache is the floor. Null there too -> keep whatever
+                // is drawn (don't blank the layer on a blip) and leave the box unset so we retry.
+                withContext(Dispatchers.IO) { runCatching { transitStopCache.lookup(s0, w0, n0, e0) }.getOrNull() } ?: return@launch
+            }
+            transitStopsBox = doubleArrayOf(s0, w0, n0, e0)
+            // One icon per station: bays collapse onto their parent (the board queries the parent anyway).
+            val deduped = stops.groupBy { it.parentId ?: it.stopId }.map { (_, group) -> group.first() }
+            _state.update { it.copy(transitStops = deduped) }
+        }
+    }
+
+    /** A tapped Transitous stop icon: open a lightweight place at the stop and fetch its board
+     *  DIRECTLY by stop id - no Google resolution, no name correlation. */
+    fun onTransitStopTap(stop: app.vela.core.data.transit.Transitous.MapStop) {
+        val placeholder = Place(
+            id = "gtfs:${stop.stopId}",
+            name = stop.name,
+            location = app.vela.core.model.LatLng(stop.lat, stop.lon),
+            category = "Bus stop",
+        )
+        reviewsJob?.cancel()
+        _state.update {
+            it.copy(
+                selected = placeholder,
+                results = emptyList(),
+                center = placeholder.location,
+                placesHere = emptyList(),
+                reviews = emptyList(),
+                stopDepartures = null,
+                stopDeparturesLoading = true,
+                reviewsLoading = false,
+                reviewsFound = 0,
+                loadingDetails = false,
+                photosLoading = false,
+                pickingOrigin = false,
+                pickingStop = false,
+                directionsOpen = false,
+            )
+        }
+        viewModelScope.launch {
+            val board = withContext(Dispatchers.IO) {
+                runCatching { app.vela.core.data.transit.Transitous.boardFor(http, stop) }.getOrNull()
+            }
+            depDbg("stop-icon board lines=${board?.lines?.size ?: -1}")
+            _state.update { st ->
+                if (st.selected?.id != placeholder.id) st
+                else st.copy(stopDepartures = board?.takeIf { it.lines.isNotEmpty() }, stopDeparturesLoading = false)
+            }
+            if (board != null && board.lines.isNotEmpty()) startTransitousBoardRefresh(placeholder.id, stop.lat, stop.lon)
+        }
+    }
 
     /** Re-fetch (or clear) the Flock layer for the current viewport - called when the toggle flips,
      *  so turning it on shows cameras without needing a pan first. */
@@ -3648,6 +3831,7 @@ class MapViewModel @Inject constructor(
     companion object {
         const val KEY_DISMISSED = "dismissed"
         const val CONTROLS_MIN_ZOOM = 16.0 // draw traffic lights/stop signs only when zoomed in this close
+        const val TRANSIT_STOPS_MIN_ZOOM = 15.0 // GTFS stop icons from street-ish zoom (denser than cameras)
         // ALPR cameras are sparse, so show them from a WIDE zoom - lowered 13 -> 11 (2026-07-13) so
         // they're visible on a whole-ROUTE overview, not just after you zoom into a neighbourhood. The
         // "I know this route has cameras but don't see any" report was almost certainly this: a route
