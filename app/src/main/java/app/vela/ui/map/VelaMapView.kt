@@ -62,6 +62,7 @@ private const val ROUTE_LAYER = "vela-route"
 // Two layers + visibility toggle, because MapLibre's line-dasharray DISABLES line-gradient -
 // so the solid driving line (traffic gradient) and the dashed foot/bike line can't share one.
 private const val ROUTE_DASH_LAYER = "vela-route-dash"
+private const val ROUTE_DOT_IMG = "vela-route-dot"
 // The AHEAD half of the nav route. During nav the driven/ahead cut is a GEOMETRY split, not a
 // gradient stop: MapLibre rasterizes line-gradient into a 256×1 LINEAR-filtered texture, so a
 // "hard" step() cut renders as a grey→blue fade of routeLength/256 metres (~39 m on a 10 km
@@ -117,6 +118,8 @@ private const val HILLSHADE_LAYER = "vela-hillshade"
 private const val TERRARIUM_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
 
 private const val TRAFFIC_SRC = "vela-traffic-src"
+private const val STOPNUM_SRC = "vela-stopnums-src"
+private const val STOPNUM_LAYER = "vela-stopnums"
 private const val TRAFFIC_LAYER = "vela-traffic"
 // Rail-highlight layer (train + subway/tram), drawn over the basemap's own transportation lines.
 private const val TRANSIT_LAYER = "vela-transit"
@@ -179,6 +182,7 @@ fun VelaMapView(
     cameraTargetZoom: Double? = null, // deep-link z= override for the target fly (null = default framing)
     recenterTick: Int = 0, // bumped on each recenter tap → force a move even if already "centered"
     cameraBottomInsetPx: Int = 0,
+    cameraTopInsetPx: Int = 0, // measured top chrome (the endpoints card) - the route fit clears it
     routePolyline: List<LatLng>,
     routeColor: String,
     routeDashed: Boolean = false, // draw the route dashed (walking / biking), Google-style
@@ -190,6 +194,9 @@ fun VelaMapView(
     altColor: String = "#9AA0A6",
     onSelectAlternate: (Int) -> Unit = {},
     markers: List<MapMarker>,
+    // Intermediate trip stops in VISIT ORDER - drawn as numbered teal pins (1, 2, ...) while a
+    // trip is planned or driven; reordering the stops re-numbers the pins (list identity keys it).
+    stopPins: List<LatLng> = emptyList(),
     frameMarkers: Boolean,
     navMode: Boolean,
     navFollowing: Boolean = true,
@@ -470,6 +477,47 @@ fun VelaMapView(
     // (device-reproduced: Applebee's icon on the "5710" building vanished the moment numbers appeared; small
     // neighbours survived because the prominence-scaled big icons collide the most). Below the icons, numbers
     // place last and yield - Google's exact behaviour (a house number never displaces a business icon).
+    // Numbered stop pins: one teal pin per intermediate stop, numbered in visit order. The
+    // whole feature set re-uploads whenever the list (or its order) changes, so a reorder in
+    // the stops editor re-numbers the map immediately. Icons register on demand per number.
+    LaunchedEffect(stopPins, styleRef) {
+        val style = styleRef ?: return@LaunchedEffect
+        runCatching {
+            if (stopPins.isEmpty()) {
+                style.getLayer(STOPNUM_LAYER)?.let { style.removeLayer(it) }
+                style.getSource(STOPNUM_SRC)?.let { style.removeSource(it) }
+                return@LaunchedEffect
+            }
+            val feats = stopPins.mapIndexed { i, p ->
+                PoiIcons.ensureStopNumberIcon(style, i + 1)
+                Feature.fromGeometry(Point.fromLngLat(p.lng, p.lat)).apply {
+                    addStringProperty("icon", "vela-stopnum-${i + 1}")
+                }
+            }
+            val existing = style.getSource(STOPNUM_SRC) as? GeoJsonSource
+            if (existing != null) {
+                existing.setGeoJson(FeatureCollection.fromFeatures(feats))
+            } else {
+                style.addSource(GeoJsonSource(STOPNUM_SRC, FeatureCollection.fromFeatures(feats)))
+            }
+            if (style.getLayer(STOPNUM_LAYER) == null) {
+                val layer = SymbolLayer(STOPNUM_LAYER, STOPNUM_SRC).withProperties(
+                    PropertyFactory.iconImage(Expression.get("icon")),
+                    PropertyFactory.iconSize(0.9f),
+                    PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM), // tip marks the stop
+                    PropertyFactory.iconAllowOverlap(true), // a handful of pins, always visible
+                    PropertyFactory.iconIgnorePlacement(true),
+                )
+                // Beside the result markers in the stack: above the route line and geometry,
+                // below the basemap labels the markers already sit under.
+                when {
+                    style.getLayer(MARKERS_LAYER) != null -> style.addLayerAbove(layer, MARKERS_LAYER)
+                    else -> style.addLayer(layer)
+                }
+            }
+        }
+    }
+
     LaunchedEffect(addressOverlays, styleRef, darkTheme, satelliteOn) {
         val style = styleRef ?: return@LaunchedEffect
         runCatching { style.layers.filter { it.id.startsWith("vela-addr-") }.forEach { style.removeLayer(it) } }
@@ -1358,14 +1406,21 @@ fun VelaMapView(
                 }
             }
 
-            routePolyline.size >= 2 && routePolyline.hashCode() != lastFittedRouteKey -> {
-                lastFittedRouteKey = routePolyline.hashCode()
+            // Keyed on the insets too, not just the geometry: minimizing the chooser shrinks the
+            // bottom inset, and re-running the fit then re-frames the route CLOSER over the freed
+            // map (upstream a17eded6); the top-card measurement landing a frame late corrects the
+            // same way instead of leaving a fit that ignored it.
+            routePolyline.size >= 2 &&
+                (routePolyline.hashCode() * 31 + cameraBottomInsetPx * 7 + cameraTopInsetPx) != lastFittedRouteKey -> {
+                lastFittedRouteKey = routePolyline.hashCode() * 31 + cameraBottomInsetPx * 7 + cameraTopInsetPx
                 val builder = MLLatLngBounds.Builder()
                 routePolyline.forEach { builder.include(MLLatLng(it.lat, it.lng)) }
-                // Reserve room at the bottom for the directions panel so the whole route
-                // (and its greyed alternates) frames ABOVE it, not behind it (Google-style).
+                // Reserve room at the bottom for the directions panel AND at the top for the
+                // endpoints card, so the route's start/end frame in the VISIBLE strip between
+                // them instead of hiding behind either (upstream b6b7bbd1).
                 val pad = 140
                 val bottom = if (cameraBottomInsetPx > 0) cameraBottomInsetPx + pad else pad
+                val top = if (cameraTopInsetPx > 0) cameraTopInsetPx + pad else pad
                 val bounds = builder.build()
                 // A continental trip fit zooms out until nothing has context; past ~12 degrees
                 // of span, frame the DESTINATION area instead - the end point is the part worth
@@ -1380,7 +1435,7 @@ fun VelaMapView(
                         return@runCatching
                     }
                     map.animateCamera(
-                        CameraUpdateFactory.newLatLngBounds(bounds, pad, pad, pad, bottom), 800,
+                        CameraUpdateFactory.newLatLngBounds(bounds, pad, top, pad, bottom), 800,
                     )
                 }
             }
@@ -1500,26 +1555,23 @@ private fun ensureLayers(style: Style) {
         val firstLabel = (if (lastBridge >= 0) style.layers.drop(lastBridge + 1) else style.layers)
             .firstOrNull { it is SymbolLayer }?.id
         if (firstLabel != null) style.addLayerBelow(routeLine, firstLabel) else style.addLayer(routeLine)
-        // The dashed foot/bike variant (hidden until a walk/bike route is shown). A ZERO-length
-        // dash + round caps renders a true circular dot (diameter = line width), like Google's
-        // walking dots. Two scaling rules learned the hard way (user report: "fine zoomed in,
-        // crammed zoomed out"): (1) dasharray units are LINE-WIDTHS, so the width must shrink at
-        // low zoom or the dots keep their screen size while the geometry shrinks under them;
-        // (2) MapLibre quantises the dash texture to integer zooms and compresses the pattern up
-        // to ~2x between them, so the gap needs headroom (2.6 widths) or dots touch at z.9.
-        val routeDash = LineLayer(ROUTE_DASH_LAYER, ROUTE_SRC).withProperties(
-            PropertyFactory.lineColor("#1F6FEB"),
-            PropertyFactory.lineWidth(
-                Expression.interpolate(
-                    Expression.exponential(1.5f), Expression.zoom(),
-                    Expression.stop(11f, 3f),
-                    Expression.stop(15f, 6f),
-                    Expression.stop(19f, 9f),
-                ),
-            ),
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-            PropertyFactory.lineDasharray(arrayOf(0f, 2.6f)),
+        // The dotted foot/bike variant (hidden until a walk/bike route is shown). Google-style
+        // CONSTANT-ON-SCREEN dots: a symbol layer placed along the line with a fixed
+        // symbol-spacing, which is in SCREEN pixels and therefore zoom-invariant. A line
+        // dasharray can never do this - its units are line-widths and MapLibre quantises the
+        // dash texture to integer zooms (compressing up to ~2x in between), so dash dots always
+        // cram together zoomed out (user report 2026-07-08). The dot is an SDF template so
+        // iconColor can restyle it like lineColor did.
+        if (style.getImage(ROUTE_DOT_IMG) == null) style.addImage(ROUTE_DOT_IMG, routeDotBitmap(), true)
+        val routeDash = SymbolLayer(ROUTE_DASH_LAYER, ROUTE_SRC).withProperties(
+            PropertyFactory.symbolPlacement(Property.SYMBOL_PLACEMENT_LINE),
+            PropertyFactory.symbolSpacing(13f),
+            PropertyFactory.iconImage(ROUTE_DOT_IMG),
+            PropertyFactory.iconColor("#1F6FEB"),
+            // The dots ARE the route line: they must never be collision-culled or thinned.
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.iconPadding(0f),
             PropertyFactory.visibility(Property.NONE),
         )
         if (firstLabel != null) style.addLayerBelow(routeDash, firstLabel) else style.addLayer(routeDash)
@@ -2554,7 +2606,7 @@ private fun applyData(
         style.getLayer(ROUTE_LAYER)?.setProperties(PropertyFactory.visibility(Property.NONE))
         style.getLayer(ROUTE_DASH_LAYER)?.setProperties(
             PropertyFactory.visibility(Property.VISIBLE),
-            PropertyFactory.lineColor(routeInt),
+            PropertyFactory.iconColor(routeInt),
         )
     } else if (!navMode) {
         // Driving, not navigating (preview / route picker): the solid traffic-coloured line,
@@ -2830,6 +2882,17 @@ private fun parkingBitmap(): Bitmap {
         textAlign = Paint.Align.CENTER
     }
     canvas.drawText("P", cx, headCy - (text.ascent() + text.descent()) / 2f, text)
+    return bmp
+}
+
+/** A solid circle template for the walk/bike route dots (SDF, tinted via iconColor). */
+private fun routeDotBitmap(): Bitmap {
+    // Small dot: line-placed symbols must FIT the line (tight curves skip icons that don't),
+    // so a compact dot keeps the chain continuous through bends.
+    val d = 14
+    val bmp = Bitmap.createBitmap(d, d, Bitmap.Config.ARGB_8888)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+    Canvas(bmp).drawCircle(d / 2f, d / 2f, d / 2f - 1.5f, paint)
     return bmp
 }
 

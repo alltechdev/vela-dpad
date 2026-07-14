@@ -191,9 +191,15 @@ fun MapScreen(
     val placeSheetUp = state.selected != null && !state.directionsOpen && !state.navigating
     // Push the optical centre up so the place sheet / directions panel doesn't sit on
     // top of the pin or the route (the directions panel is tall - fit the route above it).
+    // The route chooser reports its minimized state up: with only the Start bar left on
+    // screen the route fit gets nearly the whole map back, so it re-frames closer instead
+    // of staying at the zoomed-out framing the full-height panel needed (upstream a17eded6).
+    var dirMinimized by remember { mutableStateOf(false) }
+    LaunchedEffect(state.directionsOpen) { if (!state.directionsOpen) dirMinimized = false }
     val cameraBottomInset = when {
         placeSheetUp -> (screenHeightPx * 0.56f).toInt()
-        state.directionsOpen && !state.navigating -> (screenHeightPx * 0.58f).toInt()
+        state.directionsOpen && !state.navigating ->
+            (screenHeightPx * (if (dirMinimized) 0.14f else 0.58f)).toInt()
         // Results bottom sheet at peek covers ~the bottom half: frame the result pins
         // in the visible top half, not behind the sheet.
         state.results.isNotEmpty() && state.selected == null && !state.resultsCollapsed &&
@@ -319,6 +325,9 @@ fun MapScreen(
     // Measured screen-Y of the maneuver banner's bottom edge → so VelaMapView can sit the compass just below
     // it during nav (the banner's height varies with lane guidance + a "then" row, so it can't be guessed).
     var navBannerBottomPx by remember { mutableStateOf(0) }
+    // The endpoints card's measured bottom edge, so the route fit can clear the card
+    // instead of framing the start of the route exactly behind it.
+    var topCardBottomPx by remember { mutableStateOf(0) }
     // Measured height of the nav BOTTOM bar (ETA + End) → everything stacked above it (speedometer,
     // speed-limit sign, re-center FAB, GPS-lost chip) offsets from the REAL height instead of a fixed
     // 132dp guess. The bar grows with the system font size, and at a larger font scale the fixed offset
@@ -356,6 +365,7 @@ fun MapScreen(
                 state.selected == null &&
                 (state.results.isEmpty() || state.resultsCollapsed) -> mapEngaged = false
             searchOpen -> { searchExpanded = false; focusManager.clearFocus(); vm.cancelPickOrigin(); vm.cancelPickStop() }
+            state.editingStops -> vm.closeStopsEditor()
             state.showSteps -> vm.closeSteps()
             state.navigating -> vm.stopNav()
             state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty() ||
@@ -574,6 +584,9 @@ fun MapScreen(
             cameraTargetZoom = state.centerZoom,
             recenterTick = state.recenterTick,
             cameraBottomInsetPx = cameraBottomInset,
+            // The endpoints card's measured bottom edge: the route fit frames start/end in the
+            // strip between the card and the chooser instead of hiding either behind chrome.
+            cameraTopInsetPx = if (state.directionsOpen && !state.navigating) topCardBottomPx else 0,
             routePolyline = state.activeRoute?.polyline ?: emptyList(),
             routeColor = routeTrafficColor(state.activeRoute),
             routeDashed = state.travelMode == app.vela.core.model.TravelMode.WALK ||
@@ -590,6 +603,8 @@ fun MapScreen(
             onSelectAlternate = vm::selectRoute,
             markers = markersOf(state),
             frameMarkers = state.results.isNotEmpty() && state.selected == null && !state.resultsCollapsed,
+            // Numbered stop pins while the trip UI is active (chooser, editor or the drive itself).
+            stopPins = if (state.directionsOpen || state.navigating) state.directionsWaypoints.map { it.location } else emptyList(),
             navMode = state.navigating,
             navFollowing = !state.navCameraDetached,
             driveFollowing = driveFollowing,
@@ -829,6 +844,34 @@ fun MapScreen(
                     ),
             ) {
                 Column(Modifier.statusBarsPadding().padding(12.dp)) {
+                    // Directions mode: the search bar swaps for the Google-style endpoints card
+                    // (origin / stops / destination, swap, back) - the rows that used to sit in
+                    // the bottom chooser. Hidden while the search overlay is up (picking an
+                    // origin/stop runs the normal search page) and while the steps preview or
+                    // stops editor own the screen.
+                    if (state.directionsOpen && !searchOpen && state.pickOnMap == null && !state.showSteps && !state.editingStops) {
+                        app.vela.ui.place.RouteTopCard(
+                            modifier = Modifier.onGloballyPositioned {
+                                topCardBottomPx = (it.positionInRoot().y + it.size.height).roundToInt()
+                            },
+                            originName = if (state.directionsReversed) (state.selected?.name ?: stringResource(R.string.mapscreen_place))
+                            else (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location)),
+                            originIsMe = !state.directionsReversed && state.directionsOrigin == null,
+                            destinationName = if (state.directionsReversed) (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location))
+                            else (state.selected?.name ?: stringResource(R.string.mapscreen_destination)),
+                            stops = state.directionsWaypoints.map { it.name },
+                            showStopControls = state.travelMode != app.vela.core.model.TravelMode.TRANSIT,
+                            onEditOrigin = if (state.directionsReversed) null else vm::beginPickOrigin,
+                            onEditDestination = if (state.directionsReversed) vm::beginPickOrigin else null,
+                            onEditStops = vm::openStopsEditor,
+                            onAddStop = vm::openStopsEditor,
+                            onSwap = vm::swapDirections,
+                            onClose = vm::clearRoute,
+                        )
+                    }
+                    // The search bar hides while the endpoints card above replaces it in
+                    // directions mode.
+                    if (!(state.directionsOpen && !searchOpen)) {
                     SearchBar(
                         query = state.query,
                         searching = state.searching,
@@ -851,6 +894,7 @@ fun MapScreen(
                         offline = state.offline,
                         onMic = onMic,
                     )
+                    }
                     when {
                         // Show the entry page (Your location, Choose on map, Home/Work, saved, recents)
                         // when the field is focused, when there are no results yet, OR while picking an
@@ -1113,6 +1157,20 @@ fun MapScreen(
                     .onGloballyPositioned { navBarHeightPx = it.size.height },
             )
 
+            // The dedicated stops editor covers the directions panel while open (drag to
+            // reorder, remove, add; one reroute on Done).
+            state.editingStops && state.directionsOpen && !searchOpen && state.pickOnMap == null -> app.vela.ui.place.StopsEditorSheet(
+                originName = if (state.directionsReversed) (state.selected?.name ?: stringResource(R.string.mapscreen_place))
+                else (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location)),
+                destinationName = if (state.directionsReversed) (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location))
+                else (state.selected?.name ?: stringResource(R.string.mapscreen_destination)),
+                stops = state.directionsWaypoints,
+                onApply = vm::applyStops,
+                onAddStop = vm::beginPickStop,
+                onDismiss = vm::closeStopsEditor,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+
             // Tapping "Directions" opens a dedicated panel (popup) - mode tabs, the
             // route option(s) with traffic-aware ETAs, selectable alternates, Start -
             // instead of burying it at the bottom of the place sheet.
@@ -1120,20 +1178,8 @@ fun MapScreen(
             // the panel doesn't render over it.
             state.directionsOpen && !searchOpen && state.pickOnMap == null -> DirectionsPanel(
                 flockOnRoute = state.flockOnRoute,
-                originName = if (state.directionsReversed) (state.selected?.name ?: stringResource(R.string.mapscreen_place))
-                else (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location)),
                 destinationName = if (state.directionsReversed) (state.directionsOrigin?.name ?: stringResource(R.string.mapscreen_your_location))
                 else (state.selected?.name ?: stringResource(R.string.mapscreen_destination)),
-                // Tap the custom endpoint to route to/from somewhere other than your
-                // location - the "From" row normally, or the "To" row when reversed (that's
-                // where the editable endpoint sits). Both open the search to pick a place.
-                onEditOrigin = if (state.directionsReversed) null else vm::beginPickOrigin,
-                onEditDestination = if (state.directionsReversed) vm::beginPickOrigin else null,
-                stops = state.directionsWaypoints.map { it.name },
-                onAddStop = vm::beginPickStop,
-                onRemoveStop = vm::removeStop,
-                onMoveStop = vm::moveStop,
-                onSwap = vm::swapDirections,
                 currentMode = state.travelMode,
                 routes = state.routes,
                 activeRoute = state.activeRoute,
@@ -1146,8 +1192,8 @@ fun MapScreen(
                 onSearchAlongRoute = vm::searchAlongRoute,
                 onWalkDirections = vm::walkDirections,
                 onStartTransit = vm::startTransitNav,
-                onClose = vm::clearRoute,
                 onTimeSelected = vm::setDirectionsTime,
+                onCollapsedChange = { dirMinimized = it },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
@@ -1500,8 +1546,19 @@ fun MapScreen(
                 onAction = vm::clearStatus,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 96.dp, start = 12.dp, end = 12.dp),
+                    .then(
+                        // In directions mode the endpoints card is taller than the search bar the
+                        // 96dp constant was tuned for, so heads-up cards printed over it - sit
+                        // them under the measured card instead (upstream cc691c0f).
+                        if (state.directionsOpen && !searchOpen && topCardBottomPx > 0) {
+                            Modifier.padding(
+                                top = with(LocalDensity.current) { topCardBottomPx.toDp() } + 10.dp,
+                                start = 12.dp, end = 12.dp,
+                            )
+                        } else {
+                            Modifier.statusBarsPadding().padding(top = 96.dp, start = 12.dp, end = 12.dp)
+                        },
+                    ),
                 // A voice problem carries its fix. Normally a pill straight to Vela's voice library;
                 // for a language with no Vela voice (Japanese, Hebrew) it opens the phone's own voice
                 // settings instead, where the user can add a system voice.

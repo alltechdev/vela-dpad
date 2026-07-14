@@ -184,6 +184,9 @@
     <string name="place_move_stop_down">Перемістити зупинку вниз</string>
     <string name="place_remove_stop">Видалити зупинку</string>
     <string name="place_add_stop">Додати зупинку</string>
+    <string name="stops_editor_title">Зупинки</string>
+    <string name="stops_edit">Змінити зупинки</string>
+    <string name="stops_drag_reorder">Перетягніть, щоб змінити порядок</string>
     <string name="place_change_destination">Змінити пункт призначення</string>
     <string name="place_swap_start_destination">Поміняти відправлення й призначення</string>
     <string name="place_close_directions">Закрити маршрут</string>
@@ -497,4 +500,10 @@
     <string name="map_layers">Шари</string>
     <string name="settings_layers_button">Показувати кнопку шарів</string>
     <string name="settings_layers_button_hint">Кнопка на мапі для супутника, заторів, транспорту та рельєфу.</string>
+    <plurals name="topcard_more_stops">
+        <item quantity="one">ще %d зупинка</item>
+        <item quantity="few">ще %d зупинки</item>
+        <item quantity="many">ще %d зупинок</item>
+        <item quantity="other">ще %d зупинки</item>
+    </plurals>
 </resources>

@@ -184,6 +184,9 @@
     <string name="place_move_stop_down">Переместить остановку вниз</string>
     <string name="place_remove_stop">Удалить остановку</string>
     <string name="place_add_stop">Добавить остановку</string>
+    <string name="stops_editor_title">Остановки</string>
+    <string name="stops_edit">Изменить остановки</string>
+    <string name="stops_drag_reorder">Перетащите, чтобы изменить порядок</string>
     <string name="place_change_destination">Изменить пункт назначения</string>
     <string name="place_swap_start_destination">Поменять местами отправление и назначение</string>
     <string name="place_close_directions">Закрыть маршрут</string>
@@ -497,4 +500,10 @@
     <string name="map_layers">Слои</string>
     <string name="settings_layers_button">Показывать кнопку слоёв</string>
     <string name="settings_layers_button_hint">Кнопка на карте для спутника, пробок, транспорта и рельефа.</string>
+    <plurals name="topcard_more_stops">
+        <item quantity="one">ещё %d остановка</item>
+        <item quantity="few">ещё %d остановки</item>
+        <item quantity="many">ещё %d остановок</item>
+        <item quantity="other">ещё %d остановки</item>
+    </plurals>
 </resources>
