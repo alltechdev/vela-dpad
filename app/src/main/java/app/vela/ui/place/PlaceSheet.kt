@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -475,7 +476,14 @@ fun PlaceSheet(
             // peek height / in landscape; tap one to open the full gallery.
             // Hidden entirely when "Load photos" is off (the fetch is skipped too, but the
             // search response can seed a preview photo - don't show it either).
-            if (app.vela.ui.LoadPhotos.on.value && (place.photoUrls.isNotEmpty() || photosLoading)) {
+            // Most transit stops have NO photos, so the pulsing placeholder tiles read as a perpetual
+            // loading animation for nothing (user 2026-07-13) - suppress the shimmer for transit places
+            // entirely; if the fetch does land photos, the row simply appears with them.
+            val transitNoShimmer = stopDepartures != null || stopDeparturesLoading ||
+                place.category?.lowercase()?.let { c ->
+                    listOf("station", "stop", "transit", "transport", "hub", "bus", "subway", "metro", "tram", "rail", "ferry", "terminal", "platform").any { it in c }
+                } == true
+            if (app.vela.ui.LoadPhotos.on.value && (place.photoUrls.isNotEmpty() || (photosLoading && !transitNoShimmer))) {
                 // Category filter chips (Menu / Food & drink / Vibe / By owner …) - only when Google tagged
                 // photos with categories, mirroring its gallery tabs. "All" clears the filter.
                 val photoCats = remember(place.photoCategories) { place.photoCategories.filterNotNull().distinct() }
@@ -517,7 +525,7 @@ fun PlaceSheet(
                     }
                     // The full gallery scrapes in the background a beat after the sheet opens -
                     // pulse placeholder tiles so it reads as "more photos loading", not "done".
-                    if (photosLoading) {
+                    if (photosLoading && !transitNoShimmer) {
                         item { PhotoShimmerTile(dim) }
                         if (place.photoUrls.isEmpty()) {
                             item { PhotoShimmerTile(dim) }
@@ -2020,13 +2028,21 @@ fun RouteDetailSheet(
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = prior.size)
             LazyColumn(Modifier.fillMaxSize().padding(horizontal = 4.dp), state = listState) {
                 itemsIndexed(stops) { i, stop ->
-                    RouteStopRow(stop, lineColor, ink, dim, isFirst = i == prior.size, isLast = i == stops.lastIndex, past = i < prior.size, isTop = i == 0, onClick = { onStopTap(stop) })
+                    val isBoard = i == prior.size
+                    val isLast = i == stops.lastIndex
+                    RouteStopRow(stop, lineColor, ink, dim, isBoard, isLast, past = i < prior.size, isTop = i == 0, onClick = { onStopTap(stop) })
                 }
             }
         }
     }
 }
 
+/** One stop in the [RouteDetailSheet] timeline: a coloured connector rail with a node, the stop
+ *  name (board/alight emphasised), its call time in normal ink (the boarding stop's - the next
+ *  departure - a step bigger) and a small status word under the time: a green "Live" when the
+ *  agency feed adjusted this stop's time, a red "Cancelled" (struck-through time) when the agency
+ *  dropped the call, else "Scheduled" (Google's treatment). The whole row taps through; a hairline
+ *  between rows (inset past the rail, so the line stays continuous) separates the stops. */
 @Composable
 private fun RouteStopRow(
     stop: TransitStopTime,
@@ -2035,66 +2051,103 @@ private fun RouteStopRow(
     dim: Color,
     isFirst: Boolean,
     isLast: Boolean,
-    past: Boolean = false, // the run already called here - greyed, Google-style
+    past: Boolean = false, // the run already called here - greyed, no status word (Google-style)
     isTop: Boolean = isFirst, // first VISIBLE row (no rail above); differs from isFirst when priors show
     onClick: () -> Unit,
 ) {
-    Row(
+    Box(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .dpadHighlight(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(start = 6.dp, end = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clickable(onClick = onClick),
     ) {
-        // Vertical rail + node, continuous between rows; board/alight get the big node.
-        val big = isFirst || isLast
-        // Passed stops grey their node and the rail segments touching them, so the coloured
-        // line visually STARTS at the boarding stop (Google's treatment).
-        val nodeColor = if (past) dim.copy(alpha = 0.45f) else lineColor
-        val topRail = if (past || isFirst) dim.copy(alpha = 0.45f) else lineColor
-        val bottomRail = if (past) dim.copy(alpha = 0.45f) else lineColor
-        Box(Modifier.width(24.dp).height(48.dp), contentAlignment = Alignment.Center) {
-            if (!isTop) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.TopCenter).background(topRail))
-            if (!isLast) Box(Modifier.width(3.dp).fillMaxHeight().align(Alignment.BottomCenter).background(bottomRail))
-            Box(Modifier.size(if (big) 14.dp else 9.dp).clip(CircleShape).background(nodeColor))
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            stop.name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (isFirst || isLast) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (past) dim else ink,
-            maxLines = 2,
-            modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-        )
-        stop.timeText?.let { time ->
-            // Realtime = the feed gave this stop an adjusted time distinct from the timetable.
-            val live = stop.scheduledText != null && stop.scheduledText != time
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp)) {
-                // Google's treatment for a moved time: the timetable time crossed out beside the
-                // live one, green when on time or early, red when late.
-                if (live && !past) {
-                    Text(
-                        stop.scheduledText!!,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = dim,
-                        textDecoration = TextDecoration.LineThrough,
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
-                Text(
-                    time,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = when {
-                        past -> dim
-                        live && (stop.delayMin ?: 0) > 0 -> SheetPalette.TrafficRed
-                        live -> SheetPalette.TrafficGreen
-                        else -> dim
-                    },
-                )
+        Row(
+            Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(start = 6.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Vertical rail + node, drawn so the line is continuous between rows. Board/alight get a
+            // bigger node; intermediate stops a smaller one - all solid in the line colour so they read
+            // on any sheet background.
+            val big = isFirst || isLast
+            // Passed stops grey their node and the rail segments touching them, so the coloured
+            // line visually STARTS at the boarding stop (Google's treatment).
+            val nodeColor = if (past) dim.copy(alpha = 0.45f) else lineColor
+            val topRail = if (past || isFirst) dim.copy(alpha = 0.45f) else lineColor
+            val bottomRail = if (past) dim.copy(alpha = 0.45f) else lineColor
+            Box(Modifier.width(24.dp).fillMaxHeight().heightIn(min = 64.dp), contentAlignment = Alignment.Center) {
+                if (!isTop) Box(Modifier.width(3.dp).fillMaxHeight(0.5f).align(Alignment.TopCenter).background(topRail))
+                if (!isLast) Box(Modifier.width(3.dp).fillMaxHeight(0.5f).align(Alignment.BottomCenter).background(bottomRail))
+                Box(Modifier.size(if (big) 14.dp else 9.dp).clip(CircleShape).background(nodeColor))
             }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stop.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isFirst || isLast) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (past) dim else ink,
+                maxLines = 2,
+                modifier = Modifier.weight(1f).padding(vertical = 14.dp),
+            )
+            stop.timeText?.let { time ->
+                // Realtime = the feed gave this stop an adjusted time distinct from the timetable.
+                val live = stop.scheduledText != null && stop.scheduledText != stop.timeText
+                Column(Modifier.padding(start = 8.dp), horizontalAlignment = Alignment.End) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Google's treatment for a moved time: the timetable time crossed out
+                        // beside the live one, green when on time or early, red when late.
+                        if (live && !past && !stop.cancelled) {
+                            Text(
+                                stop.scheduledText!!,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = dim,
+                                textDecoration = TextDecoration.LineThrough,
+                                modifier = Modifier.padding(end = 6.dp),
+                            )
+                        }
+                        Text(
+                            time,
+                            style = if (isFirst) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isFirst) FontWeight.SemiBold else FontWeight.Normal,
+                            color = when {
+                                stop.cancelled || past -> dim
+                                live && (stop.delayMin ?: 0) > 0 -> SheetPalette.TrafficRed
+                                live -> SheetPalette.TrafficGreen
+                                else -> ink
+                            },
+                            textDecoration = if (stop.cancelled) TextDecoration.LineThrough else null,
+                        )
+                    }
+                    // Passed stops carry no status word - the grey says it already.
+                    if (!past) {
+                        Text(
+                            stringResource(
+                                when {
+                                    stop.cancelled -> R.string.place_transit_cancelled
+                                    live -> R.string.place_transit_live
+                                    else -> R.string.place_transit_scheduled
+                                },
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when {
+                                stop.cancelled -> SheetPalette.TrafficRed
+                                live -> SheetPalette.TrafficGreen
+                                else -> dim
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        // Separator between stops, drawn INSIDE the row's bottom edge and inset past the rail:
+        // an item-level divider would open a visible gap in the connector line.
+        if (!isLast) {
+            HorizontalDivider(
+                Modifier.align(Alignment.BottomCenter).padding(start = 40.dp),
+                // A step above the row-surface tint: SheetPalette.row was near-invisible on the
+                // dark sheet (user 2026-07-13).
+                color = dim.copy(alpha = 0.35f),
+            )
         }
     }
 }

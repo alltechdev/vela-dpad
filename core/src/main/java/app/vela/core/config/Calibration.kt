@@ -54,6 +54,13 @@ data class Calibration(
     // and a fresh install activates. Remote-pushable via the signed bundle so a favourite voice can be
     // made everyone's default without an app release; a user's own pick (voice_model) always wins.
     val defaultVoiceId: String = DEFAULT_VOICE_ID,
+    // Remote overrides for the LANGUAGE-KEYWORD tables - the one part of the localized scrape that
+    // reads localized TEXT to make a decision, so a bad or missing word in some language is exactly
+    // the kind of thing that should be a config edit, not an app release (the transit gate had no
+    // Hebrew at all until issue #71). Null = the compiled tables; a present map/list REPLACES the
+    // compiled one wholesale (per language for the status maps).
+    val statusClosedWords: Map<String, List<String>>? = null,
+    val statusOpenWords: Map<String, List<String>>? = null,
     // Alternation terms for the transit-category gate (each becomes part of one case-insensitive
     // regex; plain words or small regex fragments both work).
     val transitCategoryWords: List<String>? = null,

@@ -275,14 +275,73 @@ User-Agent) that upstream's version would regress. Never `git cherry-pick` blind
   regex (`NON_TRANSIT_CAT`) landed. Both keyword tables are remote-overridable via the calibration
   bundle (`transitCategoryWords` / `transitExcludeWords`); compiled fallbacks carry the behaviour
   when the bundle lacks them. Any NEW transit-category test must call the one predicate.
-- **Open departure boards auto-refresh every ~30 s** (`startBoardRefresh` in MapViewModel):
-  SEQUENTIAL delay-then-fetch, deliberately - the fork's board source is the hidden WebView with a
-  45 s ceiling, so a slow fetch stretches the cadence instead of piling requests up. Feature-id
-  gated; cancels when the selection changes. Keep any new board source on this loop shape.
+- **Open departure boards auto-refresh every ~30 s**, on TWO loops matched to their cost:
+  `startTransitousBoardRefresh` re-queries the open Transitous feed (one small JSON call, place-ID
+  gated - Transitous boards can hang off id-only placeholders with no feature id), and
+  `startBoardRefresh` re-loads the Google fallback board - the hidden WebView with a 45 s ceiling,
+  so that loop stays SEQUENTIAL delay-then-fetch, deliberately (a slow load stretches the cadence
+  instead of piling requests up; feature-id gated). Both cancel when the selection changes. Keep
+  any new board source on the loop shape matching its fetch cost.
 - **Speed display = TWO separate stacked cards (user design, 2026-07-14):** the regulatory SPEED
   LIMIT sign is a free-standing card ABOVE its own speedometer card; no limit -> the speedo stands
   alone. Not one shared box, not upstream's side-by-side row (squat on narrow screens - a
   deliberate fork divergence from b5f54ad0's layout). Keep it this way through rebases.
+
+## Transitous (open GTFS transit data - primary board/timeline source, 2026-07-13 wave)
+
+- **What it is:** [Transitous](https://transitous.org) is the community-run, keyless public-transit
+  API over the world's open GTFS + GTFS-Realtime feeds (a MOTIS server). It is to transit what
+  FOSSGIS OSRM is to road routing and Overpass is to POI landmarks: canonical agency data, no
+  account, no key, FAIR-USE community hosting. Vela's usage stays light by design - one small JSON
+  call per opened stop plus the 30 s refresh while a sheet is open, and one area-cached `map/stops`
+  box per browsed viewport; the client sends an identifying User-Agent per the Transitous policy.
+  The endpoint is the `Transitous.BASE` const in `core/data/transit/Transitous.kt` (NOT calibration
+  - a self-hosted MOTIS is a drop-in swap if the fork ever outgrows fair use).
+- **Primary-then-fallback contract (hard rule):** departure boards and stop timelines try Transitous
+  FIRST; the hidden-WebView Google scrape is the FALLBACK where the open feeds lack the agency.
+  Concretely: `fetchStopDepartures` does one proximity `board()` lookup at the place's own
+  coordinate (no name correlation at all) and only on an empty result falls to `fetchBoardFrom` /
+  `resolveIntersectionStopBoard`; `openRouteDetail` reads the tapped departure's GTFS `tripId`
+  (Transitous boards stamp one on every departure; Google boards never do) and falls to the
+  headsign-geocode `itineraryStep` reuse. Transit DIRECTIONS (origin-to-destination itineraries)
+  still come from Google on purpose - only stop boards + timelines moved.
+- **Why boards got better, not just freer:** unlike Google's anonymous place page, `stoptimes`
+  returns EVERY route serving the stop with realtime flags and agency route colours, and querying a
+  stop's PARENT station id aggregates all its child bays (verified live) - a multi-bay transit
+  center gets one complete merged board for free. `/trip` gives the timeline per-stop realtime vs
+  timetable AND per-stop/per-run CANCELLED flags, which the Google itinerary reuse could never
+  provide (that is what lights the red "Cancelled" strike-through rows).
+- **Canonical GTFS stops on the map (`refreshTransitStops` + `TRANSIT_STOPS_LAYER`):** at z >= 15
+  the stop icons come from Transitous `map/stops` (agencies' own positions, one icon per station -
+  bays collapse onto their parent), same area-cached 350 ms-debounced contract as the
+  traffic-controls layer. Tapping one opens its board DIRECTLY by stop id (`onTransitStopTap`) -
+  no Google resolution, no language dependence. While the layer has coverage the basemap's OSM
+  `poi_transit` class="bus" icons are filter-hidden so a stop can't draw twice on different
+  corners (rail/airport stay basemap); the original filter is captured once per style load and
+  restored when coverage goes. MapScreen filter-hides the SELECTED stop's badge (the red pin drops
+  at the same coordinate and two stacked glyphs read as a glitch).
+- **Offline floor (`app/data/TransitStopCache`):** every ONLINE `map/stops` fetch overwrites its
+  area in a 24-area LRU JSON on disk, so previously browsed areas keep their stops with no signal;
+  a FAILED fetch never blanks stops already drawn (null from `stopsInBox` = failure and is never
+  area-cached - empty list only on a genuinely stopless box). Never-visited areas fall back to the
+  OSM basemap icons.
+- **Load-bearing gotchas (from upstream's comments - keep them true):** `StopDeparture.realtime`
+  is "the feed live-tracks this run" (the green-dot signal), NOT "the time moved"; the timeline's
+  live signal is `scheduledText != null` (kept ONLY when realtime moved the shown time - same
+  contract as the itinerary parser) with signed `delayMin` colouring late (red) vs early/on-time
+  (green). `buildBoard` DROPS cancelled runs from boards; the timeline SHOWS cancelled calls
+  (struck through). A terminus tap boards at the trip ORIGIN (an arrivals-only view has no ride
+  left). Clock text is rendered in the STOP's own timezone in the Google-board "h:mm a" format the
+  countdown logic parses.
+- **Stop taps in EVERY app language (issue #71 upstream):** the transit-category gate carries
+  keyword stems for all fifteen app languages (Hebrew included), and when a tapped stop resolves to
+  NO usable Google listing at all, the tap's basemap class (language-independent) is trusted and
+  the board fetches from Transitous directly at the coordinate - Transitous-or-nothing there, since
+  the Google path needs a feature id that doesn't exist. The status-word tables are also
+  remote-overridable now (`statusClosedWords`/`statusOpenWords` in the calibration bundle ->
+  `SearchParser.remoteClosedWords`/`remoteOpenWords`, pushed by `adoptKeywordTables`); the fork's
+  shipped bundle (v13) doesn't carry any keyword lists yet, so the compiled tables rule until one
+  is pushed (the TransitousTest bundle guard arms itself when they appear).
 
 ## Known issues (live)
 
