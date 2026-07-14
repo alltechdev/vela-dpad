@@ -487,4 +487,8 @@
     <string name="parking_history_clear_all">Rensa alla</string>
     <string name="parking_history_current">Aktuell</string>
     <string name="parking_history_delete">Ta bort</string>
+    <string name="map_satellite_toggle">Satellitvy</string>
+    <string name="map_layers">Lager</string>
+    <string name="settings_layers_button">Visa lagerknappen</string>
+    <string name="settings_layers_button_hint">Kartknappen för satellit, trafik, kollektivtrafik och terräng.</string>
 </resources>

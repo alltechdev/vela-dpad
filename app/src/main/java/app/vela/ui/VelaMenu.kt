@@ -5,6 +5,7 @@ package app.vela.ui
 // chooser instead - which DOES auto-focus its first item (the gallery/VelaDialog pattern). Under
 // TOUCH it renders the ordinary anchored `DropdownMenu`, unchanged, so touch stays byte-identical.
 // Same call shape as DropdownMenu: `VelaMenu(expanded, onDismissRequest) { item("A") { .. }; item("B") { .. } }`.
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -79,6 +81,63 @@ fun VelaMenu(expanded: Boolean, onDismissRequest: () -> Unit, content: @Composab
         DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest) {
             VelaMenuScope(dpad = false).content()
         }
+    }
+}
+
+/** A TOGGLE menu entry: label + trailing Switch, the layers-panel row. Same dual rendering as
+ *  [item] (plain row under touch, focusable auto-focused chooser row under D-pad, OK flips) but
+ *  it does NOT dismiss - toggles are browse-several controls, the user flips a few then leaves. */
+@Composable
+fun VelaMenuScope.toggleItem(text: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
+    if (!dpad) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                // Fork adaptation: hybrid touch+keypad phones can key-walk the anchored
+                // DropdownMenu too, so the touch row still needs a visible focus ring.
+                .dpadHighlight(RoundedCornerShape(8.dp))
+                .clickable { onToggle(!checked) }
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .fillMaxWidth(),
+        ) {
+            Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(16.dp))
+            Switch(checked = checked, onCheckedChange = onToggle)
+        }
+        return
+    }
+    val autoFocus = index == 0
+    index++
+    val fr = remember { FocusRequester() }
+    val dpadFirst = rememberDpadFirstDevice()
+    if (autoFocus) {
+        LaunchedEffect(dpadFirst) {
+            if (dpadFirst) repeat(30) {
+                if (runCatching { fr.requestFocus() }.isSuccess) return@LaunchedEffect
+                kotlinx.coroutines.delay(50)
+            }
+        }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(fr)
+            .dpadHighlight(RoundedCornerShape(8.dp))
+            .onKeyEvent { ev ->
+                if ((ev.key == Key.DirectionCenter || ev.key == Key.Enter) && ev.type == KeyEventType.KeyUp) {
+                    onToggle(!checked); true
+                } else {
+                    false
+                }
+            }
+            .focusable()
+            .pointerInput(checked) { detectTapGestures { onToggle(!checked) } }
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(16.dp))
+        Switch(checked = checked, onCheckedChange = onToggle)
     }
 }
 

@@ -487,4 +487,8 @@
     <string name="parking_history_clear_all">Borrar todo</string>
     <string name="parking_history_current">Actual</string>
     <string name="parking_history_delete">Eliminar</string>
+    <string name="map_satellite_toggle">Vista satélite</string>
+    <string name="map_layers">Capas</string>
+    <string name="settings_layers_button">Mostrar botón de capas</string>
+    <string name="settings_layers_button_hint">El botón del mapa para satélite, tráfico, transporte y terreno.</string>
 </resources>

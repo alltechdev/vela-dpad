@@ -55,6 +55,8 @@ class VelaApp : Application() {
         AppLocale.init(this) // resolve the app language (system default) → drives the nav-text locale
         Traffic.init(this)
         TransitLayer.init(this)
+        app.vela.ui.SatelliteLayer.init(this) // persisted satellite-imagery toggle
+        app.vela.ui.LayersButton.init(this) // persisted show/hide of the map layers button
         app.vela.ui.Topography.init(this) // terrain-relief hillshade toggle (Settings > Map), off by default
         app.vela.ui.Flock.init(this) // ALPR/Flock camera layer toggle (Settings > Map), off by default
         app.vela.ui.FlockRouteAlert.init(this) // avoid-cameras routing toggle (Settings > Map), off by default
