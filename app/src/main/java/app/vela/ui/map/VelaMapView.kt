@@ -381,13 +381,18 @@ fun VelaMapView(
     }
 
     // Posted-speed-limit overlay (OSM maxspeed PMTiles, streamed): an INVISIBLE-but-queryable line layer.
-    // We never draw it (transparent), but a wide-ish line means queryRenderedFeatures under the puck reliably
-    // hits the road segment, and reading its `maxspeed` tag gives the "Speed B" online limit without a
-    // downloaded routing graph. minZoom low so it's present at nav/free-drive zoom (z16 tiles overzoom).
-    LaunchedEffect(maxspeedOverlays, styleRef) {
+    // We never draw it, but a wide-ish line means queryRenderedFeatures under the puck reliably hits the
+    // road segment, and reading its `maxspeed` tag gives the "Speed B" online limit without a downloaded
+    // routing graph. minZoom low so it's present at nav/free-drive zoom (z16 tiles overzoom).
+    // ONLY added while speedOverlayOn (driving/nav) - the poll reads it only then, and adding it during a
+    // plain browse was pure overhead AND rendered a BLACK stripe over every road: MapLibre's colour parser
+    // rejected the 8-digit "#00000000" and fell back to its default OPAQUE BLACK. Fixed by the transparent
+    // @ColorInt overload (no string parsing) and by not carrying the layer on the browse map at all.
+    LaunchedEffect(maxspeedOverlays, styleRef, speedOverlayOn) {
         val style = styleRef ?: return@LaunchedEffect
         runCatching { style.layers.filter { it.id.startsWith("vela-ms-") }.forEach { style.removeLayer(it) } }
         runCatching { style.sources.filter { it.id.startsWith("vela-ms-src-") }.forEach { style.removeSource(it) } }
+        if (!speedOverlayOn) return@LaunchedEffect // no query layer on the browse map
         maxspeedOverlays.forEachIndexed { i, uri ->
             runCatching {
                 val srcId = "vela-ms-src-$i"
@@ -396,7 +401,13 @@ fun VelaMapView(
                     setSourceLayer("maxspeed") // tippecanoe layer name (build-maxspeed-region.sh: -l maxspeed)
                     setMinZoom(11f)
                     setProperties(
-                        PropertyFactory.lineColor("#00000000"), // fully transparent - present for querying, never seen
+                        // NOT fully transparent: MapLibre Native EXCLUDES invisible features from
+                        // queryRenderedFeatures, so Color.TRANSPARENT/lineOpacity(0) made the limit query
+                        // return nothing and the speed-limit sign never lit (device-proven on Bedford Ave:
+                        // opacity 0 -> feats=0 forever; a visible line -> sign on the first poll). 1/255
+                        // alpha is imperceptible on screen but the feature still rasterizes -> queryable.
+                        PropertyFactory.lineColor(android.graphics.Color.BLACK),
+                        PropertyFactory.lineOpacity(0.004f),
                         PropertyFactory.lineWidth(12f),          // wide hit target for the point query
                     )
                 }
