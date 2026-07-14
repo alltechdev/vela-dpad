@@ -22,8 +22,11 @@
 # Content surfaces (search/place/directions/nav/transit) need live search+routing; run with network up.
 DEVICES="
 kyocera-e4810|240x320|160
+kyocera-duraxv|240x320|160
 sonim-x320|480x854|320
-"   # 240x320 also stands in for tcl-flip-2 and sonim-xp3 (identical geometry)
+sonim-xp3|240x320|160
+tcl-flip-2|240x320|160
+"   # every committed target is its own row - each profile gets its own full-coverage record
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../dpad/lib.sh"; source "$HERE/../dpad/nav.sh"
@@ -156,9 +159,14 @@ cover_one() {
       # its "converts audio to text" blurb / "Didn't catch that" / "Try again" result). The old poll
       # only matched the pre-listening strings and missed the silence-result state (device-seen: a
       # working mic marked MISSED because the Google dialog had already advanced by the dump).
+      # A system recognizer is its OWN window: after a successful mic tap, the foreground having
+      # LEFT Vela is itself the mic working (device-seen: com.google.android.tts draws a Google-logo
+      # mic dialog whose listening state has NO matchable text at all, just a "• • •" node - every
+      # string above missed it and a working mic was marked MISSED).
       if on_screen "Listening…" || on_screen "Getting ready…" || on_screen_contains "Vela Voice" \
          || on_screen_contains "Speak to search" || on_screen_contains "Google Speech Services" \
-         || on_screen_contains "Didn't catch" || on_screen "Try again"; then ok=1; break; fi
+         || on_screen_contains "Didn't catch" || on_screen "Try again" \
+         || ! in_app; then ok=1; break; fi
       sleep 2
     done
     if [ "$ok" = 1 ]; then mark "voice-capture-sheet" 1; key "$K_BACK" 1

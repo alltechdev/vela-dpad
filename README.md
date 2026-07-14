@@ -11,15 +11,23 @@ A degoogled maps and navigation client for Android. Runs on GrapheneOS and other
 ## Phone status
 
 **All testing is SIMULATED** - the screen size is set with `wm size`/`wm density` on a test device;
-**nothing has run on the actual phones**. Because the targets collapse to two screen sizes, that is
-what's tested (each phone with that size shares the result):
+**nothing has run on the actual phones**. Every target phone now runs the gate as its OWN profile
+(its own full run + its own screenshot set), no profile stands in for another:
 
-| Simulated size | Target phones | Coverage (screenshots in [`tests/devices/`](tests/devices/)) |
+| Phone | Simulated size | Coverage (screenshots in [`tests/devices/`](tests/devices/)) |
 |---|---|---|
-| 240x320 | Kyocera e4810, TCL Flip 2, Sonim XP3 (XP3800), Kyocera DuraXV | **FULLY COVERED (16/16)** - first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay, results, place sheet (+ expanded), directions, route steps, and Settings incl. the deep Voice-library / Offline / Saved-places sub-sections ([`kyocera-e4810/screenshots/full/`](tests/devices/kyocera-e4810/screenshots/full/)) |
-| 480x854 | Sonim X320 (XP3 Plus 5G) | **FULLY COVERED (16/16)** - same 16-surface tour at the device's real resolution ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
+| Kyocera e4810 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`kyocera-e4810/screenshots/full/`](tests/devices/kyocera-e4810/screenshots/full/)) |
+| Kyocera DuraXV | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`kyocera-duraxv/screenshots/full/`](tests/devices/kyocera-duraxv/screenshots/full/)) |
+| TCL Flip 2 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`tcl-flip-2/screenshots/full/`](tests/devices/tcl-flip-2/screenshots/full/)) |
+| Sonim XP3 (XP3800) | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`sonim-xp3/screenshots/full/`](tests/devices/sonim-xp3/screenshots/full/)) |
+| Sonim X320 (XP3 Plus 5G) | 480x854 @ 320 | **FULLY COVERED (20/20)** ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
 
-Both sizes pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
+The 20 surfaces: first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay,
+results, place sheet (+ expanded), directions, route steps, Settings incl. the deep Voice-library /
+Offline / Saved-places sub-sections, voice search, and parking (saved spot, hub menu, parked-car
+sheet).
+
+All five profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
 surface at the device's geometry and prints **RESULT: FULLY COVERED (0 MISSED)** - the hard requirement
 for calling a device supported (see [`AGENTS.md`](AGENTS.md)). NOT yet in the gate: live turn-by-turn
 navigation cards and transit itineraries. **Real-hardware confirmation: none** - the geometry is
