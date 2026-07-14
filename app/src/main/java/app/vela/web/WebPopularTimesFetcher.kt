@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -124,15 +125,39 @@ class WebPopularTimesFetcher @Inject constructor(
             override fun onPageFinished(view: WebView?, url: String?) {
                 finishes++
                 when (finishes) {
-                    1 -> main.postDelayed({ view?.loadUrl(calibration.current().sessionWarmUrl) }, 500)
+                    // Identity-gated: a renderer crash nulls [webView] and destroys the view
+                    // before this delayed block can fire - don't touch the destroyed view.
+                    1 -> main.postDelayed({ if (webView === view) view?.loadUrl(calibration.current().sessionWarmUrl) }, 500)
                     else -> main.postDelayed({ if (!w.isCompleted) w.complete(Unit) }, SETTLE_MS)
                 }
+            }
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                // Renderer died (warming or fetching): unblock any warm() waiter first so its
+                // coroutine resumes, then tear down + fail every in-flight fetch (null details).
+                if (!w.isCompleted) w.complete(Unit)
+                rendererGone(view)
+                return true
             }
         }
         webView = wv
         wv.loadUrl("https://www.google.com/?hl=en&gl=us")
         main.postDelayed({ if (!w.isCompleted) w.complete(Unit) }, MAX_WARM_MS)
         w.await()
+    }
+
+    /** The WebView's sandboxed renderer process died (OOM kill on a low-RAM phone, or a Chromium
+     * crash). Runs on the UI thread. Destroy the dead WebView, null the cache AND the warm latch so
+     * the next fetch() re-warms a fresh session, and complete every in-flight request with "" - the
+     * caller then returns null, its normal failure path (the sheet omits the section). Returning
+     * true from [WebViewClient.onRenderProcessGone] keeps the APP alive - the unhandled default
+     * kills the whole process (minSdk 26 == the API the override needs, so no version check). */
+    private fun rendererGone(view: WebView?) {
+        android.util.Log.w("WebPopularTimesFetcher", "WebView renderer process gone; failing in-flight details fetch")
+        val wv = webView
+        webView = null
+        warm = null
+        runCatching { (wv ?: view)?.destroy() }
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
     }
 
     private fun script(id: String, url: String): String {

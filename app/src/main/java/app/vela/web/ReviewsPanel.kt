@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -431,6 +432,19 @@ private fun buildPanelWebView(
             // thing in the full-screen dialog besides the back arrow, which BACK still reaches).
             if (fullScreen) view?.requestFocus()
             view?.evaluateJavascript(carveScript(dark, fullScreen), null)
+        }
+
+        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+            // The sandboxed renderer process died (OOM kill on a low-RAM phone, or a Chromium
+            // crash). Close the panel through the SAME path a carve failure takes - the caller
+            // wires onFailed to onClose, so the user lands back on the native inline list, and
+            // Compose's onRelease destroys this (now dead) WebView after detaching it (destroying
+            // it here, while attached, is illegal - see the key() comment above). Returning true
+            // keeps the APP alive: the unhandled default kills the whole process (minSdk 26 == the
+            // API this override needs, so no version check).
+            android.util.Log.w("ReviewsPanel", "WebView renderer process gone; closing the reviews panel")
+            onFail()
+            return true
         }
     }
     wv.loadUrl("https://www.google.com/maps?cid=$cid&hl=en&gl=us")

@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -96,6 +97,20 @@ class WebStopDeparturesFetcher @Inject constructor(
         }
     }
 
+    /** The WebView's sandboxed renderer process died (OOM kill on a low-RAM phone, or a Chromium
+     * crash). Runs on the UI thread. Destroy the dead WebView, null the cache so the next fetch()
+     * builds a fresh one, and complete every in-flight request with "" - the caller then returns
+     * null, its normal failure path (the sheet just omits the board). Returning true from
+     * [WebViewClient.onRenderProcessGone] keeps the APP alive - the unhandled default kills the
+     * whole process (minSdk 26 == the API the override needs, so no version check). */
+    private fun rendererGone(view: WebView?) {
+        dbg("WebView renderer process gone; failing in-flight departures fetch")
+        val wv = webView
+        webView = null
+        runCatching { (wv ?: view)?.destroy() }
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
+    }
+
     /** cid = LOW half of the `0xHIGH:0xLOW` feature id as unsigned decimal (the `?cid=` deep-link). */
     private fun cidOf(featureId: String): String? {
         val low = featureId.substringAfter(":", "").removePrefix("0x").ifBlank { return null }
@@ -115,8 +130,14 @@ class WebStopDeparturesFetcher @Inject constructor(
                     return scheme != null && scheme != "https" && scheme != "http"
                 }
                 override fun onPageFinished(view: WebView?, u: String?) {
+                    // Identity-gated: a renderer crash nulls [webView] and destroys the view
+                    // before this delayed block can fire - don't touch the destroyed view.
                     val idNow = currentId
-                    main.postDelayed({ view?.evaluateJavascript(extract(idNow), null) }, SETTLE_MS)
+                    main.postDelayed({ if (webView === view) view?.evaluateJavascript(extract(idNow), null) }, SETTLE_MS)
+                }
+                override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    rendererGone(view)
+                    return true
                 }
             }
             webView = it

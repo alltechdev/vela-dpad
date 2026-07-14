@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -110,6 +111,13 @@ class WebReviewsFetcher @Inject constructor(
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, SETTLE_MS)
                             }
+                            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                                // Renderer died mid-scrape: unblock the load gate first so the fetch
+                                // coroutine resumes, then tear down + fail this fetch (empty result).
+                                if (!ready.isCompleted) ready.complete(Unit)
+                                rendererGone(view)
+                                return true
+                            }
                         }
                         // Blank the PREVIOUS place's DOM before navigating - a slow load could otherwise
                         // let the MAX_LOAD fallback inject the scraper into the old page and return the
@@ -119,7 +127,9 @@ class WebReviewsFetcher @Inject constructor(
                         // Proceed even if the SPA's onPageFinished is slow.
                         main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, MAX_LOAD_MS)
                         ready.await()
-                        wv.evaluateJavascript(extractScript(id), null)
+                        // Identity check, not null check: a renderer crash nulls [webView] (and
+                        // destroys wv) on this same main thread - don't touch the destroyed view.
+                        if (webView === wv) wv.evaluateJavascript(extractScript(id), null)
                     }
                     deferred.await()
                 }
@@ -130,6 +140,21 @@ class WebReviewsFetcher @Inject constructor(
             }
             if (raw.isNullOrEmpty()) emptyList() else runCatching { ReviewsWebParser.parse(raw) }.getOrDefault(emptyList())
         }
+    }
+
+    /** The WebView's sandboxed renderer process died (OOM kill on a low-RAM phone, or a Chromium
+     * crash). Runs on the UI thread. Destroy the dead WebView, null the cache so the next fetch()
+     * builds a fresh one via [ensureWebView], and complete every in-flight request with "" - the
+     * caller then returns the empty review list, its normal failure path (the sheet shows no
+     * reviews). Returning true from [WebViewClient.onRenderProcessGone] keeps the APP alive - the
+     * unhandled default kills the whole process (minSdk 26 == the API the override needs, so no
+     * version check). */
+    private fun rendererGone(view: WebView?) {
+        android.util.Log.w("WebReviewsFetcher", "WebView renderer process gone; failing in-flight reviews fetch")
+        val wv = webView
+        webView = null
+        runCatching { (wv ?: view)?.destroy() }
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
     }
 
     /** The Google "cid" = the LOW half of the `0xHIGH:0xLOW` feature id as an unsigned decimal - the
