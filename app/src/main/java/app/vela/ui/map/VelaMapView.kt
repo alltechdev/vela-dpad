@@ -2704,9 +2704,14 @@ private fun applyData(
                     addStringProperty("name", m.name)
                     addStringProperty("icon", "vela-poi-${PoiIcons.groupFor(m.name, m.category)}")
                     addNumberProperty(AMBIENT_INDEX_PROP, i)
-                    // Collision priority: the data source returns the most prominent places first, so a
-                    // lower index wins its slot (MapLibre places lower symbol-sort-key first).
-                    addNumberProperty("sort", i)
+                    // Collision priority must be STABLE across uploads: it used to be the list
+                    // index, and a viewport refetch RE-RANKS the pool, so the same place's
+                    // priority changed between uploads and the whole layer's placement reshuffled
+                    // (icons visibly popping into each other; upstream c35eea33). Prominence is a
+                    // property of the PLACE (identical in every upload), so priorities hold still
+                    // while the set changes; the index only breaks ties between equally prominent
+                    // places. Lower sort key places first.
+                    addNumberProperty("sort", (10.0 - m.prominence) * 1000.0 + i)
                     // Prominence drives data-driven icon/text size on the layer (anchors read bigger).
                     addNumberProperty("prominence", m.prominence)
                 }
