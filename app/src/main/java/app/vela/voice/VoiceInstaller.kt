@@ -88,7 +88,11 @@ class VoiceInstaller @Inject constructor(
     }
 
     private fun openWeb(url: String) {
-        app.vela.ui.ExternalLinks.open(context, url)
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     // Just one field out of the F-Droid index - a regex avoids pulling a JSON parser

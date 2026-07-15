@@ -1,6 +1,5 @@
 package app.vela.ui.settings
 import android.content.Intent
-import android.net.Uri
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
