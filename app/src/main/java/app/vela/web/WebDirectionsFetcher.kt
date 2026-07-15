@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -100,6 +101,20 @@ class WebDirectionsFetcher @Inject constructor(
         else runCatching { TransitParser.parse(raw, origin, destination) }.getOrDefault(emptyList())
     }
 
+    /** The WebView's sandboxed renderer process died (OOM kill on a low-RAM phone, or a Chromium
+     * crash). Runs on the UI thread. Destroy the dead WebView, null the cache so the next transit()
+     * builds a fresh one, and complete every in-flight request with "" - the caller then returns
+     * the empty itinerary list, its normal failure path (drive/walk/bike are offered instead).
+     * Returning true from [WebViewClient.onRenderProcessGone] keeps the APP alive - the unhandled
+     * default kills the whole process (minSdk 26 == the API the override needs, so no version check). */
+    private fun rendererGone(view: WebView?) {
+        android.util.Log.w("WebDirectionsFetcher", "WebView renderer process gone; failing in-flight transit fetch")
+        val wv = webView
+        webView = null
+        runCatching { (wv ?: view)?.destroy() }
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun load(url: String, id: String) = withContext(Dispatchers.Main) {
         val wv = webView ?: WebView(context).also {
@@ -115,9 +130,14 @@ class WebDirectionsFetcher @Inject constructor(
                 }
                 override fun onPageFinished(view: WebView?, u: String?) {
                     // Bake THIS page's request id into the extractor so its (possibly late) poller can only
-                    // complete its own deferred, never a newer request's.
+                    // complete its own deferred, never a newer request's. Identity-gated: a renderer
+                    // crash nulls [webView] and destroys the view before this delayed block can fire.
                     val idNow = currentId
-                    main.postDelayed({ view?.evaluateJavascript(extract(idNow), null) }, SETTLE_MS)
+                    main.postDelayed({ if (webView === view) view?.evaluateJavascript(extract(idNow), null) }, SETTLE_MS)
+                }
+                override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    rendererGone(view)
+                    return true
                 }
             }
             webView = it

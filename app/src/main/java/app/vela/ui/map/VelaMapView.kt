@@ -183,6 +183,7 @@ fun VelaMapView(
     recenterTick: Int = 0, // bumped on each recenter tap → force a move even if already "centered"
     cameraBottomInsetPx: Int = 0,
     cameraTopInsetPx: Int = 0, // measured top chrome (the endpoints card) - the route fit clears it
+    navTopOverlayPx: Int = 0, // measured bottom edge of nav-time top chrome (banner + search panel) - the follow camera pads the puck below it
     routePolyline: List<LatLng>,
     routeColor: String,
     routeDashed: Boolean = false, // draw the route dashed (walking / biking), Google-style
@@ -208,6 +209,7 @@ fun VelaMapView(
     parkingSpot: LatLng? = null, // saved "parked here" pin; tap -> onParkingTap
     onParkingTap: () -> Unit = {},
     onNavPanned: () -> Unit = {},
+    onMapTap: () -> Unit = {}, // ANY map tap, before POI/marker resolution - dismiss-transients hook
     onScaleChanged: (metersPerPixel: Double) -> Unit = {},
     darkTheme: Boolean,
     applyKeylessTheme: Boolean,
@@ -257,6 +259,9 @@ fun VelaMapView(
     }
     val compassRightPx = with(density) { 8.dp.roundToPx() }
     val poiTap = rememberUpdatedState(onPoiTap)
+    // The follow-camera ticker is a long-lived closure - read the live value, not the capture.
+    val navTopOverlay = rememberUpdatedState(navTopOverlayPx)
+    val mapTap = rememberUpdatedState(onMapTap)
     val markerTap = rememberUpdatedState(onMarkerTap)
     val ambientTap = rememberUpdatedState(onAmbientTap)
     val transitStopTap = rememberUpdatedState(onTransitStopTap)
@@ -797,6 +802,11 @@ fun VelaMapView(
                                 .bearing(camState[2])
                                 .zoom(camState[3])
                                 .tilt(55.0)
+                                // The along-route panel (or any nav top chrome) must NEVER cover the
+                                // puck: pad the camera by its measured bottom edge so the puck anchors
+                                // in the middle of the REMAINING viewport, whatever the screen height.
+                                // Always set (0 when closed) - CameraPosition padding is sticky.
+                                .padding(0.0, navTopOverlay.value.toDouble(), 0.0, 0.0)
                                 .build(),
                         ),
                     )
@@ -904,6 +914,7 @@ fun VelaMapView(
                 // controller's OK-at-crosshair runs the EXACT same resolution path;
                 // docs/dpad.md.)
                 val handleTap = handleTap@{ tapped: MLLatLng ->
+                    mapTap.value()
                     val p = map.projection.toScreenLocation(tapped)
                     // Generous hit radius (~16dp) so taps near a POI icon register -
                     // a tight box made the bigger markers feel un-tappable.
