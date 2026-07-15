@@ -2688,7 +2688,7 @@ private fun NoticeCard(notice: Notice, onDismiss: () -> Unit, modifier: Modifier
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 notice.url?.let { url ->
                     TextButton(onClick = {
-                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        app.vela.ui.ExternalLinks.open(context, url)
                     }) { Text(stringResource(R.string.mapscreen_learn_more)) }
                 }
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.mapscreen_dismiss)) }

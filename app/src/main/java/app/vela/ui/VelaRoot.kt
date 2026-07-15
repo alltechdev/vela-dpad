@@ -84,7 +84,7 @@ fun VelaRoot(vm: MapViewModel = hiltViewModel()) {
                 DonatePrompt(
                     onDonate = {
                         runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Onboarding.DONATE_URL)))
+                            app.vela.ui.ExternalLinks.open(context, Onboarding.DONATE_URL)
                         }
                         Onboarding.dismissDonatePrompt(context)
                     },
