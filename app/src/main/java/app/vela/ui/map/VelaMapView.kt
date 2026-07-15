@@ -297,6 +297,7 @@ fun VelaMapView(
     val navZoomSpeed = remember { floatArrayOf(0f) }          // low-passed speed driving the nav zoom
     val scaling = remember { booleanArrayOf(false) }          // a pinch-zoom is in progress
     val navUserZoom = remember { doubleArrayOf(Double.NaN) }  // manual nav zoom override (NaN = auto)
+    val wasNavRef = remember { booleanArrayOf(false) } // a drive actually ran - gates the one-shot camera teardown
     val camState = remember { doubleArrayOf(Double.NaN, 0.0, 0.0, 0.0) } // eased follow-camera [lat,lng,bearing,zoom]; lat NaN = needs re-seed
     val routeColorHolder = rememberUpdatedState(routeColor)
     val routeSpansHolder = rememberUpdatedState(routeTrafficSpans)
@@ -716,6 +717,13 @@ fun VelaMapView(
     // next fix (engaged=false) instead of gliding along stale geometry.
     LaunchedEffect(navMode, routePolyline) {
         if (!navMode) {
+            // Only tear the camera down on an ACTUAL nav exit (upstream f95f0b96): this effect is
+            // keyed on routePolyline too (so reroutes relaunch the puck ticker), which means every
+            // route swap in the CHOOSER (picking an alternate, editing stops) re-runs this branch -
+            // its moveCamera would kill the route-fit flight at frame ~0. wasNavRef makes the
+            // teardown one-shot per real drive.
+            if (!wasNavRef[0]) return@LaunchedEffect
+            wasNavRef[0] = false
             navPuck.kalman.reset() // nav ended - don't carry a stale speed into the next trip
             // Camera padding is STICKY MapLibre state: the nav view's puck-low offset (top padding,
             // set on every follow frame + the pre-engage case) would otherwise shift the browse
@@ -735,6 +743,7 @@ fun VelaMapView(
             )
             return@LaunchedEffect
         }
+        wasNavRef[0] = true
         navPuck.engaged = false
         var lastNanos = 0L
         while (true) {
@@ -1449,32 +1458,38 @@ fun VelaMapView(
             // map (upstream a17eded6); the top-card measurement landing a frame late corrects the
             // same way instead of leaving a fit that ignored it.
             routePolyline.size >= 2 &&
-                (routePolyline.hashCode() * 31 + cameraBottomInsetPx * 7 + cameraTopInsetPx) != lastFittedRouteKey -> {
-                lastFittedRouteKey = routePolyline.hashCode() * 31 + cameraBottomInsetPx * 7 + cameraTopInsetPx
-                val builder = MLLatLngBounds.Builder()
-                routePolyline.forEach { builder.include(MLLatLng(it.lat, it.lng)) }
-                // Reserve room at the bottom for the directions panel AND at the top for the
-                // endpoints card, so the route's start/end frame in the VISIBLE strip between
-                // them instead of hiding behind either (upstream b6b7bbd1).
-                val pad = 140
-                val bottom = if (cameraBottomInsetPx > 0) cameraBottomInsetPx + pad else pad
-                val top = if (cameraTopInsetPx > 0) cameraTopInsetPx + pad else pad
-                val bounds = builder.build()
-                // A continental trip fit zooms out until nothing has context; past ~12 degrees
-                // of span, frame the DESTINATION area instead - the end point is the part worth
-                // seeing (upstream b6b7bbd1), and the route line still leads off-screen toward it.
-                val huge = bounds.latitudeSpan > 12.0 || bounds.longitudeSpan > 14.0
-                runCatching {
-                    if (huge) {
-                        val end = routePolyline.last()
+                (navMode || (routePolyline.hashCode() * 31 + cameraBottomInsetPx * 7 + cameraTopInsetPx) != lastFittedRouteKey) -> {
+                // Stays MATCHED during nav but swallows the fit (upstream f95f0b96): once the nav
+                // follow branch above stops matching (a mid-drive pan detached the camera), a
+                // reroute's new polyline used to fall through here and fly an uninvited
+                // whole-route fit mid-drive. In-nav framing is owned by the nav branches above.
+                if (!navMode) {
+                    lastFittedRouteKey = routePolyline.hashCode() * 31 + cameraBottomInsetPx * 7 + cameraTopInsetPx
+                    val builder = MLLatLngBounds.Builder()
+                    routePolyline.forEach { builder.include(MLLatLng(it.lat, it.lng)) }
+                    // Reserve room at the bottom for the directions panel AND at the top for the
+                    // endpoints card, so the route's start/end frame in the VISIBLE strip between
+                    // them instead of hiding behind either (upstream b6b7bbd1).
+                    val pad = 140
+                    val bottom = if (cameraBottomInsetPx > 0) cameraBottomInsetPx + pad else pad
+                    val top = if (cameraTopInsetPx > 0) cameraTopInsetPx + pad else pad
+                    val bounds = builder.build()
+                    // A continental trip fit zooms out until nothing has context; past ~12 degrees
+                    // of span, frame the DESTINATION area instead - the end point is the part worth
+                    // seeing (upstream b6b7bbd1), and the route line still leads off-screen toward it.
+                    val huge = bounds.latitudeSpan > 12.0 || bounds.longitudeSpan > 14.0
+                    runCatching {
+                        if (huge) {
+                            val end = routePolyline.last()
+                            map.animateCamera(
+                                CameraUpdateFactory.newLatLngZoom(MLLatLng(end.lat, end.lng), 9.0), 800,
+                            )
+                            return@runCatching
+                        }
                         map.animateCamera(
-                            CameraUpdateFactory.newLatLngZoom(MLLatLng(end.lat, end.lng), 9.0), 800,
+                            CameraUpdateFactory.newLatLngBounds(bounds, pad, top, pad, bottom), 800,
                         )
-                        return@runCatching
                     }
-                    map.animateCamera(
-                        CameraUpdateFactory.newLatLngBounds(bounds, pad, top, pad, bottom), 800,
-                    )
                 }
             }
 
@@ -1639,7 +1654,7 @@ private fun ensureLayers(style: Style) {
     }
     if (style.getImage(PIN_IMG) == null) style.addImage(PIN_IMG, pinBitmap())
     if (style.getSource(MARKERS_SRC) == null) {
-        style.addSource(GeoJsonSource(MARKERS_SRC))
+        style.addSource(GeoJsonSource(MARKERS_SRC, GeoJsonOptions().withMaxZoom(12)))
         style.addLayer(
             SymbolLayer(MARKERS_LAYER, MARKERS_SRC).withProperties(
                 PropertyFactory.iconImage(PIN_IMG),
@@ -1655,7 +1670,7 @@ private fun ensureLayers(style: Style) {
     // The saved parking spot: one teal "P" pin above the search pins, tappable.
     if (style.getImage(PARKING_IMG) == null) style.addImage(PARKING_IMG, parkingBitmap())
     if (style.getSource(PARKING_SRC) == null) {
-        style.addSource(GeoJsonSource(PARKING_SRC))
+        style.addSource(GeoJsonSource(PARKING_SRC, GeoJsonOptions().withMaxZoom(12)))
         style.addLayer(
             SymbolLayer(PARKING_LAYER, PARKING_SRC).withProperties(
                 PropertyFactory.iconImage(PARKING_IMG),
@@ -1666,7 +1681,11 @@ private fun ensureLayers(style: Style) {
         )
     }
     if (style.getSource(AMBIENT_SRC) == null) {
-        style.addSource(GeoJsonSource(AMBIENT_SRC))
+        // Point sources cap their internal tile pyramid at z12 (upstream f95f0b96): geojson-vt
+        // re-cuts the source into tiles at every integer zoom crossed during a flight, and
+        // points gain nothing past z12. Strictly less re-cut + placement invalidation per zoom
+        // change; line sources (route) keep full depth for vertex precision.
+        style.addSource(GeoJsonSource(AMBIENT_SRC, GeoJsonOptions().withMaxZoom(12)))
         style.addLayerBelow(
             SymbolLayer(AMBIENT_LAYER, AMBIENT_SRC).withProperties(
                 PropertyFactory.iconImage(Expression.get("icon")),
@@ -1762,7 +1781,7 @@ private fun ensureLayers(style: Style) {
     if (style.getImage(SIGNAL_IMG) == null) style.addImage(SIGNAL_IMG, trafficLightBitmap())
     if (style.getImage(STOP_IMG) == null) style.addImage(STOP_IMG, stopSignBitmap())
     if (style.getSource(CONTROLS_SRC) == null) {
-        style.addSource(GeoJsonSource(CONTROLS_SRC))
+        style.addSource(GeoJsonSource(CONTROLS_SRC, GeoJsonOptions().withMaxZoom(12)))
         style.addLayerBelow(
             SymbolLayer(CONTROLS_LAYER, CONTROLS_SRC).apply {
                 setMinZoom(16f)
@@ -1795,7 +1814,7 @@ private fun ensureLayers(style: Style) {
     // in applyData). Drawn above the ambient POIs (and above the flock layer, which yields to both).
     if (style.getImage(TRANSIT_STOP_IMG) == null) style.addImage(TRANSIT_STOP_IMG, transitStopBitmap())
     if (style.getSource(TRANSIT_STOPS_SRC) == null) {
-        style.addSource(GeoJsonSource(TRANSIT_STOPS_SRC))
+        style.addSource(GeoJsonSource(TRANSIT_STOPS_SRC, GeoJsonOptions().withMaxZoom(12)))
         // Deliberately a touch smaller than the POI markers (stops are dense), but not tiny -
         // the first cut (0.62-1.2) read too small on device (user 2026-07-13).
         val stopSize = Expression.interpolate(
@@ -1847,7 +1866,7 @@ private fun ensureLayers(style: Style) {
     // cameras reads as dots, not clutter.
     if (style.getImage(FLOCK_IMG) == null) style.addImage(FLOCK_IMG, alprCameraBitmap())
     if (style.getSource(FLOCK_SRC) == null) {
-        style.addSource(GeoJsonSource(FLOCK_SRC))
+        style.addSource(GeoJsonSource(FLOCK_SRC, GeoJsonOptions().withMaxZoom(12)))
         val flockSize = Expression.interpolate(
             Expression.linear(), Expression.zoom(),
             Expression.stop(11f, 0.55f),
@@ -1873,7 +1892,7 @@ private fun ensureLayers(style: Style) {
         }
     }
     if (style.getSource(ME_SRC) == null) {
-        style.addSource(GeoJsonSource(ME_SRC))
+        style.addSource(GeoJsonSource(ME_SRC, GeoJsonOptions().withMaxZoom(12)))
         // Heading beam first so it sits BENEATH the dot (Google order): the
         // translucent cone fans out from under the dot in the facing direction.
         style.addLayer(
