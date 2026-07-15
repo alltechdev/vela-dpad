@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocalGroceryStore
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -551,7 +553,7 @@ fun NavSearchChips(
                     if (query.isEmpty()) {
                         Text(
                             stringResource(R.string.place_search_along_route),
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = SheetPalette.dim(dark),
                         )
                     }
@@ -561,7 +563,7 @@ fun NavSearchChips(
                 // moves, so the chips below stay key-reachable (docs/dpad.md).
                 modifier = Modifier
                     .weight(1f)
-                    .padding(vertical = 8.dp)
+                    .padding(vertical = 6.dp)
                     .dpadFieldEscape(),
             )
         }
@@ -607,6 +609,8 @@ fun NavControls(
     offRoute: Boolean,
     onStop: () -> Unit,
     onSteps: () -> Unit,
+    voiceMuted: Boolean = false,
+    onToggleVoice: () -> Unit = {},
     trafficRatio: Double? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -661,6 +665,15 @@ fun NavControls(
             // Steps is icon-only so the row stays compact (the left ETA column can
             // grow with a longer "X mi · 7:42 PM"); End keeps its label.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Mute lives IN the bar (the fork's pre-along-route layout): three icon buttons +
+                // End never squeezed the ETA, and keeping it here leaves the map with a single
+                // search FAB instead of upstream's two-button stack (crowding feedback 2026-07-15).
+                FilledTonalIconButton(onClick = onToggleVoice) {
+                    Icon(
+                        if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        contentDescription = if (voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
+                    )
+                }
                 FilledTonalIconButton(onClick = onSteps) {
                     Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResource(R.string.nav_steps))
                 }

@@ -67,8 +67,6 @@ import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Park
 import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -334,6 +332,9 @@ fun MapScreen(
     // the bar. Reset when nav ends so a stale-open panel can't greet the next drive.
     var navSearchOpen by remember { mutableStateOf(false) }
     var navSearchQuery by remember { mutableStateOf("") }
+    // The open panel's measured bottom edge: the nav follow-camera pads the puck below it
+    // so the panel can never cover the arrow (user 2026-07-15), on any screen height.
+    var navPanelBottomPx by remember { mutableStateOf(0) }
     LaunchedEffect(state.navigating) {
         if (!state.navigating) { navSearchOpen = false; navSearchQuery = "" }
     }
@@ -600,6 +601,7 @@ fun MapScreen(
             // The endpoints card's measured bottom edge: the route fit frames start/end in the
             // strip between the card and the chooser instead of hiding either behind chrome.
             cameraTopInsetPx = if (state.directionsOpen && !state.navigating) topCardBottomPx else 0,
+            navTopOverlayPx = if (state.navigating && navSearchOpen && state.results.isEmpty()) navPanelBottomPx else 0,
             routePolyline = state.activeRoute?.polyline ?: emptyList(),
             routeColor = routeTrafficColor(state.activeRoute),
             routeDashed = state.travelMode == app.vela.core.model.TravelMode.WALK ||
@@ -1035,7 +1037,8 @@ fun MapScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = panelBannerBottom + 10.dp, start = 12.dp, end = 12.dp),
+                    .padding(top = panelBannerBottom + 10.dp, start = 12.dp, end = 12.dp)
+                    .onGloballyPositioned { navPanelBottomPx = (it.positionInRoot().y + it.size.height).roundToInt() },
             )
         }
 
@@ -1043,7 +1046,7 @@ fun MapScreen(
         // cramming four controls - user 2026-07-14; Google floats these there too), with the
         // re-center button joining the stack when panned away / previewing a step. Hidden
         // while the along-route results own the bottom slot.
-        if (state.navigating && state.results.isEmpty()) {
+        if (state.navigating && state.results.isEmpty() && !navSearchOpen) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1057,15 +1060,6 @@ fun MapScreen(
                         onClick = vm::recenterNav,
                         modifier = Modifier.dpadHighlight(RoundedCornerShape(16.dp)),
                     ) { Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.mapscreen_recenter)) }
-                }
-                FloatingActionButton(
-                    onClick = vm::toggleVoice,
-                    modifier = Modifier.dpadHighlight(RoundedCornerShape(16.dp)),
-                ) {
-                    Icon(
-                        if (state.voiceMuted) Icons.Default.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = if (state.voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
-                    )
                 }
                 FloatingActionButton(
                     onClick = {
@@ -1113,7 +1107,10 @@ fun MapScreen(
         val movingFree = !state.navigating && (state.mySpeed ?: 0f) > 3f &&
             !searchOpen && state.selected == null && !state.directionsOpen && !state.showSteps && !resultsShown
         val postedLimitKmh = state.speedLimitKmh ?: state.speedLimitOverlayKmh
-        if ((state.navigating && state.mySpeed != null) || movingFree) {
+        // Hidden while the along-route panel is up: the panel occupies the same band on short
+        // screens and the two stacked over each other (user 2026-07-15); it returns on dismiss.
+        val navPanelUp = state.navigating && navSearchOpen && state.results.isEmpty()
+        if (((state.navigating && state.mySpeed != null) || movingFree) && !navPanelUp) {
             SpeedWidget(
                 speedMps = state.mySpeed,
                 limitKmh = postedLimitKmh,
@@ -1225,6 +1222,8 @@ fun MapScreen(
                     offRoute = state.nav.offRoute,
                     onStop = vm::stopNav,
                     onSteps = vm::openSteps,
+                    voiceMuted = state.voiceMuted,
+                    onToggleVoice = vm::toggleVoice,
                     trafficRatio = state.activeRoute?.trafficRatio,
                     // Measured AFTER the padding → the bar surface itself; navBarClearance adds the
                     // padding + gap back. Everything stacked above the bar keys off this.
