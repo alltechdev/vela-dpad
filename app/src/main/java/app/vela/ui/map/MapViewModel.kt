@@ -3311,15 +3311,18 @@ class MapViewModel @Inject constructor(
         while (ambientCache.size > 16) ambientCache.removeFirst()
     }
 
-    /** Freshest non-stale cached fetch whose centre is within ~900 m of [center], re-centred so its
-     * distances are correct for the new view. Null if nothing recent+near is cached. */
-    private fun cachedAmbientNear(center: LatLng): List<app.vela.core.model.Place>? {
+    // How long a completed fetch is served AS-IS for views it covers (no refetch). Short on
+    // purpose: it only needs to absorb the tap-a-POI-and-close camera shift, not stand in for
+    // the moved-gate's refresh loop (upstream e3992d88).
+    private val AMBIENT_FRESH_MS = 3 * 60_000L
+
+    /** Freshest non-stale cached fetch whose centre is within ~900 m of [center]. Null if nothing
+     * recent+near is cached. */
+    private fun cachedAmbientNear(center: LatLng): Triple<LatLng, List<app.vela.core.model.Place>, Long>? {
         val now = android.os.SystemClock.elapsedRealtime()
         return ambientCache
             .filter { now - it.third < 30 * 60_000L && it.first.distanceTo(center) < 900.0 }
             .minByOrNull { it.first.distanceTo(center) }
-            ?.second
-            ?.map { it.copy(distanceMeters = center.distanceTo(it.location)) }
     }
 
     /**
@@ -3352,9 +3355,27 @@ class MapViewModel @Inject constructor(
         // Any recent nearby fetch cached (e.g. an area you already visited this session)? Repaint it
         // INSTANTLY so there's no empty→OSM-POI flash→ambient "small then pop bigger" while the network
         // fetch below runs; the fetch then refines it.
-        if (s.ambientPois.isEmpty()) {
-            cachedAmbientNear(center)?.let { cached ->
+        val entry = cachedAmbientNear(center)
+        if (entry != null) {
+            val cached = entry.second.map { it.copy(distanceMeters = center.distanceTo(it.location)) }
+            if (s.ambientPois.isEmpty()) {
                 _state.update { it.copy(ambientPois = keepAmbientForView(cached, viewRadiusMeters)) }
+            }
+            // A FRESH fetch that still covers this view is served as-is, no network refetch
+            // (upstream e3992d88): tapping a POI shifts the camera enough to trip the moved-gate,
+            // so closing the sheet re-fetched the SAME area seconds later - and Google's ranking
+            // jitters between identical requests, so the replace randomly swapped or dropped a
+            // few icons a beat after closing. Same-area data seconds apart is not fresher, just
+            // different. The window is short so lingering somewhere still refreshes on the next
+            // real pan.
+            val fresh = android.os.SystemClock.elapsedRealtime() - entry.third < AMBIENT_FRESH_MS
+            if (fresh && entry.first.distanceTo(center) < 700.0) {
+                if (s.ambientPois.isEmpty() || moved || zoomed) {
+                    _state.update { it.copy(ambientPois = keepAmbientForView(cached, viewRadiusMeters)) }
+                }
+                lastAmbientCenter = entry.first
+                lastAmbientZoom = zoom
+                return
             }
         }
         ambientJob = viewModelScope.launch {
