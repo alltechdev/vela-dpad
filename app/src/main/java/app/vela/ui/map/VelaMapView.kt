@@ -373,6 +373,17 @@ fun VelaMapView(
                 style.getLayer(id)?.setProperties(PropertyFactory.visibility(vis))
             }
         }
+        // This write races applyData's ambient suppression of the same layers: forcing VISIBLE on
+        // nav end while the ambient identity gate still says NONE left doubled icons until the
+        // next ambient change. Nulling the gate makes the next applyData frame re-assert it.
+        lastAppliedAmbient = null
+        // Bus-stop icons + their name labels are browse furniture, not a driving aid - hide the
+        // canonical GTFS stops layer during turn-by-turn (upstream drive 2026-07-14) and restore
+        // on exit. The per-viewport stop FETCH is also skipped while navigating (MapViewModel).
+        runCatching {
+            style.getLayer(TRANSIT_STOPS_LAYER)
+                ?.setProperties(PropertyFactory.visibility(if (navMode) Property.NONE else Property.VISIBLE))
+        }
     }
 
     // Open building-footprint overlays (Microsoft, ODbL - PMTiles): render each region's footprints in a fill
@@ -706,6 +717,22 @@ fun VelaMapView(
     LaunchedEffect(navMode, routePolyline) {
         if (!navMode) {
             navPuck.kalman.reset() // nav ended - don't carry a stale speed into the next trip
+            // Camera padding is STICKY MapLibre state: the nav view's puck-low offset (top padding,
+            // set on every follow frame + the pre-engage case) would otherwise shift the browse
+            // camera's centre for the rest of the session. Bearing + tilt are sticky the same way.
+            // ONE INSTANT move, not an animate: an animated level-out gets CANCELLED mid-flight
+            // by the next camera write (a browse recenter, the follow ticker seeding) and leaves
+            // the map PARTIALLY rotated after a drive (upstream drive 2026-07-14). A snap can't
+            // be interrupted.
+            mapRef?.moveCamera(
+                CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.Builder()
+                        .bearing(0.0)
+                        .tilt(0.0)
+                        .padding(0.0, 0.0, 0.0, 0.0)
+                        .build(),
+                ),
+            )
             return@LaunchedEffect
         }
         navPuck.engaged = false
@@ -781,7 +808,7 @@ fun VelaMapView(
                     val sp = navPuck.speed.toFloat().coerceIn(0f, 30f)
                     navZoomSpeed[0] += (sp - navZoomSpeed[0]) * (1f - kotlin.math.exp(-dtE / 0.6f))
                     val tgtZoom = if (!navUserZoom[0].isNaN()) navUserZoom[0]
-                        else 17.3 - (navZoomSpeed[0] / 30f) * (17.3 - 15.0)
+                        else 18.0 - (navZoomSpeed[0] / 30f) * (18.0 - 15.5) // closer default (user drive 2026-07-14); speed still zooms out
                     if (camState[0].isNaN()) { // (re)seed from the live camera for a smooth hand-off
                         val cp = cam.cameraPosition
                         camState[0] = cp.target?.latitude ?: pt.lat
@@ -1404,7 +1431,7 @@ fun VelaMapView(
                         val rawSp = (mySpeed ?: 0f).coerceIn(0f, 30f)
                         navZoomSpeed[0] += (rawSp - navZoomSpeed[0]) * 0.3f
                         val zoom = if (!navUserZoom[0].isNaN()) navUserZoom[0]
-                            else 17.3 - (navZoomSpeed[0] / 30f) * (17.3 - 15.0)
+                            else 18.0 - (navZoomSpeed[0] / 30f) * (18.0 - 15.5) // closer default (user drive 2026-07-14); speed still zooms out
                         map.animateCamera(
                             CameraUpdateFactory.newCameraPosition(
                                 CameraPosition.Builder()

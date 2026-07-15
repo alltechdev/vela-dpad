@@ -986,8 +986,21 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   - prompt/turn-now distances SCALE WITH SPEED in `NavEngine` (max(fixed, v×T); `spoken` stores band
     SLOTS not metres);
   - one prompt per update speaking the TRUE distance, silent catch-up past maneuvers >75 m behind;
-  - proximity arrival (crow ≤40 m) + no rerouting within 150 m of the destination or while stationary;
+  - proximity arrival (crow ≤40 m) + no rerouting within 150 m of the destination or while stationary
+    (EXCEPT a FAR deviation: `FAR_OFF_M` 90 m counts at ANY speed, upstream a8f46047 - parking-lot
+    creep sits under the 2 m/s moving floor forever, so the reroute/redrawn line never came);
   - off-route measured on the windowed/anchored projection (never whole-polyline min);
+  - TUNNEL DEAD RECKONING (`MapViewModel.tunnelDeadReckonLoop`, upstream a8f46047): the engine only
+    advances on fixes, so a GPS outage froze the whole stack; when the guidance feed goes quiet
+    >3.5 s while navigating, on-route, not replaying and not from a standstill, the VM synthesizes
+    1 Hz fixes ALONG the route at the last speed (decay tau 60 s, floor 1.5 m/s, cap 3 km) through
+    the NORMAL `navSession.onLocation` path - puck/banner/voice keep working, `navStarved` keeps the
+    "Searching for GPS" chip up for honesty, the first real fix re-anchors. Never feeds trip
+    recording (no fake points in trips). Nav zoom range is 18.0->15.5 (was 17.3->15.0); GTFS stop
+    icons hide during nav (declutter effect nulls `lastAppliedAmbient` so applyData re-asserts the
+    OSM POI visibility, and the VM skips the stop fetch); the nav-end camera reset is one INSTANT
+    move zeroing bearing/tilt/padding in a single snap (an animated level-out got cancelled
+    mid-flight by the next camera write and left the browse map partially rotated);
   - reroutes are single-flight + cooldown + latch-clear-on-failure (a failed fetch must NOT kill
     rerouting - the event is edge-triggered);
   - ETA sums the remaining STEP durations × traffic ratio (never remaining/avg-speed).
