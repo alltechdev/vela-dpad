@@ -551,7 +551,19 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   Cards with elevation 6dp, 54dp turn glyph, headlineMedium-bold distance, titleMedium-medium road
   name, FilledTonalIconButton for mute/steps. On screens under 500dp tall the banner runs COMPACT (36dp glyph, titleLarge distance, tighter padding - issue #41; every text line is maxLines-capped so a long arrive card can never bury the map). Keep new nav chrome on this treatment (no flat
   default-radius cards, no OutlinedIconButton circles - that was the "dated" look).
-- **Directions endpoints live in a TOP card (`ui/place/RouteTopCard.kt`):** while the route chooser
+- **In-nav search along route (ported upstream cead2dc5):** the NavControls magnifier arms
+  `NavSearchChips` (Gas/Food/Coffee/Groceries, `NavOverlays.kt`) above the bar; a pick runs the
+  normal `searchAlongRoute` (which skips stashing `alongRouteDest` while navigating), the nav
+  branch of MapScreen's bottom `when` steps aside while `state.results` is non-empty so the
+  results sheet shows, and `selectPlace` gates on `navigating` -> `addStopDuringNav` ->
+  `NavSession.addStop` (user-ordered replan: the pick becomes the NEXT stop, marks null until the
+  new route lands so a failed fetch keeps the stop for the next reroute/recheck; no back-on-course
+  discard, no cooldown). BACK order: results list, then the chip row, then end-nav - browsing gas
+  stations must never end the drive. Fork adaptations: the magnifier button matches the fork bar's
+  default-size FilledTonalIconButtons (upstream's 54dp driving-target sizing is not in this fork),
+  the `selectPlace` gate is merged with the a17eded6 inert-map-taps guard (a tap with no results
+  list open stays inert), and under D-pad the chip row auto-focuses its first chip on arm
+  (`rememberDpadAutoFocus`, beyond upstream).
   is open the search bar swaps for a Google-style endpoints card (origin ring / stops / red
   destination pin down a glyph rail, back arrow left, swap right, an Add stop row when no stops
   exist); `DirectionsPanel` LOST its header params (originName/onEdit*/stops/onAddStop/onEditStops/

@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -89,10 +90,32 @@ class WebPhotoFetcher @Inject constructor(
                 // 2026-07-06). All WebView creation/mutation is on the main thread, so this check is race-free.
                 if (webView != null) return@runCatching
                 val wv = ensureWebView()
-                wv.webViewClient = WebViewClient()
+                // Even the idle warm page needs the renderer-gone handler - an unhandled renderer
+                // death (default: false) kills the WHOLE app process, not just this hidden WebView.
+                wv.webViewClient = object : WebViewClient() {
+                    override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                        rendererGone(view)
+                        return true
+                    }
+                }
                 wv.loadUrl("https://www.google.com/maps?hl=en")
             }
         }
+    }
+
+    /** The WebView's sandboxed renderer process died (OOM kill on a low-RAM phone, or a Chromium
+     * crash). Runs on the UI thread. Tear the dead WebView down and fail every in-flight fetch the
+     * normal empty-result way - the caller keeps the search-preview photo, exactly like a timeout.
+     * The next fetch/warm recreates a fresh WebView via [ensureWebView]. Returning true from
+     * [WebViewClient.onRenderProcessGone] is what keeps the APP alive - the unhandled default kills
+     * the whole process (minSdk 26 == the API the override needs, so no version check). */
+    private fun rendererGone(view: WebView?) {
+        android.util.Log.w("WebPhotoFetcher", "WebView renderer process gone; failing in-flight photo fetch")
+        val wv = webView
+        webView = null
+        warmed = false // let a later warm() rebuild the session
+        runCatching { (wv ?: view)?.destroy() }
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
     }
 
     /** The gallery for [featureId] (`0x..:0x..`) - each [Photo] is its URL plus the gallery-tab
@@ -125,6 +148,13 @@ class WebPhotoFetcher @Inject constructor(
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, SETTLE_MS)
                             }
+                            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                                // Renderer died mid-scrape: unblock the load gate first so the fetch
+                                // coroutine resumes, then tear down + fail this fetch (empty result).
+                                if (!ready.isCompleted) ready.complete(Unit)
+                                rendererGone(view)
+                                return true
+                            }
                         }
                         // Blank the PREVIOUS place's DOM before navigating: on a slow load the MAX_LOAD
                         // fallback can inject the scraper before the new page commits - against an empty
@@ -134,7 +164,9 @@ class WebPhotoFetcher @Inject constructor(
                         wv.loadUrl("https://www.google.com/maps?cid=$cid&hl=en&gl=us")
                         main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, MAX_LOAD_MS)
                         ready.await()
-                        wv.evaluateJavascript(extractScript(id, count), null)
+                        // Identity check, not null check: a renderer crash nulls [webView] (and
+                        // destroys wv) on this same main thread - don't touch the destroyed view.
+                        if (webView === wv) wv.evaluateJavascript(extractScript(id, count), null)
                     }
                     deferred.await()
                 }
