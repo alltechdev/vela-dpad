@@ -804,7 +804,14 @@ fun MapScreen(
         }
 
         // --- top overlay: nav banner while navigating, else search ----------
-        if (state.navigating) {
+        // The along-route panel REPLACES the banner while open (Google covers nav chrome during
+        // in-nav search too): on a 320dp-tall screen banner + panel + bar left no strip at all
+        // for the position arrow, and search is a transient the next tap dismisses. NB nav-time
+        // must NEVER fall into the else branch below - it composes the browse search column
+        // (endpoints card + search bar), which leaked over the drive when the banner first hid.
+        if (state.navigating && navSearchOpen && state.results.isEmpty()) {
+            // The panel (rendered later in this Box) owns the top slot; no banner, no search chrome.
+        } else if (state.navigating) {
             val mans = state.activeRoute?.maneuvers
             val liveStep = state.nav.stepIndex
             val previewing = state.previewStepIndex != null
@@ -1025,7 +1032,6 @@ fun MapScreen(
         // cover it (no focus-driven move), and it can't collide with the FAB stack or the
         // bottom bar. Transient heads-up cards may draw over it; they're rare and short-lived.
         if (state.navigating && navSearchOpen && state.results.isEmpty()) {
-            val panelBannerBottom = with(LocalDensity.current) { navBannerBottomPx.toDp() }
             app.vela.ui.nav.NavSearchChips(
                 query = navSearchQuery,
                 onQueryChange = { navSearchQuery = it },
@@ -1037,7 +1043,8 @@ fun MapScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = panelBannerBottom + 10.dp, start = 12.dp, end = 12.dp)
+                    .statusBarsPadding()
+                    .padding(top = 10.dp, start = 12.dp, end = 12.dp)
                     .onGloballyPositioned { navPanelBottomPx = (it.positionInRoot().y + it.size.height).roundToInt() },
             )
         }
