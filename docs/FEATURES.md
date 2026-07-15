@@ -43,6 +43,7 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] **First-run welcome** - a branded intro with a single "Get started", shown once.
 - [x] **Tasteful donation** - a permanent "Support Vela" entry plus a one-time prompt after a week of use, easily dismissed.
 - [x] **In-app Light/Dark/Follow-system switch** setting Vela's theme independent of the phone; dark mode recolours every landuse fill.
+- [x] **Fire stations are not bus stops (upstream 7a1b30c9, classifier slice).** The category classifier's transit branch matched the bare word station before the civic branch could claim fire station, so fire houses drew with the bus icon. Civic classifies first now, and the bare station keyword excludes the non-transit flavors (power/pumping/radio/ranger/weather stations and friends). Upstream's places-on-the-map settings section and car-screen icon size wait on a dedicated port (12 new strings across 15 locales plus new D-pad surfaces).
 - [x] **Google-style POI markers** - category-coloured teardrop pins with Material glyphs and left-aligned upright labels, ranked by prominence; nameless POIs filtered out.
 - [x] **Building footprints + house numbers, Google-style** - flat grey footprints from ~z14, 3D extrusions at z16+, house numbers where OSM has them (coverage is OSM-limited).
 - [x] **Traffic lights + stop signs on the map** at z16+ (keyless Overpass, area-cached), drawn beneath POI pins.
