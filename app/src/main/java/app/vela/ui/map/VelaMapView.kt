@@ -384,6 +384,13 @@ fun VelaMapView(
         runCatching {
             style.getLayer(TRANSIT_STOPS_LAYER)
                 ?.setProperties(PropertyFactory.visibility(if (navMode) Property.NONE else Property.VISIBLE))
+            // The AMBIENT pool is bare-map furniture too (maybeLoadAmbientPois's own contract):
+            // the fetch skips during nav but the PRE-DRIVE pool stays in state, so a bus stop or
+            // shop pin fetched while browsing rode along for the whole drive (fork device find
+            // while porting a8f46047 - upstream hid only the GTFS stops layer). Hide the layer;
+            // the pool itself survives for an instant restore when the drive ends.
+            style.getLayer(AMBIENT_LAYER)
+                ?.setProperties(PropertyFactory.visibility(if (navMode) Property.NONE else Property.VISIBLE))
         }
     }
 
@@ -2779,8 +2786,11 @@ private fun applyData(
         style.getSourceAs<GeoJsonSource>(AMBIENT_SRC)?.setGeoJson(ambientFc)
         // Google-first: while ambient Google POIs are showing, hide the OSM *business* POIs
         // (poi_r1/r7/r20) so the layers don't duplicate. OSM transit + the whole OSM basemap stay; when
-        // there are no ambient POIs (zoomed out / offline / nav / search) the OSM POIs come back.
-        val osmPoiVis = if (ambientPois.isNotEmpty()) Property.NONE else Property.VISIBLE
+        // there are no ambient POIs (zoomed out / offline / search) the OSM POIs come back. NAV is
+        // spelled out here too: the declutter effect hides these layers at nav start and nulls the
+        // ambient gate, so THIS re-assert runs next frame - without the navMode term it flipped the
+        // basemap POIs right back on over the drive (fork device find while porting a8f46047).
+        val osmPoiVis = if (navMode || ambientPois.isNotEmpty()) Property.NONE else Property.VISIBLE
         listOf("poi_r1", "poi_r7", "poi_r20").forEach { id ->
             style.getLayer(id)?.setProperties(PropertyFactory.visibility(osmPoiVis))
         }
