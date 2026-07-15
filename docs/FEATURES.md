@@ -41,7 +41,7 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] Keyless **OpenFreeMap Liberty** basemap recoloured at runtime: Google-style POI markers, clean white roads, neutralised landuse, flattened fill-patterns, light/dark.
 - [~] **MapTiler Streets** path wired but off (needs a key); the bundled-style Roboto font is parked.
 - [x] **First-run welcome** - a branded intro with a single "Get started", shown once.
-- [x] **Tasteful donation** - a permanent "Support Vela" entry plus a one-time prompt after a week of use, easily dismissed.
+- [x] **Tasteful donation** - a permanent "Support Vela" entry plus a one-time prompt after a week of use, easily dismissed. Points at the upstream author's Buy Me a Coffee page (upstream d6e8230f; the old GitHub Sponsors link went nowhere).
 - [x] **In-app Light/Dark/Follow-system switch** setting Vela's theme independent of the phone; dark mode recolours every landuse fill.
 - [x] **Fire stations are not bus stops (upstream 7a1b30c9, classifier slice).** The category classifier's transit branch matched the bare word station before the civic branch could claim fire station, so fire houses drew with the bus icon. Civic classifies first now, and the bare station keyword excludes the non-transit flavors (power/pumping/radio/ranger/weather stations and friends). Upstream's places-on-the-map settings section and car-screen icon size wait on a dedicated port (12 new strings across 15 locales plus new D-pad surfaces).
 - [x] **Google-style POI markers** - category-coloured teardrop pins with Material glyphs and left-aligned upright labels, ranked by prominence; nameless POIs filtered out.
