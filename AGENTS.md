@@ -645,7 +645,8 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     for any future content gate that must act inside `:core`.
 - **"Hide website & external links" toggle:** `HideExternalLinks` holder
   (`ui/PlaceContent.kt`, default **off**, init in VelaApp, row in Settings → Map). Gates the Website
-  pill/row, the Street View pano and the Book/Reserve/Order action in `PlaceSheet`. No restricted build
+  pill/row and the Book/Reserve/Order action in `PlaceSheet` (Street View is NO LONGER here - it
+  opens the in-app panorama, gated instead by `!RESTRICTED_BUILD`; see the Street View bullet). No restricted build
   flavor / LockableToggle machinery; keep holders in the plain `ShowReviews` shape. Gate any new
   external-link surface on a place page behind this holder.
 - **VelaDialog buttons are a FlowRow: filled pill confirm + text dismiss (upstream 837c7b00 +
@@ -660,10 +661,10 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   default primary ring is invisible on a primary fill (device-found: the focused Download pill
   showed NO focus indication on a keypad phone). `dpadHighlight`'s `ringColor` param exists for
   exactly this; use it on any future primary-filled focusable.
-- **External link buttons -> real browser only (`ui/ExternalLinks.kt`, 2026-07-15).** The NINE
-  buttons that leave the app for a web page (PlaceSheet: Website pill + row, Street View,
-  Book/Reserve/Order, Open in Google Maps; Settings: Support Vela + privacy policy; map: donate
-  prompt + notice "Learn more") call `ExternalLinks.open(context, url)` instead of a bare
+- **External link buttons -> real browser only (`ui/ExternalLinks.kt`, 2026-07-15).** The EIGHT
+  buttons that leave the app for a web page (PlaceSheet: Website pill + row, Book/Reserve/Order,
+  Open in Google Maps; Settings: Support Vela + privacy policy; map: donate prompt + notice
+  "Learn more") call `ExternalLinks.open(context, url)` instead of a bare
   `startActivity(ACTION_VIEW)`. Why: keypad phones ship a preinstalled FAKE browser (a system
   WebView shell that renders an error page for every URL) and a bare ACTION_VIEW sent every link
   button into it. `open()` resolves ACTUAL browsers first - an app declaring MAIN +
