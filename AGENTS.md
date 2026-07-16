@@ -143,6 +143,13 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
      count (the verify-visually rule).
   State the matrix results in the PR body. A cell that genuinely cannot run yet (e.g. a HUD that
   only renders while driving) is DECLARED as deferred in the PR, never silently skipped.
+  5. **COMMIT the regenerated goldens** - a new feature/surface adds its OWN phase to
+     `full_coverage.sh` (rule at the top of that file) AND ships the refreshed `tests/devices/<id>/
+     screenshots/` frames in the same PR, so the repo's committed visual baseline stays CURRENT for
+     D-pad + small-screen at every geometry. Do not just eyeball local captures and discard them -
+     regenerate the affected phase for the golden devices (kyocera-e4810 240x320, sonim-x320
+     480x854; restricted sets too if the surface renders there) and commit the PNGs. A reviewer must
+     be able to see the new surface's D-pad/small-screen rendering from the PR without a device.
 - **Every screen opens focused AND stays D-pad-navigable at a SMALL display, not just native.**
   Verify at a real target size - `adb shell wm size 240x320; adb shell wm density 160` (Kyocera e4810;
   see `tests/devices/`) - by SCREENSHOT: the screen lands a visible focus ring on open AND arrows move
