@@ -184,6 +184,15 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   focus never landed; the robust one re-requests until `onFocusEvent` confirms it truly landed, then
   stops (so it never fights the user). `audit_static.sh` surfaces every weak use for triage - each must
   be screenshot-verified to actually focus on a small screen, or converted.
+- **`dpadModeAutoFocus()` is the variant for HYBRID touch+keypad phones** - it gates on the LIVE
+  `rememberDpadMode()` instead of the static device check (which is false on a hybrid by design, so
+  the other two no-op there). Used by the bare-map update/notice cards: NO traversal path reaches
+  them (the search bar above opens on focus and swallows the way down - a user report proved the
+  Update button could never be highlighted), so the top actionable card takes focus itself, and
+  acting on a card hands focus to the map target. Sibling rule from the same fix: the info-card
+  stack fully occludes the category chips, and occluded chips STILL take focus - a D-pad UP landed
+  on an invisible chip and OK fired its search (device-found). Anything a card/sheet fully covers
+  must drop out of the focus order (`focusProperties { canFocus = false }`, see `infoCardsShown`).
 
 ## The restricted build flavor + the feat/restrictions branch (hard rules)
 
