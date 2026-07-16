@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -101,7 +100,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.shape.RoundedCornerShape as DpadShape
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = false) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -439,9 +438,11 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             Text(stringResource(R.string.settings_vibrate_on_turns), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 4.dp))
             // One chip per travel mode (was four stacked switch rows - a lot of vertical space
             // for a setting most people touch once). Selected = that mode vibrates at turns.
-            Row(
-                // Scrollable so four localized labels can never squeeze each other off-screen.
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 4.dp, bottom = 2.dp),
+            // FlowRow, not a scrollable Row: on a narrow screen / low density the fourth chip
+            // rendered partially cut with no hint that the row scrolls (user report, 2026-07-16) -
+            // wrapping onto a second line keeps every chip fully visible instead.
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // The ROOT swallows bare LEFT/RIGHT (see above), so this horizontal row drives its
