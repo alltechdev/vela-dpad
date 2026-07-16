@@ -682,6 +682,24 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   `ExternalLinks.open`. Device-proven on both flavors: toast with no browser, toast after a live
   root-disable, real-browser open with the fake still the system default. The donate URL it opens
   is upstream's Buy Me a Coffee page (upstream d6e8230f; donations go to the upstream author).
+- **In-app Street View (`streetview/PanoramaView` + `ui/place/StreetViewScreen`, upstream
+  streetview-inapp ported 2026-07-16).** The place-sheet Street View pill opens a KEYLESS panorama
+  in-app - not a hand-off to Google's app, not a WebView. Pipeline: `MapDataSource.streetView`
+  (keyless `GeoPhotoService.SingleImageSearch`, referer-authorised) resolves the nearest pano ->
+  `StreetViewParser` (POSITIONAL, `CALIBRATE:`-class: `[1][2][3][1]` tile size, `[1][5][0][8]`
+  history stack, etc. - pinned to a live capture, unit-tested with a fixture) -> tiles from
+  `streetviewpixels-pa.googleapis.com/v1/tile` stitched by `StreetViewTiles` onto a GLES20
+  equirect sphere. Copy-Google shortcut: a search result's own SV thumbnail carries the exact
+  panoid+yaw (`SearchParser.svThumb`, regex not a pb index), used verbatim when present. Half-screen
+  over the map with a rotating pegman view-cone (`SV_LAYER`/`svPose` in VelaMapView), drag-look,
+  walk arrows, time-travel history, full-screen toggle. **GATED OUT of the restricted flavor**
+  (`!app.vela.ui.RESTRICTED_BUILD` in PlaceSheet) by fork policy - it still hits googleapis, so
+  the content-minimal build omits the pill (compile-time constant, R8-stripped). This is why SV was
+  REMOVED from the `HideExternalLinks` block and from the `ExternalLinks` browser-gate list (it is no
+  longer an external link). Endpoints are remote-calibratable (`Calibration.streetViewMetaUrl`/
+  `streetViewPanoUrl`); the tile template needs no calibration. Device-verified end to end in
+  Philadelphia; NB a hosts-blocked device (AdAway redirecting `streetviewpixels-pa` to 127.0.0.1)
+  fails tiles with a ConnectException - that's the device, not the code (host curl returns 200).
 - **In-app updater (`app/update/SelfUpdater.kt`).**
   - Reads `releases/latest` from `alltechdev/vela-dpad` → tag `v0.0.<run>` → versionCode = `<run>`
     compared to BuildConfig; newer → `MapUiState.updateInfo` card on the bare map.
