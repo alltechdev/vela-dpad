@@ -154,6 +154,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -163,6 +164,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import app.vela.ui.dpadHighlight
+import app.vela.ui.dpadModeAutoFocus // reactive auto-focus for the bare-map cards (docs/dpad.md)
 import app.vela.ui.toggleItem
 import app.vela.ui.rememberDpadAutoFocus // D-pad-first initial focus (docs/dpad.md)
 import app.vela.ui.rememberDpadMode
@@ -290,6 +292,17 @@ fun MapScreen(
     // ANY size, not just full screen. The panel and the chrome are siblings in the same Box and the
     // chrome is declared later, so it stacks above the panel unless gated out (user 2026-07-08).
     val resultsShown = state.results.isNotEmpty() && state.selected == null && !searchOpen && !state.resultsCollapsed
+    // The top info-card stack (voice/region download progress, update offer, pushed notices) is up.
+    // Shared by the card column itself AND the category chips: the cards fully occlude the chip row,
+    // but occluded chips stay focusable - a D-pad UP could land on an INVISIBLE chip and OK fired its
+    // search (device-found while verifying the update card). Chips drop out of the focus order while
+    // this is true.
+    val infoCardsShown = !state.navigating && state.selected == null && !searchOpen &&
+        (
+            state.notices.isNotEmpty() || state.voiceDownloadingId != null ||
+                state.routingDownloadingId != null || state.poiPackDownloadingId != null ||
+                state.updateInfo != null
+            )
     // Free-drive follow (Google's "the map tracks you as you drive, no route needed"). On by
     // default so an open, unobstructed map glides to your fix; a user pan drops it and the locate
     // tap raises it again. Suppressed whenever a focus surface owns the camera (search, a place,
@@ -1004,7 +1017,8 @@ fun MapScreen(
                         // Results now live in a BOTTOM sheet (rendered with the other bottom
                         // surfaces below, Google-style); the top bar keeps only the category
                         // chips, and only on the bare map.
-                        state.selected == null && state.results.isEmpty() -> CategoryChips(onPick = vm::quickSearch)
+                        state.selected == null && state.results.isEmpty() ->
+                            CategoryChips(onPick = vm::quickSearch, focusable = !infoCardsShown)
                     }
 
                     // Quiet offline marker: a small globe-with-a-slash chip tucked just under the category
@@ -1717,9 +1731,7 @@ fun MapScreen(
         // with progress only in Settings.
         val downloadingVoiceId = state.voiceDownloadingId
         val downloadingRegion = state.routingDownloadingId != null || state.poiPackDownloadingId != null
-        if (!state.navigating && state.selected == null && !searchOpen &&
-            (state.notices.isNotEmpty() || downloadingVoiceId != null || downloadingRegion || state.updateInfo != null)
-        ) {
+        if (infoCardsShown) {
             Column(
                 Modifier
                     .align(Alignment.TopCenter)
@@ -1740,17 +1752,33 @@ fun MapScreen(
                         pct = if (state.poiPackDownloadingId != null) state.poiPackDownloadPct else state.routingDownloadPct,
                     )
                 }
+                // D-pad: these cards are dialog-like but NO traversal path reaches them - the
+                // search bar above opens on focus and swallows the way down (device-found via a
+                // user report: the Update button could never be highlighted). So the top
+                // actionable card takes focus itself (dpadModeAutoFocus - reactive, so hybrid
+                // touch+keypad phones get it too), and acting on a card hands focus to the map
+                // target so it isn't lost when the card leaves. Gated off while the map is
+                // engaged so a card landing mid-pan can't yank the arrows away.
+                val cardTakesFocus = dpadMode && !mapEngaged
+                val focusToMap: () -> Unit = {
+                    if (dpadMode) runCatching { mapFocusRequester.requestFocus() }
+                }
                 // A newer release on GitHub (self-updater; the check is a Settings toggle).
                 state.updateInfo?.let { u ->
                     UpdateCard(
                         versionName = u.versionName,
                         downloadPct = state.updateDownloadPct,
-                        onUpdate = { vm.downloadUpdate() },
-                        onDismiss = { vm.dismissUpdate() },
+                        onUpdate = { vm.downloadUpdate(); focusToMap() },
+                        onDismiss = { vm.dismissUpdate(); focusToMap() },
+                        takeFocus = cardTakesFocus,
                     )
                 }
-                state.notices.forEach { n ->
-                    NoticeCard(n, onDismiss = { vm.dismissNotice(n.id) })
+                state.notices.forEachIndexed { i, n ->
+                    NoticeCard(
+                        n,
+                        onDismiss = { vm.dismissNotice(n.id); focusToMap() },
+                        takeFocus = cardTakesFocus && state.updateInfo == null && i == 0,
+                    )
                 }
             }
         }
@@ -2142,7 +2170,12 @@ private fun SearchResults(
 }
 
 @Composable
-private fun CategoryChips(onPick: (String) -> Unit) {
+private fun CategoryChips(
+    onPick: (String) -> Unit,
+    // False while the info-card stack covers this row - occluded chips must not take D-pad
+    // focus (an invisible chip could be activated; see infoCardsShown at the call site).
+    focusable: Boolean = true,
+) {
     // (localized label, STABLE English search query, icon) - the query is the logic key sent to Google
     // search (works in any locale), the label is what the user sees, so the chips localize without
     // changing what's searched.
@@ -2163,7 +2196,9 @@ private fun CategoryChips(onPick: (String) -> Unit) {
         categories.forEach { (labelRes, query, icon) ->
             ElevatedAssistChip(
                 onClick = { onPick(query) },
-                modifier = Modifier.dpadHighlight(RoundedCornerShape(8.dp)),
+                modifier = Modifier
+                    .focusProperties { canFocus = focusable }
+                    .dpadHighlight(RoundedCornerShape(8.dp)),
                 label = { Text(stringResource(labelRes)) },
                 leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 // Full pill, Google-style - the M3 default 8dp corners read dated on a map chip row.
@@ -2670,6 +2705,10 @@ private fun UpdateCard(
     onUpdate: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    // D-pad: no traversal path reaches this card (see the call site), so when true the
+    // primary button places focus on itself. The explicit rings are needed too - a
+    // TextButton's stock focus overlay is invisible on the tinted card container.
+    takeFocus: Boolean = false,
 ) {
     Card(
         modifier.fillMaxWidth(),
@@ -2688,8 +2727,15 @@ private fun UpdateCard(
                 )
             } else {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.update_later)) }
-                    TextButton(onClick = onUpdate) { Text(stringResource(R.string.update_install)) }
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                    ) { Text(stringResource(R.string.update_later)) }
+                    TextButton(
+                        onClick = onUpdate,
+                        modifier = (if (takeFocus) Modifier.dpadModeAutoFocus() else Modifier)
+                            .dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                    ) { Text(stringResource(R.string.update_install)) }
                 }
             }
         }
@@ -2697,7 +2743,13 @@ private fun UpdateCard(
 }
 
 @Composable
-private fun NoticeCard(notice: Notice, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+private fun NoticeCard(
+    notice: Notice,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    // D-pad: same no-traversal-path situation as UpdateCard (see the call site).
+    takeFocus: Boolean = false,
+) {
     val context = LocalContext.current
     val container = when (notice.level) {
         Notice.LEVEL_ERROR -> MaterialTheme.colorScheme.errorContainer
@@ -2722,11 +2774,16 @@ private fun NoticeCard(notice: Notice, onDismiss: () -> Unit, modifier: Modifier
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 notice.url?.let { url ->
-                    TextButton(onClick = {
-                        app.vela.ui.ExternalLinks.open(context, url)
-                    }) { Text(stringResource(R.string.mapscreen_learn_more)) }
+                    TextButton(
+                        onClick = { app.vela.ui.ExternalLinks.open(context, url) },
+                        modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                    ) { Text(stringResource(R.string.mapscreen_learn_more)) }
                 }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.mapscreen_dismiss)) }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = (if (takeFocus) Modifier.dpadModeAutoFocus() else Modifier)
+                        .dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                ) { Text(stringResource(R.string.mapscreen_dismiss)) }
             }
         }
     }
