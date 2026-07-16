@@ -2698,29 +2698,46 @@ private fun AboutTab(
     ink: Color,
     dim: Color,
 ) {
+    // D-pad: each paragraph/section is a ringed focus stop (`.focusable()` draws its own
+    // affordance via the ring), so arrows step through the description and the scroll
+    // container brings each block into view - a long text between two controls was
+    // otherwise unreachable/unscrollable by keys (user report, 2026-07-16). Touch unchanged.
+    val blockShape = RoundedCornerShape(8.dp)
     Column {
         // Google's editorial one-liner first, then the owner's "From the owner" blurb,
         // then the attribute sections - the description before the rest, per request.
         editorialSummary?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = ink, modifier = Modifier.padding(bottom = 4.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = ink,
+                modifier = Modifier.padding(bottom = 4.dp).dpadHighlight(blockShape).focusable(),
+            )
         }
         ownerDescription?.let {
             Text(stringResource(R.string.place_from_the_owner), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, color = dim, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = ink, modifier = Modifier.padding(bottom = 4.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = ink,
+                modifier = Modifier.padding(bottom = 4.dp).dpadHighlight(blockShape).focusable(),
+            )
         }
         sections.forEach { sec ->
-            Text(
-                sec.title,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                color = dim,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-            )
-            sec.items.forEach { item ->
-                Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = dim, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(item, style = MaterialTheme.typography.bodyMedium, color = ink)
+            Column(Modifier.dpadHighlight(blockShape).focusable()) {
+                Text(
+                    sec.title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = dim,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                )
+                sec.items.forEach { item ->
+                    Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = dim, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(item, style = MaterialTheme.typography.bodyMedium, color = ink)
+                    }
                 }
             }
         }
