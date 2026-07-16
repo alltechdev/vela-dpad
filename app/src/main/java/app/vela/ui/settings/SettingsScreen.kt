@@ -87,6 +87,10 @@ import app.vela.ui.dpadFieldEscape
 import app.vela.ui.dpadSwallowHorizontal
 import app.vela.ui.dpadRowSibling
 import app.vela.ui.dpadAutoFocus
+import app.vela.ui.rememberDpadFocusKeeper // focus handoff for swap-in controls (docs/dpad.md)
+import app.vela.ui.DpadFocusHandoff
+import app.vela.ui.dpadFocusKept
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusEvent
@@ -681,27 +685,44 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             LaunchedEffect(Unit) { vm.refreshAsr() }
             Spacer(Modifier.height(8.dp))
             Hint(stringResource(R.string.settings_voice_search_model_hint, app.vela.voice.AsrModel.SIZE_MB))
+            // D-pad: swap-in control like the voice/region rows - the keeper re-places focus
+            // when Download becomes the progress readout and again when Remove appears.
+            val asrKeeper = rememberDpadFocusKeeper()
             when {
                 state.asrDownloadPct != null -> {
                     val pct = state.asrDownloadPct ?: 0f
-                    Text(
-                        if (state.asrInstalling) stringResource(R.string.settings_voice_search_installing)
-                        else stringResource(R.string.settings_voice_search_downloading, (pct * 100).toInt()),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
-                }
-                state.asrInstalled -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.settings_voice_search_model), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { vm.deleteAsrModel() }) { Text(stringResource(R.string.settings_voice_search_remove)) }
+                    DpadFocusHandoff(asrKeeper)
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .dpadFocusKept(asrKeeper)
+                            .dpadHighlight(RoundedCornerShape(8.dp))
+                            .focusable(),
+                    ) {
+                        Text(
+                            if (state.asrInstalling) stringResource(R.string.settings_voice_search_installing)
+                            else stringResource(R.string.settings_voice_search_downloading, (pct * 100).toInt()),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
                     }
                 }
-                else -> OutlinedButton(onClick = { vm.downloadAsrModel() }) {
-                    Text(stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB))
+                state.asrInstalled -> {
+                    DpadFocusHandoff(asrKeeper)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.settings_voice_search_model), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { vm.deleteAsrModel() }, modifier = Modifier.dpadFocusKept(asrKeeper)) { Text(stringResource(R.string.settings_voice_search_remove)) }
+                    }
+                }
+                else -> {
+                    DpadFocusHandoff(asrKeeper)
+                    OutlinedButton(onClick = { vm.downloadAsrModel() }, modifier = Modifier.dpadFocusKept(asrKeeper)) {
+                        Text(stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB))
+                    }
                 }
             }
+            LaunchedEffect(state.asrDownloadPct != null, state.asrInstalled) { asrKeeper.retarget() }
             // The engine picker only matters when there's actually a choice (the model AND a voice app,
             // or two voice apps): "Vela Voice" = AUTO (the model wins, provider as graceful fallback),
             // "Android default" = the implicit intent Android routes, or each installed app pinned by name
@@ -885,12 +906,28 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // D-pad: same swap-in control as the voice rows (Download -> spinner ->
+                        // Get places/Delete) - the keeper re-places focus on the new variant so
+                        // the highlight doesn't teleport to the top of the page (user report).
+                        val keeper = rememberDpadFocusKeeper()
                         when {
-                            downloading || packDownloading -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            downloading || packDownloading -> {
+                                DpadFocusHandoff(keeper)
+                                CircularProgressIndicator(
+                                    Modifier
+                                        .size(20.dp)
+                                        .dpadFocusKept(keeper)
+                                        .dpadHighlight(androidx.compose.foundation.shape.CircleShape)
+                                        .focusable(),
+                                    strokeWidth = 2.dp,
+                                )
+                            }
                             updateAvailable -> Row(verticalAlignment = Alignment.CenterVertically) {
+                                DpadFocusHandoff(keeper)
                                 OutlinedButton(
                                     onClick = { vm.downloadPoiPackFor(region, update = true) },
                                     enabled = state.routingDownloadingId == null && state.poiPackDownloadingId == null,
+                                    modifier = Modifier.dpadFocusKept(keeper),
                                 ) { Text(stringResource(R.string.settings_update_places)) }
                                 IconButton(onClick = { vm.deleteRoutingGraph(region.id) }) {
                                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_routing_remove))
@@ -899,22 +936,32 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                             // Installed before place packs existed (or its pack was skipped): offer just
                             // the pack, so offline search covers the region without a graph re-download.
                             installed && !packInstalled -> Row(verticalAlignment = Alignment.CenterVertically) {
+                                DpadFocusHandoff(keeper)
                                 OutlinedButton(
                                     onClick = { vm.downloadPoiPackFor(region) },
                                     enabled = state.routingDownloadingId == null && state.poiPackDownloadingId == null,
+                                    modifier = Modifier.dpadFocusKept(keeper),
                                 ) { Text(stringResource(R.string.settings_get_places)) }
                                 IconButton(onClick = { vm.deleteRoutingGraph(region.id) }) {
                                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_routing_remove))
                                 }
                             }
-                            installed -> IconButton(onClick = { vm.deleteRoutingGraph(region.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_routing_remove))
+                            installed -> {
+                                DpadFocusHandoff(keeper)
+                                IconButton(onClick = { vm.deleteRoutingGraph(region.id) }, modifier = Modifier.dpadFocusKept(keeper)) {
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_routing_remove))
+                                }
                             }
-                            else -> OutlinedButton(
-                                onClick = { vm.downloadRoutingGraph(region) },
-                                enabled = state.routingDownloadingId == null,
-                            ) { Text(stringResource(R.string.settings_download)) }
+                            else -> {
+                                DpadFocusHandoff(keeper)
+                                OutlinedButton(
+                                    onClick = { vm.downloadRoutingGraph(region) },
+                                    enabled = state.routingDownloadingId == null,
+                                    modifier = Modifier.dpadFocusKept(keeper),
+                                ) { Text(stringResource(R.string.settings_download)) }
+                            }
                         }
+                        LaunchedEffect(downloading, packDownloading, updateAvailable, installed, packInstalled) { keeper.retarget() }
                     }
                 }
             }
@@ -1412,19 +1459,42 @@ private fun VoiceRow(
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(8.dp))
+        // D-pad: this trailing control REPLACES itself when used (Download -> spinner ->
+        // Use/Delete) and Compose recovery then dumped focus at the TOP of the page (user
+        // report). The keeper re-places focus on the new variant; the spinner is a focus
+        // stop with a ring so the row keeps the highlight while it works.
+        val keeper = rememberDpadFocusKeeper()
         when {
-            downloading -> CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-            active -> IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_voice_row_remove, v.displayName), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            downloading -> {
+                DpadFocusHandoff(keeper)
+                CircularProgressIndicator(
+                    Modifier
+                        .size(22.dp)
+                        .dpadFocusKept(keeper)
+                        .dpadHighlight(androidx.compose.foundation.shape.CircleShape)
+                        .focusable(),
+                    strokeWidth = 2.dp,
+                )
+            }
+            active -> {
+                DpadFocusHandoff(keeper)
+                IconButton(onClick = onDelete, modifier = Modifier.dpadFocusKept(keeper)) {
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_voice_row_remove, v.displayName), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             installed -> {
-                OutlinedButton(onClick = onUse) { Text(stringResource(R.string.settings_voice_row_use)) }
+                DpadFocusHandoff(keeper)
+                OutlinedButton(onClick = onUse, modifier = Modifier.dpadFocusKept(keeper)) { Text(stringResource(R.string.settings_voice_row_use)) }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_voice_row_remove, v.displayName), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            else -> OutlinedButton(onClick = onDownload, enabled = !anyDownloading) { Text(stringResource(R.string.settings_download)) }
+            else -> {
+                DpadFocusHandoff(keeper)
+                OutlinedButton(onClick = onDownload, enabled = !anyDownloading, modifier = Modifier.dpadFocusKept(keeper)) { Text(stringResource(R.string.settings_download)) }
+            }
         }
+        LaunchedEffect(downloading, active, installed) { keeper.retarget() }
     }
     if (downloading) LinearProgressIndicator(progress = { downloadPct }, modifier = Modifier.fillMaxWidth())
 }

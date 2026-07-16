@@ -193,6 +193,15 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   stack fully occludes the category chips, and occluded chips STILL take focus - a D-pad UP landed
   on an invisible chip and OK fired its search (device-found). Anything a card/sheet fully covers
   must drop out of the focus order (`focusProperties { canFocus = false }`, see `infoCardsShown`).
+- **A control that REPLACES itself when used needs a `DpadFocusKeeper`** (Download -> progress ->
+  Use/Remove: the Settings voice rows, routing region rows, the voice-search model). Compose clears
+  focus when the focused node leaves composition and recovery dumps it at the TOP of the page (user
+  report). Pattern: `rememberDpadFocusKeeper()` + `Modifier.dpadFocusKept(keeper)` on every variant
+  (a progress-only variant becomes a ringed `.focusable()` stop) + `DpadFocusHandoff(keeper)` inside
+  each branch + one `LaunchedEffect(variantKey) { keeper.retarget() }`. The handoff arms on
+  "focused at (or within 250 ms of) disposal" because the focus-loss event and onDispose race in
+  either order. No-op under touch. Device-verified: Download -> spinner -> Use kept the highlight
+  on the row through both swaps.
 
 ## The restricted build flavor + the feat/restrictions branch (hard rules)
 

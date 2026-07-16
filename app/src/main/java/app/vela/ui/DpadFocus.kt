@@ -342,3 +342,75 @@ fun Modifier.dpadHighlight(
             },
         )
 }
+
+/**
+ * Keeps D-pad focus glued to a row whose trailing control REPLACES itself as state changes
+ * (Download -> progress spinner -> Use/Delete). Compose clears focus when the focused node
+ * leaves composition and recovery then restarts at the TOP of the screen - a keypad user who
+ * pressed Download found the highlight teleported to the first row (user report, 2026-07-16).
+ *
+ * Usage, all three parts inside the row composable:
+ *  - `val keeper = rememberDpadFocusKeeper()`
+ *  - every variant of the swap-in control gets `Modifier.dpadFocusKept(keeper)` (a variant
+ *    with no natural focusable, e.g. a progress spinner, adds `.dpadHighlight(shape)` +
+ *    `.focusable()` so the row stays a focus stop while it works)
+ *  - after the variant `when`, `LaunchedEffect(variantKey) { keeper.retarget() }` where
+ *    `variantKey` discriminates the variants, plus `DpadFocusHandoff(keeper)` INSIDE each
+ *    disposable variant branch.
+ *
+ * The handoff arms only when the disposed control held focus at (or within 250 ms of) its
+ * disposal - the focus-loss event and `onDispose` race in either order, so a plain "was
+ * focused" check misses one ordering. No-op entirely under touch (retarget would otherwise
+ * scroll the row into view on a touch tap).
+ */
+class DpadFocusKeeper {
+    val requester = FocusRequester()
+    internal var enabled = false
+    internal var focused = false
+    internal var lostAtMs = 0L
+    internal var armed = false
+
+    internal fun armIfRecentlyFocused() {
+        if (!enabled) return
+        if (focused || android.os.SystemClock.uptimeMillis() - lostAtMs < 250) armed = true
+    }
+
+    /** Re-places focus on whatever control now wears [dpadFocusKept], if armed. */
+    suspend fun retarget() {
+        if (!enabled || !armed) return
+        armed = false
+        repeat(40) {
+            if (focused) return
+            runCatching { requester.requestFocus() }
+            kotlinx.coroutines.delay(50)
+        }
+    }
+}
+
+@Composable
+fun rememberDpadFocusKeeper(): DpadFocusKeeper {
+    val keeper = remember { DpadFocusKeeper() }
+    keeper.enabled = rememberDpadMode()
+    return keeper
+}
+
+/** Marks the row's CURRENT control variant as the keeper's focus target. */
+fun Modifier.dpadFocusKept(keeper: DpadFocusKeeper): Modifier = this
+    .focusRequester(keeper.requester)
+    .onFocusEvent {
+        if (it.isFocused) {
+            keeper.focused = true
+        } else {
+            if (keeper.focused) keeper.lostAtMs = android.os.SystemClock.uptimeMillis()
+            keeper.focused = false
+        }
+    }
+
+/** Put INSIDE each disposable variant branch: arms the keeper when the branch leaves
+ * composition while (recently) focused, so [DpadFocusKeeper.retarget] re-places focus. */
+@Composable
+fun DpadFocusHandoff(keeper: DpadFocusKeeper) {
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { keeper.armIfRecentlyFocused() }
+    }
+}
