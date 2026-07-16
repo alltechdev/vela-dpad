@@ -700,6 +700,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   `streetViewPanoUrl`); the tile template needs no calibration. Device-verified end to end in
   Philadelphia; NB a hosts-blocked device (AdAway redirecting `streetviewpixels-pa` to 127.0.0.1)
   fails tiles with a ConnectException - that's the device, not the code (host curl returns 200).
+  **D-pad (fork-only, `StreetViewScreen`): the GL pano is a raw-View gesture (`onTouchEvent` +
+  `ScaleGestureDetector`) so it needs a key path (rule 3) - `PanoramaView.panByFraction`/`zoomStep`
+  are called by an ENGAGE-model onKeyEvent (mirrors MapDpadController): OK engages, arrows look,
+  +/- zoom, OK-engaged walks to the nearest-facing neighbour, BACK disengages. The overlay controls
+  (Close/Fullscreen/Time) OVERLAP the fullscreen pano box, so spatial focus nav fails - they use an
+  EXPLICIT FocusRequester ring instead (pano->close->full->time). Robust `dpadAutoFocus` (not the weak
+  remember- variant, which raced the search bar and left the viewer unfocused). audit_static was
+  extended to catch a raw-View `onTouchEvent`/`ScaleGestureDetector` without a key path (it only
+  scanned Compose gestures before - this bug slipped through once).
 - **In-app updater (`app/update/SelfUpdater.kt`).**
   - Reads `releases/latest` from `alltechdev/vela-dpad` → tag `v0.0.<run>` → versionCode = `<run>`
     compared to BuildConfig; newer → `MapUiState.updateInfo` card on the bare map.
