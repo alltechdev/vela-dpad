@@ -34,6 +34,21 @@ interface NavStrings {
      * (English-first); only added when it makes sense (1–2 signals right before a surface-street turn). */
     fun passLights(count: Int): String = ""
 
+    /** A repeated prompt's SHORT form: the instruction with its sign-destination tail ("toward X")
+     *  dropped. Spoken for a step's second/third announcement - the first one already named the
+     *  destination, and re-reading the whole sign at every band read as spam off an exit (upstream
+     *  real-drive report 2026-07-17). Default = unchanged (a language keeps full repeats until it
+     *  overrides with its own destination marker, same English-first pattern as [passLights]). */
+    fun repeatShort(instruction: String): String = instruction
+
+    /** The SPOKEN form of a sign instruction: the secondary sign destinations after a colon are
+     *  dropped ("Take the ramp toward I 5 North: Vancouver British Columbia" -> "... toward I 5
+     *  North"). The full sign stays on the banner; speaking it all took so long the next prompt
+     *  interrupted mid-sentence (Google speaks only the primary destination too). Default =
+     *  unchanged; English overrides (the colon convention is osrmPhrase's own formatting, so
+     *  per-language overrides are safe as tables adopt it). */
+    fun spokenSign(instruction: String): String = instruction
+
     /** A distance phrased for SPEECH, honouring the imperial/metric preference - "500 feet" / "150 mètres". */
     fun spokenDistance(meters: Double, imperial: Boolean): String
 
@@ -121,8 +136,19 @@ object EnNavStrings : NavStrings {
         val feet = meters * 3.28084
         if (feet < 800) "${(if (feet < 100) maxOf(10, (feet / 10).roundToInt() * 10) else (feet / 50).roundToInt() * 50)} feet"
         else {
-            val miles = (meters / 1609.34 * 10).roundToInt() / 10.0
-            if (miles == 1.0) "1 mile" else "$miles miles"
+            // Sub-mile distances SPEAK at quarter-mile granularity (upstream 8d9abf1f: the voice
+            // read "zero point five miles"; a human says "half a mile"). Google phrases the
+            // whole band this way; the banner keeps the exact figure. Above a mile, decimals
+            // read fine ("1.2 miles").
+            when ((meters / 402.336).roundToInt().coerceAtLeast(1)) {
+                1 -> "a quarter mile"
+                2 -> "half a mile"
+                3 -> "three quarters of a mile"
+                else -> {
+                    val miles = (meters / 1609.34 * 10).roundToInt() / 10.0
+                    if (miles == 1.0) "1 mile" else "$miles miles"
+                }
+            }
         }
     } else {
         if (meters < 950) "${(meters / 10).roundToInt() * 10} meters"
@@ -155,6 +181,21 @@ object EnNavStrings : NavStrings {
         return if (count > 1) "Use the $sideWord $count lanes" else "Use the $sideWord lane"
     }
 
+    // "Take the ramp on the right toward CA-99 North, Downtown" -> "Take the ramp on the right".
+    // The exit number stays ("Take exit 172"); only the sign-destination tail drops. The " toward "
+    // marker is exactly what osrmPhrase/ghPhrase emit for EN ramp/exit/fork steps.
+    override fun repeatShort(instruction: String): String = instruction.substringBefore(" toward ")
+
+    // Drop the secondary sign destinations: the colon only ever comes from osrmPhrase's own
+    // "ref: cities" sign formatting, and only after a " toward " - so a plain colon elsewhere
+    // (times, addresses) can never be touched.
+    override fun spokenSign(instruction: String): String {
+        val t = instruction.indexOf(" toward ")
+        if (t < 0) return instruction
+        val colon = instruction.indexOf(':', startIndex = t)
+        return if (colon > 0) instruction.substring(0, colon) else instruction
+    }
+
     override fun useLanesToDo(side: LaneSide, count: Int, instruction: String): String {
         val sideWord = when (side) { LaneSide.LEFT -> "left"; LaneSide.RIGHT -> "right"; LaneSide.CENTER -> "center" }
         val lanes = if (count > 1) "the $sideWord $count lanes" else "the $sideWord lane"
@@ -181,6 +222,11 @@ object EnNavStrings : NavStrings {
         // destination as its own beat (Google pauses there too). "toward" only appears on ramp/
         // exit/highway-sign steps, so plain turns ("... onto Main St") are untouched.
         s = Regex(" toward ", RegexOption.IGNORE_CASE).replace(s, ", toward ")
+        // "Take exit 186" mis-vowels the same way ("tacake") now that the short repeat forms can
+        // end right after the number - "take the ..." is the onset espeak reliably gets right
+        // (upstream ear-report 2026-07-16), so speak it as "take the 186 exit". Display keeps
+        // "Take exit 186"; the exit-tab chip is unaffected (it reads the banner text).
+        s = Regex("""\btake exit (\w+)""", RegexOption.IGNORE_CASE).replace(s) { "take the ${it.groupValues[1]} exit" }
         EN_SPEECH_WORDS.forEach { (re, rep) -> s = re.replace(s, rep) }
         s = SpeechText.spokenNumbers(s) // "128th" → "one twenty eighth" (space, not hyphen - the compound got a mushy -ty), not a mangled "one hundred and 28th"
         return s

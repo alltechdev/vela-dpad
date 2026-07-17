@@ -237,17 +237,35 @@ fun ManeuverBanner(
                             modifier = Modifier.padding(top = 2.dp, bottom = 1.dp),
                         ) { signs.forEach { SignChip(it) } }
                     }
-                    // Every text line is CAPPED: on a feature-phone-width screen an uncapped long
-                    // instruction (or the arrive step's name+address below) wrapped to many lines and
-                    // the banner swallowed half the map, burying the nav arrow under its bottom edge
-                    // (issue #41, F21 Pro). Google ellipsizes; so do we - the map stays visible.
-                    if (!rerouting) Text(
-                        text.ifEmpty { stringResource(R.string.nav_maneuver_continue) },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    // Headline = the SPOKEN form of the instruction (primary sign destination
+                    // only), so the card and the voice can never disagree; the chips row above
+                    // already carries the stylized route + exit. The sign's secondary cities
+                    // drop to a dim one-liner below - present to confirm against the physical
+                    // sign, subordinate, and harmless if a monster sign ellipsizes it
+                    // (upstream 317e736e). Every text line stays CAPPED: on a feature-phone-width
+                    // screen an uncapped instruction wrapped to many lines and the banner
+                    // swallowed half the map (issue #41, F21 Pro).
+                    if (!rerouting) {
+                        val full = text.ifEmpty { stringResource(R.string.nav_maneuver_continue) }
+                        val headline = app.vela.core.i18n.NavStringsRegistry.current().spokenSign(full)
+                        Text(
+                            headline,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (headline.length < full.length) {
+                            val rest = full.substring(headline.length).trim(':', ' ')
+                            if (rest.isNotBlank()) Text(
+                                rest,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = content.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     // The arrive step names WHERE you're arriving (Google-style): the business or
                     // label, and its address when that adds anything. Skip a line that would just
                     // repeat the instruction text.
@@ -311,7 +329,12 @@ fun ManeuverBanner(
                     Icon(maneuverIcon(nextType), contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(6.dp))
                     nextSigns.firstOrNull()?.let { SignChip(it); Spacer(Modifier.width(6.dp)) }
-                    Text(nextText, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // Short form: the chip beside it names the route, and the full sign used to
+                    // ellipsize arbitrarily mid-destination on this single-line row.
+                    Text(
+                        app.vela.core.i18n.NavStringsRegistry.current().repeatShort(nextText),
+                        style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (previewing) {
