@@ -2388,7 +2388,12 @@ class MapViewModel @Inject constructor(
         viewModelScope.launch {
             val place = runCatching { dataSource.reverseGeocode(location) }.getOrNull()
             if (place != null && _state.value.selected?.location == location) {
-                _state.update { it.copy(selected = place) }
+                // Keep the pin at the PRESSED point (same rule as the via-stop branch above): the
+                // reverse-geocode only names it. Google snaps to the nearest ADDRESSABLE point,
+                // which can be another street entirely - adopting its location moved the already-
+                // framed camera to that snap a beat after the pin dropped (the "dropped a pin and
+                // the map went somewhere else" report, touch and D-pad alike, 2026-07-16).
+                _state.update { it.copy(selected = place.copy(location = location)) }
             }
         }
     }
