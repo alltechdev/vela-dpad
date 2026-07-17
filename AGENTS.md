@@ -552,10 +552,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   own LICENSE + NOTICE). The hardware LEFT/RIGHT soft-key bar for keypad phones. Kept as its own
   module so it stays cleanly REPLACEABLE - re-sync from upstream by recopying, don't hand-edit its
   files. It is NOT under detekt (Vela's dead-code gate would false-positive its public API). Vela's
-  integration lives in `app/ui/softkey/VelaSoftkeys.kt` (install + gate + map zoom keys); the whole
-  design + rollout plan is `docs/softkeys.md`. **Softkeys gate on `isDpadFirstDevice` (same detector
-  as the Compose D-pad affordances) so they NEVER show on touch** - keep any new softkey binding on
-  that gate, and new bindings go through `Softkeys.of(activity)`, not a fork of the engine.
+  integration lives in `app/ui/softkey/VelaSoftkeys.kt` (install + gate + the `Key`/`MapSoftkeys`
+  seam); `MapScreen` picks the two keys CONTEXTUALLY (bare map = Options / Search, place sheet =
+  Options / Directions, nav/route = Zoom -/+, search overlay = none) and the feature-phone Options
+  menu is a `VelaMenu(placement = BottomStart)` (bordered, flush on the bar). The whole design +
+  rollout plan is `docs/softkeys.md`. **Softkeys gate on `isDpadFirstDevice` (same detector as the
+  Compose D-pad affordances) so they NEVER show on touch** - keep any new softkey binding on that
+  gate, and new bindings go through `Softkeys.of(activity)` / `VelaSoftkeys`, not a fork of the
+  engine. When a soft key covers an action, DROP the redundant on-screen button on keypad (gated on
+  `VelaSoftkeys.isActive()`), the way the map's +/- and the place sheet's whole button row are.
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.
