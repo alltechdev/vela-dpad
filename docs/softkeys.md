@@ -63,6 +63,12 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
     interaction is "press your soft key" (window-level key capture, not focus navigation). If the
     profile CHOOSER (a navigable single-choice list) is ever surfaced, give it a Vela-native
     `VelaDialog`/`VelaMenu` instead - a bare `AlertDialog` list can't auto-focus under D-pad.
+- **Redundant touch buttons are trimmed when a soft key covers them.** The rule "hardware key
+  present -> drop the on-screen button, free the screen" applies to every contextual action, not just
+  zoom: while the place-sheet soft keys are active, the on-screen **Directions** pill (both the full
+  and minimized-detent copies) and the header **Close** X are hidden - the soft keys do them. Gated
+  on `VelaSoftkeys.isActive()`, so touch phones keep every button. Device-verified: the place sheet
+  drops Directions + X (only Street View remains) and the Close soft key dismisses it.
 - **The on-screen `+`/`-` are hidden when the bar is up.** On a structurally touchless device the
   softkey bar covers zoom, so the on-screen D-pad `+`/`-` buttons (`MapScreen`, gated on `dpadMode`)
   would be a redundant second affordance and waste bottom-right space at 240x320. They now also gate

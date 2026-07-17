@@ -230,6 +230,11 @@ fun PlaceSheet(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    // When the hardware softkey bar is active it already offers Close (left) and Directions (right)
+    // for this place sheet, so drop the on-screen Directions pill and the header Close X - the same
+    // "hardware key present -> trim the redundant touch button, free the screen" rule as the map's
+    // +/- buttons. Keypad devices only; untouched under touch (isActive() is false there).
+    val softkeysActive = app.vela.ui.softkey.VelaSoftkeys.isActive()
     // The saved parking spot's own sheet: car glyph beside the name, a Clear action pill.
     val isParking = place.id.startsWith("parking:")
     val dark = isAppInDarkTheme()
@@ -464,7 +469,7 @@ fun PlaceSheet(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                ActionPill(Icons.Default.Directions, stringResource(R.string.place_directions), emphasized = true, onClick = onDirections)
+                if (!softkeysActive) ActionPill(Icons.Default.Directions, stringResource(R.string.place_directions), emphasized = true, onClick = onDirections)
                 return@Column
             }
             // Photo hero at the top (Google-style) - always visible, even at the
@@ -575,8 +580,10 @@ fun PlaceSheet(
                         item(stringResource(R.string.place_set_as_work)) { headerMenu = false; onSetShortcut(ShortcutKind.WORK) }
                     }
                 }
-                IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close), tint = dim, modifier = Modifier.size(20.dp))
+                if (!softkeysActive) {
+                    IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close), tint = dim, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
 
@@ -724,7 +731,7 @@ fun PlaceSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ActionPill(Icons.Default.Directions, stringResource(R.string.place_directions), emphasized = true, onClick = onDirections)
+                if (!softkeysActive) ActionPill(Icons.Default.Directions, stringResource(R.string.place_directions), emphasized = true, onClick = onDirections)
                 if (isParking) {
                     ActionPill(Icons.Default.Delete, stringResource(R.string.place_clear_parking), onClick = onClearParking)
                 }
