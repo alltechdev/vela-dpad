@@ -19,7 +19,11 @@ per-vendor problem the parked softkey-vendor-guides notes were about.
 - **Vendored as `:yapchik`** (a source-identical copy of the upstream library module, its own
   package `com.theonionsarewatching.yapchik`, LGPL-3.0 - see `yapchik/LICENSE` + `yapchik/NOTICE`).
   Kept as its own module so it stays a cleanly replaceable library (LGPL) and can be re-synced from
-  upstream without touching `:app`. LGPL-3.0 inside Vela's GPL-3.0 is compatible.
+  upstream without touching `:app`. LGPL-3.0 inside Vela's GPL-3.0 is compatible, and F-Droid-eligible.
+  **NB the license history:** yapchik was PolyForm Noncommercial (GPL-incompatible) as of 2026-07-16,
+  then the author RELICENSED it to LGPL-3.0-or-later on 2026-07-17 - which is why vendoring became
+  possible. Verified against the GitHub API + the actual `LICENSE` file + the README before vendoring;
+  re-check the upstream license on any future re-sync.
 - **No keycode conflict with Vela.** Vela uses `KEYCODE_MENU` / `SOFT_LEFT/RIGHT` / `F1/F2`
   NOWHERE; the D-pad arrows, OK and BACK stay Vela's. Yapchik's `ReservedKeys` refuses to ever bind
   those, and `UNIVERSAL` deliberately excludes BACK.
@@ -114,23 +118,32 @@ to `DpadFocus.kt` (non-composable view of the existing private `detectDpadFirst`
 Ordered by value / risk. Each phase keeps the hard rules: touch byte-identical, gated on the D-pad
 detector, new behaviour in new files, both geometries x both flavors + eyeball before merge.
 
-1. **More contextual surfaces.** The map's contexts are wired (browse/nav -> Zoom, place ->
-   Close/Directions, search -> none, Settings -> suppressed). Remaining candidates: a live-nav set
-   (`Overview` / `End`), a directions set (`Start` / `Back`), and search -> `Clear` / a submit. Each
-   needs its own eyeball pass. Also localize the inline English labels.
-3. **Theme-reactive style (BLOCKED on an upstream change).** The bar is a fixed dark toolbar (reads
-   fine in both themes). Following Vela light/dark needs Yapchik to re-apply `style` colours on
-   `refresh()` - today it sets them at bar CONSTRUCTION only, so `refreshAll()` re-binds labels but
-   never repaints an on-screen bar (device-confirmed: the bar stayed dark after switching to Light).
-   The fix is a small upstream patch (re-tint in `SoftkeyController.refresh` / `SoftkeyBar`); worth
-   sending. Don't hand-patch the vendored copy - that would break re-sync.
+1. **More contextual surfaces.** Wired: bare map -> Options / Search (Options = Zoom / Recenter /
+   Layers / Settings, Zoom = a D-pad zoom mode), place sheet -> Options / Directions, nav / route ->
+   Zoom -/+, search overlay -> none, Settings -> suppressed. Labels are LOCALIZED (Options / Search /
+   Recenter translated into all 14 locales; Directions / Layers / Settings reuse existing strings;
+   the symbol-heavy zoom labels stay English). Optional remaining: a live-nav set (`Overview` /
+   `End`) and a directions `Start` set - deferred on purpose, since mid-drive the two zoom keys are
+   the safer default (a menu/extra action while driving is a distraction). Each would need its own
+   eyeball pass.
+3. **Theme-reactive style.** DONE. Yapchik colours the bar at CONSTRUCTION and `refresh()` only
+   re-binds labels, so to repaint we REBUILD: `VelaSoftkeys.MapSoftkeys` re-keys its bind effect on
+   `isAppInDarkTheme()` and does `clear()` then `set()` in one effect body (atomic - both run before
+   the next frame, no flicker) after applying the theme colours. Dark toolbar in dark, light in
+   light. (A cleaner upstream fix would be to re-tint in `SoftkeyController.refresh`/`SoftkeyBar`;
+   worth sending, but not needed - we don't hand-patch the vendored copy.)
 4. **On/off setting + calibration entry.** DONE (see "What shipped" above) - a Settings toggle
    backing `Yapchik.mode` and a `startCalibration` row. Remaining sub-work: a Vela-native profile
    chooser if we ever surface the full list, and wiring the calibrated custom profile into
    `res/xml/yapchik_devices.xml` presets (item 5).
-5. **Known-device profiles.** Ship `res/xml/yapchik_devices.xml` with entries for the phones we have
-   evidence for (Sonim x320, Kyocera, TCL) so those devices work without calibration; keep UNIVERSAL
-   as the fallback. Confirm each device's actual soft-key keycodes on hardware first.
+5. **Known-device profiles (blocked on hardware, calibration covers it).** A
+   `res/xml/yapchik_devices.xml` would let named phones skip calibration, but the useful entries need
+   REAL keycodes we don't have: the parked vendor notes (the softkey-vendor-guides memory) show the
+   Sonim x320's upper-key codes are UNKNOWN (needs a `getevent`/KeyEvent dump on the device) and the
+   Kyocera route is a reflection API, not a plain keycode (out of scope for Yapchik's profile model).
+   TCL is `SOFT_LEFT=1`/`SOFT_RIGHT=2` = already UNIVERSAL. So a devices XML today would only restate
+   UNIVERSAL; the real answer for odd-keycode phones is the shipped CALIBRATION flow. Add named
+   entries once a target phone is dumped.
 6. **Dialog coverage (open question).** Yapchik wraps the ACTIVITY window; Vela's raw-`Dialog`
    `VelaMenu`/`VelaDialog` are separate windows, so softkeys won't appear over them without per-dialog
    wiring. Decide whether that matters (softkeys are most valuable on the map) or wire the dialogs.
