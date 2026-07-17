@@ -94,6 +94,116 @@ class NavEngineTest {
         assertTrue("should emit an Arrived event", events.any { it is NavEvent.Arrived })
     }
 
+    /** Sub-mile spoken distances phrase as quarter-mile fractions, never "zero point five miles". */
+    @Test
+    fun spokenMilesUseFractionsBelowAMile() {
+        val en = app.vela.core.i18n.EnNavStrings
+        assertEquals("a quarter mile", en.spokenDistance(400.0, imperial = true))
+        assertEquals("half a mile", en.spokenDistance(805.0, imperial = true))
+        assertEquals("three quarters of a mile", en.spokenDistance(1207.0, imperial = true))
+        assertEquals("1 mile", en.spokenDistance(1609.0, imperial = true))
+        assertEquals("1.2 miles", en.spokenDistance(1931.0, imperial = true))
+        assertEquals("500 meters", en.spokenDistance(500.0, imperial = false)) // metric untouched
+    }
+
+    /** "Take exit 186" speaks as "take the 186 exit" - the espeak G2P mangles the bare
+     *  take-exit adjacency ("tacake", upstream ear-report 2026-07-16); "take the" is the onset it
+     *  reliably gets right. Display text is untouched (this is the speech expansion). */
+    @Test
+    fun takeExitSpeaksWithTheArticle() {
+        val en = app.vela.core.i18n.EnNavStrings
+        assertTrue(en.expandForSpeech("Take exit 186, toward somewhere").startsWith("take the 186 exit"))
+        assertTrue(en.expandForSpeech("Take exit 72B").startsWith("take the 72B exit"))
+        assertEquals("Turn right onto Main Street", en.expandForSpeech("Turn right onto Main Street"))
+    }
+
+    /** A MERGE announces at most twice (near band + turn-now): a long on-ramp used to narrate
+     *  the same road three times in declining counts (upstream real-drive report 2026-07-17). */
+    @Test
+    fun mergeGetsOneApproachPrompt() {
+        val a = LatLng(37.0000, -122.0000)
+        val m = LatLng(37.0200, -122.0000)
+        val b = LatLng(37.0400, -122.0000)
+        val route = Route(
+            polyline = listOf(a, m, b),
+            legs = listOf(
+                RouteLeg(
+                    distanceMeters = 4400.0, durationSeconds = 200.0, durationInTrafficSeconds = null,
+                    maneuvers = listOf(
+                        Maneuver(ManeuverType.DEPART, "Head north", a, 2200.0, 100.0),
+                        Maneuver(ManeuverType.MERGE, "Merge onto I-80 East", m, 2200.0, 100.0),
+                        Maneuver(ManeuverType.ARRIVE, "Arrive", b, 0.0, 0.0),
+                    ),
+                ),
+            ),
+            distanceMeters = 4400.0, durationSeconds = 200.0, durationInTrafficSeconds = null,
+        )
+        var state = NavEngine.update(route, NavState(), a).first
+        val speaks = ArrayList<String>()
+        var lat = 37.0000
+        while (lat < 37.0210 && state.stepIndex < 2) {
+            lat += 0.0004 // ~45 m steps
+            val (n, ev) = NavEngine.update(route, state, LatLng(lat, -122.0))
+            state = n
+            ev.filterIsInstance<NavEvent.Speak>().forEach { speaks += it.text }
+        }
+        val merges = speaks.filter { it.contains("Merge onto") }
+        assertTrue("merge should be announced, got: $speaks", merges.isNotEmpty())
+        assertTrue("merge spoken at most twice (near + turn-now), got: $merges", merges.size <= 2)
+    }
+
+    /** A step's second and third prompts drop the sign-destination tail: the far band names the
+     *  destination once, the repeats say just the action ("Take the ramp on the right"). */
+    @Test
+    fun repeatedRampPromptsDropTheDestinationTail() {
+        val a = LatLng(37.0000, -122.0000)
+        val r = LatLng(37.0200, -122.0000)
+        val b = LatLng(37.0400, -122.0000)
+        val full = "Take the ramp on the right toward CA-99 North"
+        val route = Route(
+            polyline = listOf(a, r, b),
+            legs = listOf(
+                RouteLeg(
+                    distanceMeters = 4400.0, durationSeconds = 200.0, durationInTrafficSeconds = null,
+                    maneuvers = listOf(
+                        Maneuver(ManeuverType.DEPART, "Head north", a, 2200.0, 100.0),
+                        Maneuver(ManeuverType.RAMP_RIGHT, full, r, 2200.0, 100.0),
+                        Maneuver(ManeuverType.ARRIVE, "Arrive", b, 0.0, 0.0),
+                    ),
+                ),
+            ),
+            distanceMeters = 4400.0, durationSeconds = 200.0, durationInTrafficSeconds = null,
+        )
+        var state = NavEngine.update(route, NavState(), a).first
+        val speaks = ArrayList<String>()
+        var lat = 37.0000
+        while (lat < 37.0210 && state.stepIndex < 2) {
+            lat += 0.0004
+            val (n, ev) = NavEngine.update(route, state, LatLng(lat, -122.0))
+            state = n
+            ev.filterIsInstance<NavEvent.Speak>().forEach { speaks += it.text }
+        }
+        val ramps = speaks.filter { it.contains("Take the ramp") }
+        assertTrue("expected multiple ramp prompts, got: $speaks", ramps.size >= 2)
+        assertTrue("the FIRST prompt carries the sign destination: ${ramps.first()}", ramps.first().contains("toward CA-99 North"))
+        ramps.drop(1).forEach {
+            assertTrue("repeats drop the destination tail: $it", !it.contains("toward"))
+        }
+    }
+
+    /** The SPOKEN sign drops secondary destinations after the colon; plain instructions and
+     *  colons outside a sign ("Opens at 9:00") are untouched. */
+    @Test
+    fun spokenSignDropsSecondarySignDestinations() {
+        val en = app.vela.core.i18n.EnNavStrings
+        assertEquals(
+            "Take the ramp on the left toward I 5 North",
+            en.spokenSign("Take the ramp on the left toward I 5 North: Vancouver British Columbia"),
+        )
+        assertEquals("Turn right onto Main Street", en.spokenSign("Turn right onto Main Street"))
+        assertEquals("Arrive: 9:00 PM", en.spokenSign("Arrive: 9:00 PM")) // no " toward " -> untouched
+    }
+
     @Test
     fun detectsOffRoute() {
         val route = straightRoute()
