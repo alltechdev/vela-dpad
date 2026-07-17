@@ -109,6 +109,26 @@ class NavSession @Inject constructor(
     /** An intermediate stop on a multi-stop trip. */
     data class NavStop(val location: LatLng, val label: String)
 
+    /** Fold a light-ENRICHED copy of the current route in after nav has already started, so
+     *  START never waits on the Overpass traffic-signal fetch (that blocked nav start for up to
+     *  ~25 s, the server timeout, with light guidance enabled). The enriched route's polyline and
+     *  maneuver POSITIONS are identical; only turn instruction TEXT gains "Pass the light,
+     *  then ...". So swapping planRoute (what the engine reads each fix) and re-emitting the
+     *  current step's text is safe and needs no re-anchor. No-op if we've stopped or rerouted
+     *  since (a different polyline = the clauses are for a route we're no longer on).
+     *  Deliberately does NOT touch _state.route, so the trip recorder doesn't log a phantom swap. */
+    fun applyEnrichedRoute(r: Route) {
+        synchronized(stopLock) {
+            val cur = planRoute ?: return
+            if (!_state.value.navigating || cur.polyline.size != r.polyline.size) return
+            planRoute = r
+        }
+        val idx = _state.value.nav.stepIndex
+        r.maneuvers.getOrNull(idx)?.instruction?.let { txt ->
+            _state.update { it.copy(maneuverText = txt) }
+        }
+    }
+
     fun start(
         route: Route,
         destination: LatLng,
@@ -231,7 +251,7 @@ class NavSession @Inject constructor(
         }
     }
 
-    fun onLocation(loc: LatLng, imperial: Boolean = false, speedMps: Double? = null, accuracyM: Double? = null) {
+    fun onLocation(loc: LatLng, imperial: Boolean = false, speedMps: Double? = null, accuracyM: Double? = null, bearingDeg: Double? = null) {
         val s = _state.value
         val route = s.route ?: return
         if (!s.navigating || s.arrived) return
@@ -255,7 +275,7 @@ class NavSession @Inject constructor(
         // tighter than driving because the path is narrow. See NavEngine.offRouteCorridor.
         val offRoute = NavEngine.offRouteCorridor(mode, accuracyM)
         val farOff = NavEngine.farOffDistance(mode, offRoute)
-        val (next, events) = NavEngine.update(route, nav, loc, imperial, speedMps, movingFloor, offRoute, farOff)
+        val (next, events) = NavEngine.update(route, nav, loc, imperial, speedMps, movingFloor, offRoute, farOff, bearingDeg)
         val maneuver = route.maneuvers.getOrNull(next.stepIndex)
         // Guard the write on route IDENTITY: a reroute/faster-route can swap route+NavState while
         // this update was computing on the OLD route - writing `next` (old-route traveledM /
@@ -465,7 +485,13 @@ class NavSession @Inject constructor(
         // Announce sparsely: the first attempt of a burst speaks, silent retries don't re-announce.
         if (now - lastRerouteSpokeMs > REROUTE_SPEAK_MIN_MS) {
             lastRerouteSpokeMs = now
+            // Google's earcon first (a soft two-note chime), then the spoken word - the chime
+            // registers even when a prompt is mid-sentence or the ear expects music.
+            voice.reroutingChime()
             voice.speak(app.vela.core.i18n.NavStringsRegistry.current().rerouting(), interrupt = true)
+            // A buzz too (its own pattern, see Haptics.reroute) - the voice is useless muted or on
+            // a windy ride, and the banner's "rerouting…" needs eyes on the screen.
+            haptics.reroute(mode)
         }
         // Reroute THROUGH the stops you haven't reached yet - not straight to the final destination
         // (going straight to it would silently drop your remaining stops on any off-route wobble).
