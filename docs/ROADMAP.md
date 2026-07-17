@@ -16,6 +16,11 @@ Privacy-first, F-Droid, GPLv3; every new data flow is opt-in and documented in
   [`docs/dpad.md`](dpad.md)); next is a real-device tuning pass (pan step, OK-hold
   threshold, focus-ring visibility, traversal order) and pixel-verifying the full-screen
   reviews WebView page-scroll on an unfiltered network.
+- **Hardware softkeys (Yapchik).** Map-zoom soft keys prototyped (`:yapchik` + `VelaSoftkeys`,
+  issue #65) - gated to keypad phones, touch byte-identical, see [`docs/softkeys.md`](softkeys.md).
+  Remaining: contextual per-screen keys, a theme-reactive bar, an on/off + calibration setting,
+  known-device keycode profiles, and real-hardware confirmation of each target phone's soft-key
+  codes. This is where the parked softkey-vendor-guides work lands as a user-calibratable flow.
 - **Explore / Nearby.** A bottom-sheet of nearby restaurants and things to do, reusing the
   keyless categorised POI search ranked by distance and rating. Events are the sparse part
   (no keyless Google feed; likely OSM plus a public events source later). Start as "Nearby."

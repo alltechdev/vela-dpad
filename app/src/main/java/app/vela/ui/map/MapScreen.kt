@@ -261,6 +261,9 @@ fun MapScreen(
     val dpadMode = rememberDpadMode()
     val dpadFirst = rememberDpadFirstDevice()
     val mapDpad = remember { MapDpadController() }
+    // Keypad/D-pad phones: bind the two hardware SOFT keys to map zoom (issue #65). No-op + no bar
+    // on touch phones (gated in the softkey engine's AUTO detector). New behaviour in new files.
+    app.vela.ui.softkey.VelaSoftkeys.MapZoomSoftkeys(mapDpad)
     var mapFocused by remember { mutableStateOf(false) }
     var mapEngaged by remember { mutableStateOf(false) } // arrows pan only while engaged (docs/dpad.md)
     // Focuses the centre map target. Used ONLY for Choose-on-map (entered mid-session, so
@@ -1422,7 +1425,14 @@ fun MapScreen(
         // DOWN traversal into their rows (measured: DOWN from the results header jumped to
         // the zoom + button instead of the first result). During those, the map is behind
         // a panel anyway; zoom the map via the engaged crosshair after closing the panel.
-        val zoomButtonsVisible = dpadMode && !searchOpen && !state.navigating &&
+        // On a STRUCTURALLY touchless device the hardware-softkey bar (VelaSoftkeys) already gives
+        // Zoom -/+ with no focus-walk, so the on-screen +/- would be a redundant second affordance
+        // (and waste bottom-right space on a 240x320 screen). Hide them there; keep them for a hybrid
+        // touch+keypad phone (dpadMode true but has touch, so the softkey bar is NOT shown) and as
+        // the fallback where soft keys aren't recognized. When a softkeys on/off setting lands, gate
+        // this on the resolved softkey state instead of the raw detector (see docs/softkeys.md).
+        val softkeyBarShown = dpadFirst // == VelaSoftkeys' AUTO gate; the map always binds its keys
+        val zoomButtonsVisible = dpadMode && !softkeyBarShown && !searchOpen && !state.navigating &&
             state.selected == null && !state.directionsOpen && !state.showSteps &&
             state.activeRoute == null && state.routes.isEmpty() &&
             (state.results.isEmpty() || state.resultsCollapsed)

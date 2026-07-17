@@ -89,6 +89,7 @@ class VelaApp : Application(), coil.ImageLoaderFactory {
         app.vela.ui.HideAdult.init(this)
         app.vela.ui.HideExternalLinks.init(this)
         app.vela.ui.Buildings3d.init(this)
+        app.vela.ui.softkey.VelaSoftkeys.init(this) // keypad/D-pad hardware softkey bar (map zoom); gated to D-pad-first devices
         Onboarding.init(this)
         // Persist any fatal (managed) crash so it survives the restart and can be exported from
         // Settings → Diagnostics next launch.

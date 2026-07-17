@@ -547,6 +547,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 - `:core` is the UI-agnostic "extractor" (NewPipeExtractor pattern). `:app` is
   the Compose UI. Don't let MapLibre or Android UI types leak into `:core`
   (convert `LatLng` at the view boundary).
+- **`:yapchik` is a vendored third-party library** (source-identical copy of
+  github.com/theOnionsAreWatching/yapchik, LGPL-3.0, package `com.theonionsarewatching.yapchik`,
+  own LICENSE + NOTICE). The hardware LEFT/RIGHT soft-key bar for keypad phones. Kept as its own
+  module so it stays cleanly REPLACEABLE - re-sync from upstream by recopying, don't hand-edit its
+  files. It is NOT under detekt (Vela's dead-code gate would false-positive its public API). Vela's
+  integration lives in `app/ui/softkey/VelaSoftkeys.kt` (install + gate + map zoom keys); the whole
+  design + rollout plan is `docs/softkeys.md`. **Softkeys gate on `isDpadFirstDevice` (same detector
+  as the Compose D-pad affordances) so they NEVER show on touch** - keep any new softkey binding on
+  that gate, and new bindings go through `Softkeys.of(activity)`, not a fork of the engine.
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.

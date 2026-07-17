@@ -240,6 +240,7 @@ dependencies {
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 
     implementation(project(":core"))
+    implementation(project(":yapchik")) // vendored softkey engine (LGPL-3.0) - keypad/D-pad softkeys
 
     // sherpa-onnx: in-process neural TTS runtime (runs the downloaded Kokoro model). Vendored AAR
     // (no official Maven artifact; the JitPack coordinate doesn't resolve). Lives in :app because a

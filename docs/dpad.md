@@ -445,6 +445,15 @@ documented limitations below.
 (GPS was mocked via a `gps` test provider to give routing a valid origin; the network's
 content filter otherwise leaves routing without a usable fix on this device.)
 
+## Hardware softkeys (Yapchik) - separate from the D-pad, see docs/softkeys.md
+
+Keypad phones also carry two hardware SOFT keys (top-left/right) with no touch or D-pad equivalent.
+Those are handled by the vendored `:yapchik` engine, NOT this file's D-pad system, and are documented
+in [`softkeys.md`](softkeys.md). They intercept ONLY the softkey codes (`SOFT_LEFT/RIGHT`, `MENU`,
+`F1/F2`) - never the D-pad arrows/OK/BACK this file owns - so the two systems are orthogonal. The bar
+gates on the SAME `isDpadFirstDevice` detector (+ `vela_force_dpad` override) as the affordances here,
+so softkeys and D-pad rings agree on which devices are keypad-first. Prototype: map `Zoom -`/`Zoom +`.
+
 ## Known limitations / follow-ups (also on the ROADMAP)
 
 - **Menus & dialogs - SOLVED (`VelaMenu` / `VelaDialog`), was the last framework wall.**

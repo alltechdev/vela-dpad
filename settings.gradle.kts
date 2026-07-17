@@ -32,6 +32,9 @@ rootProject.name = "Vela"
 // once the surface grows.
 include(":app")
 include(":core")
+// Vendored softkey engine for keypad / D-pad phones (LGPL-3.0, source-identical to
+// github.com/theOnionsAreWatching/yapchik). Own module = cleanly replaceable + re-syncable.
+include(":yapchik")
 // Standalone JVM tool (not an app dependency) - builds per-region routing graphs off-device.
 // Run: ./gradlew :tools:graphbuilder:run --args="<region.osm.pbf> <out-dir>"
 include(":tools:graphbuilder")

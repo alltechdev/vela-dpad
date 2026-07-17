@@ -100,6 +100,12 @@ private fun detectDpadFirst(context: android.content.Context): Boolean {
     return noTouch || hasPhysicalDpad
 }
 
+/** Non-composable, context-only view of [rememberDpadFirstDevice] for callers OUTSIDE composition
+ * (e.g. the softkey engine's AUTO detector wired in [app.vela.VelaApp]). Same conservative rule,
+ * same `vela_force_dpad` test override - so softkeys and the Compose D-pad affordances agree on
+ * which devices are keypad-first. */
+fun isDpadFirstDevice(context: android.content.Context): Boolean = detectDpadFirst(context)
+
 /** Back-compat alias kept for call sites that mean "structural D-pad-first decisions". */
 @Composable
 fun rememberNoTouchDevice(): Boolean = rememberDpadFirstDevice()

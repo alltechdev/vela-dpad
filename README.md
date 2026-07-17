@@ -111,7 +111,7 @@ planned work in [`ROADMAP.md`](docs/ROADMAP.md).
 
 ## Architecture
 
-Two Gradle modules (AGP 8.7.3, Kotlin 2.1, Compose, Hilt, R8):
+Three Gradle modules (AGP 8.7.3, Kotlin 2.1, Compose, Hilt, R8):
 
 - **`:core`** is the UI-agnostic extractor (NewPipeExtractor pattern): the model, the
   `MapDataSource` seam (a Mock source plus the Google scraper), OSRM + GraphHopper
@@ -119,6 +119,9 @@ Two Gradle modules (AGP 8.7.3, Kotlin 2.1, Compose, Hilt, R8):
 - **`:app`** is the Jetpack Compose (Material 3) UI: map, search, place sheet,
   directions, the navigation banner, settings, the hidden-WebView scrapers, and offline
   downloads.
+- **`:yapchik`** is a vendored, source-identical copy of the [Yapchik](https://github.com/theOnionsAreWatching/yapchik)
+  softkey engine (LGPL-3.0, zero deps): the hardware LEFT/RIGHT soft-key bar for keypad phones.
+  Kept as its own module so it stays cleanly replaceable/re-syncable. See [`docs/softkeys.md`](docs/softkeys.md).
 
 `MapDataSource` is the seam: Mock today, Google once calibrated, a future Overture/OSM
 or self-hosted source drops in the same way. Full module tree in [`AGENTS.md`](AGENTS.md).
