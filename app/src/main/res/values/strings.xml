@@ -64,6 +64,14 @@
     <string name="settings_softkeys_calibrate" translatable="false">Calibrate soft keys</string>
     <string name="settings_softkeys_calibrate_hint" translatable="false">If the soft keys don\'t zoom, tap here and press your left then right soft key so Vela learns their codes.</string>
     <string name="map_zoom_mode_hint" translatable="false">Zoom:  ◀ out   ·   in ▶      BACK to exit</string>
+    <!-- Hardware soft-key labels. The symbol-heavy zoom ones stay English (translatable=false); the
+         plain words are localised. Directions/Layers/Settings reuse existing strings. -->
+    <string name="softkey_options">Options</string>
+    <string name="softkey_search">Search</string>
+    <string name="softkey_recenter">Recenter</string>
+    <string name="softkey_zoom_in" translatable="false">Zoom +</string>
+    <string name="softkey_zoom_out" translatable="false">Zoom −</string>
+    <string name="softkey_zoom_menu" translatable="false">Zoom (◀ − ▶ +)</string>
     <string name="map_voice_downloading">Downloading Vela voice · %1$d%%</string>
     <string name="map_voice_installing">Installing Vela voice…</string>
     <string name="map_region_downloading">Downloading %1$s routing · %2$d%%</string> <!-- format -->

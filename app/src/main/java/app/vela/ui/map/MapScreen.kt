@@ -306,18 +306,21 @@ fun MapScreen(
         if (mapZoomMode) { runCatching { mapFocusRequester.requestFocus() }; mapEngaged = true }
     }
     run {
+        val skOptions = stringResource(R.string.softkey_options)
+        val skZoomOut = stringResource(R.string.softkey_zoom_out)
+        val skZoomIn = stringResource(R.string.softkey_zoom_in)
         val (skLeft, skRight) = when {
             searchOpen -> null to null
-            placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key("Options") { placeOptionsOpen = true } to
-                app.vela.ui.softkey.VelaSoftkeys.Key("Directions", vm::routeToSelected)
+            placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { placeOptionsOpen = true } to
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_directions), vm::routeToSelected)
             // During nav / a route, keep BOTH zoom keys (no menu/search mid-drive).
             state.navigating || state.directionsOpen || state.showSteps ->
-                app.vela.ui.softkey.VelaSoftkeys.Key("Zoom −") { mapDpad.zoomBy(-1.0) } to
-                    app.vela.ui.softkey.VelaSoftkeys.Key("Zoom +") { mapDpad.zoomBy(1.0) }
+                app.vela.ui.softkey.VelaSoftkeys.Key(skZoomOut) { mapDpad.zoomBy(-1.0) } to
+                    app.vela.ui.softkey.VelaSoftkeys.Key(skZoomIn) { mapDpad.zoomBy(1.0) }
             // The FIRST screen (bare browse map): an Options menu (Zoom / Recenter / Settings) on the
             // LEFT, quick Search on the RIGHT.
-            else -> app.vela.ui.softkey.VelaSoftkeys.Key("Options") { mapOptionsOpen = true } to
-                app.vela.ui.softkey.VelaSoftkeys.Key("Search") { searchArmSignal++ }
+            else -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { mapOptionsOpen = true } to
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.softkey_search)) { searchArmSignal++ }
         }
         app.vela.ui.softkey.VelaSoftkeys.MapSoftkeys(skLeft, skRight)
     }
@@ -331,12 +334,12 @@ fun MapScreen(
             bottomBarPx = app.vela.ui.softkey.VelaSoftkeys.barHeightPx(context),
         ) {
             // Zoom -> a mode where D-pad LEFT/RIGHT zoom out/in (see the key handler + hint below).
-            item("Zoom (◀ − ▶ +)") { mapOptionsOpen = false; mapZoomMode = true }
-            item("Recenter") { mapOptionsOpen = false; vm.recenter() }
+            item(stringResource(R.string.softkey_zoom_menu)) { mapOptionsOpen = false; mapZoomMode = true }
+            item(stringResource(R.string.softkey_recenter)) { mapOptionsOpen = false; vm.recenter() }
             if (app.vela.ui.LayersButton.on.value) {
-                item("Layers") { mapOptionsOpen = false; layersOpen = true }
+                item(stringResource(R.string.map_layers)) { mapOptionsOpen = false; layersOpen = true }
             }
-            item("Settings") { mapOptionsOpen = false; onOpenSettings() }
+            item(stringResource(R.string.settings_title)) { mapOptionsOpen = false; onOpenSettings() }
         }
     }
     // The results panel is open (not collapsed to the "N results" pill) → hide the bottom map

@@ -89,7 +89,7 @@ object VelaSoftkeys {
         }
     }
 
-    /** One soft-key binding: a label and its action. */
+    /** One soft-key binding: a label and its press action. */
     class Key(val label: String, val onPress: () -> Unit)
 
     /**
@@ -104,11 +104,16 @@ object VelaSoftkeys {
         val activity = LocalContext.current as? Activity ?: return
         val leftNow by rememberUpdatedState(left)
         val rightNow by rememberUpdatedState(right)
-        LaunchedEffect(left?.label, right?.label) {
+        // Theme-follow: Yapchik colours the bar at CONSTRUCTION and refresh() only re-binds labels, so
+        // to repaint we must REBUILD it. clear() then set() inside one effect body is atomic (both run
+        // before the next frame), so there's no flicker - and re-keying on the theme rebuilds it with
+        // the new colours when the user flips Light/Dark.
+        val dark = app.vela.ui.theme.isAppInDarkTheme()
+        LaunchedEffect(left?.label, right?.label, dark) {
+            applyThemeColors(dark)
             val ctl = Softkeys.of(activity)
-            if (left == null && right == null) {
-                ctl.clear()
-            } else {
+            ctl.clear() // force a fresh SoftkeyBar so the theme colours take
+            if (leftNow != null || rightNow != null) {
                 ctl.set {
                     leftNow?.let { k -> left(k.label) { k.onPress() } }
                     rightNow?.let { k -> right(k.label) { k.onPress() } }
@@ -116,6 +121,24 @@ object VelaSoftkeys {
             }
         }
         DisposableEffect(activity) { onDispose { Softkeys.of(activity).clear() } }
+    }
+
+    /** Paint the bar for the in-app theme. A dark toolbar in dark, a light one in light - both
+     * single-ink, matching Vela's map chrome. Applied before a rebuild (see [MapSoftkeys]). */
+    private fun applyThemeColors(dark: Boolean) {
+        Yapchik.style.apply {
+            if (dark) {
+                backgroundColor = 0xFF14343A.toInt()
+                textColor = 0xFFECECEC.toInt()
+                pressedTextColor = 0xFF4DD0C4.toInt()
+                dividerColor = 0x33FFFFFF
+            } else {
+                backgroundColor = 0xFFDDE7E8.toInt()
+                textColor = 0xFF0B3A40.toInt()
+                pressedTextColor = 0xFF00696E.toInt()
+                dividerColor = 0x22000000
+            }
+        }
     }
 
     /**
