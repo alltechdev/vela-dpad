@@ -33,6 +33,13 @@ object NavEngine {
     private const val PASSED_SLACK_M = 75.0   // this far PAST a maneuver = it happened during a gap → advance silently
     private const val REACQUIRE_JUMP_M = 1_500.0 // a global re-acquire jumping farther than this needs persistence
     private const val DEFAULT_ACC_M = 12.0    // assumed GPS accuracy when a fix carries none (dead-reckoning)
+    private const val HEADING_OFF_DEG = 60.0  // moving this far AGAINST the route's local direction counts
+                                              // as an off-route hit even INSIDE the distance corridor. A
+                                              // wrong turn onto a nearby-parallel road can sit within the
+                                              // corridor for blocks - distance alone never latched, so the
+                                              // engine kept guiding on the OLD route with no reroute and no
+                                              // redrawn line (upstream device report 2026-07-16). The same
+                                              // 3-hit debounce absorbs turn transients and lane changes.
 
     /**
      * Accuracy-scaled off-route corridor, in metres, for a travel mode. Real navigators (OsmAnd,
@@ -65,6 +72,20 @@ object NavEngine {
             else -> 110.0
         }
         return (offRouteM * 2.0).coerceAtMost(cap)
+    }
+
+    /** Compass bearing of the route segment at [m] metres along, or null on a degenerate line. */
+    private fun routeBearingAt(poly: List<LatLng>, cum: DoubleArray, m: Double): Double? {
+        if (poly.size < 2 || cum.size != poly.size) return null
+        var i = 1
+        while (i < poly.size - 1 && cum[i] < m) i++
+        val a = poly[i - 1]
+        val b = poly[i]
+        val dLng = Math.toRadians(b.lng - a.lng)
+        val y = kotlin.math.sin(dLng) * cos(Math.toRadians(b.lat))
+        val x = cos(Math.toRadians(a.lat)) * kotlin.math.sin(Math.toRadians(b.lat)) -
+            kotlin.math.sin(Math.toRadians(a.lat)) * cos(Math.toRadians(b.lat)) * kotlin.math.cos(dLng)
+        return (Math.toDegrees(kotlin.math.atan2(y, x)) + 360.0) % 360.0
     }
 
     private fun round50(m: Double) = kotlin.math.round(m / 50.0) * 50.0
@@ -120,6 +141,10 @@ object NavEngine {
         // otherwise a pedestrian who takes the wrong footpath drifts 40 m before Vela notices.
         offRouteM: Double = OFF_ROUTE_M,
         farOffM: Double = FAR_OFF_M,
+        // The fix's COURSE (compass deg, from GPS bearing), when known. Off-route detection is
+        // distance-first, but distance alone can't catch a wrong turn onto a road that runs within
+        // the corridor of the planned one - the heading term ([HEADING_OFF_DEG]) does.
+        bearingDeg: Double? = null,
     ): Pair<NavState, List<NavEvent>> {
         val events = mutableListOf<NavEvent>()
         val maneuvers = route.maneuvers
@@ -189,8 +214,19 @@ object NavEngine {
         // Stationary multipath jitter is tens of metres at worst; FAR_OFF_M is comfortably beyond
         // anything a parked car's GPS invents, so counting it can't bring back red-light reroutes.
         val moving = (speedMps ?: 99.0) >= movingFloorMps
+        // Heading term: moving with a course >HEADING_OFF_DEG against the route's local direction is
+        // an off-route hit even INSIDE the distance corridor. A wrong turn onto a nearby-parallel
+        // road (or right after a missed fork, before the roads separate) stays within the corridor
+        // for blocks - the projection kept snapping the driver onto the OLD route and guidance
+        // carried on with its turns, no reroute, no redrawn line. Turn transients and lane changes
+        // are absorbed by the same OFF_ROUTE_HITS debounce; a legit route turn flips the snapped
+        // segment's bearing along with the driver's, so it doesn't accumulate hits.
+        val headingOff = moving && bearingDeg != null &&
+            routeBearingAt(route.polyline, cum, traveled)?.let { rb ->
+                kotlin.math.abs(((bearingDeg - rb + 540.0) % 360.0) - 180.0) > HEADING_OFF_DEG
+            } == true
         val offHits = when {
-            offDist <= offRouteM -> 0
+            offDist <= offRouteM && !headingOff -> 0
             !moving && offDist <= farOffM -> state.offRouteHits
             // Moving AND unambiguously far: no jitter reaches the far distance at speed, so escalate -
             // the reroute fires after ~2 fixes instead of a full debounce (upstream 69aa580f + faadbed6,
@@ -205,7 +241,9 @@ object NavEngine {
         // UP only while genuinely on-corridor and moving, and resets the instant we're off - so NavSession's
         // back-on-course discard can require a real, multi-fix rejoin, not a one-frame coincidence.
         val onRouteStreak = when {
-            offDist > offRouteM -> 0
+            // A heading-diverged fix is NOT "back on the line" even inside the corridor - else the
+            // back-on-course check would discard a legitimate wrong-way reroute mid-fetch.
+            offDist > offRouteM || headingOff -> 0
             !moving -> state.onRouteStreak
             else -> state.onRouteStreak + 1
         }
@@ -324,8 +362,12 @@ object NavEngine {
         // city/walking behaviour - and every existing test - byte-identical. `spoken` stores the
         // band SLOT (0=far, 1=near), not the metre value: the thresholds move between fixes.
         val v = speedMps ?: 0.0
-        val farM = maxOf(400.0, round50(v * 25.0))    // ~25 s out on the open road
-        val nearM = maxOf(150.0, round50(v * 8.0))    // ~8 s out
+        // 35/10 s (were 25/8, upstream 43f67fdd): a real-drive A/B had Google announcing up to
+        // ~0.2 mi sooner at highway speed and lockstep in town - the floors keep city/walking
+        // behaviour byte-identical, the T is what moves the open-road prompt earlier (~+0.2 mi
+        // at 70 mph).
+        val farM = maxOf(400.0, round50(v * 35.0))    // ~35 s out on the open road
+        val nearM = maxOf(150.0, round50(v * 10.0))   // ~10 s out
         if (!voiceSilent) {
             val bands = listOf(farM, nearM)
             val due = bands.withIndex().filter { (slot, d) ->
@@ -333,7 +375,11 @@ object NavEngine {
                     // Arrival gets ONE approach cue at the near band ("your destination will be
                     // ahead") - it used to be excluded entirely: silence from the last turn until
                     // "You have arrived". Skip it when we're already at the arrival line.
-                    (!isArrive || (slot == 1 && dtn > ARRIVE_RADIUS_M * 2))
+                    (!isArrive || (slot == 1 && dtn > ARRIVE_RADIUS_M * 2)) &&
+                    // A MERGE gets ONE approach prompt (near band only): the ramp step just said
+                    // where you're going, and a long on-ramp otherwise narrated the same road
+                    // three more times in declining counts (upstream real-drive report 2026-07-17).
+                    (target.type != ManeuverType.MERGE || slot == 1)
             }
             if (due.isNotEmpty()) {
                 val firstForStep = spoken.isEmpty()
@@ -345,8 +391,15 @@ object NavEngine {
                 val sayM = (if (dtn >= band * 0.85) band else round10(dtn)).coerceAtLeast(10.0)
                 val instruction = when {
                     isArrive -> nav().destinationAhead()
-                    firstForStep && lane != null -> nav().useLanesToDo(lane.side, lane.count, target.instruction)
-                    else -> target.instruction
+                    // spokenSign drops the secondary sign destinations for SPEECH (the banner keeps
+                    // the full sign) - speaking the whole sign took long enough that the next
+                    // prompt interrupted it mid-sentence.
+                    firstForStep && lane != null -> nav().useLanesToDo(lane.side, lane.count, nav().spokenSign(target.instruction))
+                    firstForStep -> nav().spokenSign(target.instruction)
+                    // The step's SECOND prompt drops the sign-destination tail ("toward X"):
+                    // the far band already named it, and repeating the whole thing at every
+                    // band read as spam off an exit (Google shortens repeats the same way).
+                    else -> nav().repeatShort(target.instruction)
                 }
                 events += NavEvent.Speak(nav().inThen(spokenDistance(sayM, imperial), instruction))
                 // A light "get ready" tick once the NEAR band is reached, so bikers/walkers feel
@@ -363,7 +416,10 @@ object NavEngine {
         if (idxCur < maneuvers.lastIndex) {
             if (dtn <= turnNowM) {
                 if (!voiceSilent) {
-                    events += NavEvent.Speak(target.instruction, interrupt = true)
+                    // Turn-now repeats short once any approach band already spoke the full
+                    // instruction - "Take the ramp", not the whole sign again (see repeatShort).
+                    val turnText = if (spoken.isEmpty()) nav().spokenSign(target.instruction) else nav().repeatShort(target.instruction)
+                    events += NavEvent.Speak(turnText, interrupt = true)
                     events += NavEvent.Haptic(target.type) // firm, direction-coded buzz at the turn
                 }
                 stepIndex = idxCur + 1

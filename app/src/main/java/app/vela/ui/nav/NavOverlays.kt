@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocalGroceryStore
@@ -54,6 +55,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
@@ -110,6 +112,9 @@ fun ManeuverBanner(
     // (max(800 m, v×30 s)): a 75 mph exit needs the lanes ~1 km out, a city turn at 800 m.
     laneShowM: Double = LANE_SHOW_M,
     previewing: Boolean = false,
+    // Off-route latch: the banner headline becomes "Rerouting..." (Google-style) instead of a stale
+    // old-route instruction. Step preview still shows the previewed step normally.
+    offRoute: Boolean = false,
     onPreviewNext: () -> Unit = {},
     onPreviewPrev: () -> Unit = {},
     onExitPreview: () -> Unit = {},
@@ -191,15 +196,40 @@ fun ManeuverBanner(
     ) {
         Column(Modifier.padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 8.dp else 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(maneuverIcon(type), contentDescription = null, modifier = Modifier.size(if (compact) 36.dp else 54.dp))
+                val rerouting = offRoute && !previewing
+                // The refresh glyph SPINS while rerouting (upstream ff8cb3c4: nothing moved, so a
+                // slow fetch read as frozen). The angle is read in graphicsLayer - a draw-phase
+                // read, so the infinite transition never recomposes the banner; it only exists
+                // while rerouting is showing at all.
+                if (rerouting) {
+                    val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "reroute")
+                    val angle by spin.animateFloat(
+                        initialValue = 0f, targetValue = 360f,
+                        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                            androidx.compose.animation.core.tween(1100, easing = androidx.compose.animation.core.LinearEasing),
+                        ),
+                        label = "reroute-angle",
+                    )
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(if (compact) 36.dp else 54.dp)
+                            .graphicsLayer { rotationZ = angle },
+                    )
+                } else Icon(
+                    maneuverIcon(type),
+                    contentDescription = null,
+                    modifier = Modifier.size(if (compact) 36.dp else 54.dp),
+                )
                 Spacer(Modifier.width(if (compact) 10.dp else 18.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        formatDistance(distanceMeters),
+                        if (rerouting) stringResource(R.string.nav_rerouting) else formatDistance(distanceMeters),
                         style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    val signs = roadSigns(text, ref)
+                    val signs = if (rerouting) emptyList() else roadSigns(text, ref)
                     if (signs.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -207,17 +237,35 @@ fun ManeuverBanner(
                             modifier = Modifier.padding(top = 2.dp, bottom = 1.dp),
                         ) { signs.forEach { SignChip(it) } }
                     }
-                    // Every text line is CAPPED: on a feature-phone-width screen an uncapped long
-                    // instruction (or the arrive step's name+address below) wrapped to many lines and
-                    // the banner swallowed half the map, burying the nav arrow under its bottom edge
-                    // (issue #41, F21 Pro). Google ellipsizes; so do we - the map stays visible.
-                    Text(
-                        text.ifEmpty { stringResource(R.string.nav_maneuver_continue) },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    // Headline = the SPOKEN form of the instruction (primary sign destination
+                    // only), so the card and the voice can never disagree; the chips row above
+                    // already carries the stylized route + exit. The sign's secondary cities
+                    // drop to a dim one-liner below - present to confirm against the physical
+                    // sign, subordinate, and harmless if a monster sign ellipsizes it
+                    // (upstream 317e736e). Every text line stays CAPPED: on a feature-phone-width
+                    // screen an uncapped instruction wrapped to many lines and the banner
+                    // swallowed half the map (issue #41, F21 Pro).
+                    if (!rerouting) {
+                        val full = text.ifEmpty { stringResource(R.string.nav_maneuver_continue) }
+                        val headline = app.vela.core.i18n.NavStringsRegistry.current().spokenSign(full)
+                        Text(
+                            headline,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (headline.length < full.length) {
+                            val rest = full.substring(headline.length).trim(':', ' ')
+                            if (rest.isNotBlank()) Text(
+                                rest,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = content.copy(alpha = 0.8f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     // The arrive step names WHERE you're arriving (Google-style): the business or
                     // label, and its address when that adds anything. Skip a line that would just
                     // repeat the instruction text.
@@ -281,7 +329,12 @@ fun ManeuverBanner(
                     Icon(maneuverIcon(nextType), contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(6.dp))
                     nextSigns.firstOrNull()?.let { SignChip(it); Spacer(Modifier.width(6.dp)) }
-                    Text(nextText, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // Short form: the chip beside it names the route, and the full sign used to
+                    // ellipsize arbitrarily mid-destination on this single-line row.
+                    Text(
+                        app.vela.core.i18n.NavStringsRegistry.current().repeatShort(nextText),
+                        style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (previewing) {

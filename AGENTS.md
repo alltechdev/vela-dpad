@@ -1095,6 +1095,37 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     mid-flight by the next camera write and left the browse map partially rotated);
   - reroutes are single-flight + cooldown + latch-clear-on-failure (a failed fetch must NOT kill
     rerouting - the event is edge-triggered);
+  - WRONG-WAY heading term (upstream 14157b79): a moving fix coursing >60 deg against the route's
+    local bearing counts as an off-route hit even INSIDE the distance corridor (a wrong turn onto a
+    nearby-parallel road never latched on distance alone), and it resets `onRouteStreak` so the
+    back-on-course discard can't kill the legit reroute mid-fetch. `NavSession.onLocation` takes
+    `bearingDeg`; the VM passes the fix's course. Unit-tested both ways;
+  - while off-route the TOP nav card is a Rerouting headline (spinning refresh glyph, draw-phase
+    rotation, no recomposition; signs/instruction cleared) and the reroute announcement is chime +
+    spoken word + a distinct 3-tick+long-buzz haptic under the per-mode vibrate setting (upstream
+    aa426ed5/204455da/ff8cb3c4). The chime is synthesized in-process on the guidance stream
+    (`VoiceGuide.reroutingChime`) - silent when muted, never an asset;
+  - nav START never blocks on the traffic-light Overpass fetch (upstream 5e3250ae, adapted): the
+    session starts on the plain route and `NavSession.applyEnrichedRoute` folds the light clauses in
+    afterward (same polyline, text-only swap, no phantom trip-log entry). This fork KEEPS the
+    off-by-default Settings toggle (`enrichLightsIfEnabled`), unlike upstream where light guidance is
+    standard. A `navStartJob` guard makes Start re-entrancy-safe (double-tap spoke twice);
+  - approach prompts are ~35 s / ~10 s out (were 25/8; floors unchanged so city/walking behaviour is
+    byte-identical - upstream real-drive A/B vs Google, 43f67fdd);
+  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, all
+    unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
+    2nd/3rd prompts drop the sign-destination tail (`NavStrings.repeatShort`); a MERGE announces at
+    most twice; the first prompt speaks only the primary sign destination (`NavStrings.spokenSign`,
+    colon-anchored to " toward " so times/addresses are safe); "Take exit 186" speaks as "take the
+    186 exit" (espeak mis-vowels the bare adjacency); the banner headline shows the SAME spoken form
+    (secondary cities as a dim one-liner below, fork's maxLines=2 cap kept) and the "then" row uses
+    the short form;
+  - the drawn nav puck is a +/-8 m along-route window average (upstream 14157b79) so it stops
+    tracing lane-level micro-kinks; `pointAtMeters` is a binary search (3 calls per ticker frame);
+  - ramp instructions say WHICH SIDE in all 15 language tables (OSRM modifier), and
+    `RouteGeometry.consolidateExits` disambiguates a shared onramp's both-directions sign down to
+    the taken branch + adopts the folded fork's lane diagram (`disambiguateDest`, conservative,
+    unit-tested) (upstream 43f67fdd core slice);
   - ETA sums the remaining STEP durations × traffic ratio (never remaining/avg-speed).
   - The route line's driven/ahead cut is a GEOMETRY split (`ROUTE_AHEAD_LAYER` suffix over a
     traversed-grey full line) - MapLibre bakes line-gradients into a 256-texel texture (no crisp cut)
