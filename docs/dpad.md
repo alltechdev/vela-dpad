@@ -246,6 +246,14 @@ consuming the key stops it reaching the root swallow), so it still walks Driving
 Transit. `SelectableRow`'s RadioButton is also `onClick = null` (display-only) so the row is a single
 focus stop. Any new *vertical-list* screen with a lone horizontal row wants the same shape.
 
+**Adjacent-button pairs in a row (2026-07-17, issue #65 Sonim x320 report).** The Voice-library
+`VoiceRow`'s side-by-side **Use** + **Delete** buttons are a two-cell horizontal group inside the same
+`Column(verticalScroll)`, so they hit the identical trap: a bare LEFT/RIGHT between them found no target
+and cleared focus (you could only reach Delete coming from above, Use coming from below). Same fix as the
+vibrate chip row — each button carries its own `FocusRequester` and its `onKeyEvent` maps RIGHT (on Use)
+/ LEFT (on Delete) to `requestFocus()` the sibling, consuming the key so it never reaches the root swallow.
+Any new row of 2+ focusable controls wants this per-control pairing.
+
 **The bare map is the ONE intentional exception (2026-07-08).** It used to auto-focus AND
 auto-engage the centre map target on open, so arrows immediately panned and you had to press
 BACK before you could reach the search bar (user report). Now the map neither auto-focuses nor

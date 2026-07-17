@@ -1233,8 +1233,38 @@ private fun VoiceRow(
                 Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_voice_row_remove, v.displayName), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             installed -> {
-                OutlinedButton(onClick = onUse) { Text(stringResource(R.string.settings_voice_row_use)) }
-                IconButton(onClick = onDelete) {
+                // The Use and Delete buttons sit side by side, so LEFT/RIGHT must hop between them
+                // directly (issue #65: with no key wiring, a bare horizontal move cleared focus and
+                // you could only reach Delete from above / Use from below). Same pattern as the
+                // vibrate chip row above.
+                val useFocus = remember { FocusRequester() }
+                val deleteFocus = remember { FocusRequester() }
+                OutlinedButton(
+                    onClick = onUse,
+                    modifier = Modifier
+                        .focusRequester(useFocus)
+                        .onKeyEvent { ev ->
+                            if (ev.key == Key.DirectionRight) {
+                                if (ev.type == KeyEventType.KeyDown) deleteFocus.requestFocus()
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                ) { Text(stringResource(R.string.settings_voice_row_use)) }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .focusRequester(deleteFocus)
+                        .onKeyEvent { ev ->
+                            if (ev.key == Key.DirectionLeft) {
+                                if (ev.type == KeyEventType.KeyDown) useFocus.requestFocus()
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                ) {
                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_voice_row_remove, v.displayName), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

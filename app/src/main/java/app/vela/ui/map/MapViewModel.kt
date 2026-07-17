@@ -1532,6 +1532,10 @@ class MapViewModel @Inject constructor(
         _state.update {
             it.copy(
                 selected = Place(id = "pin:${location.lat},${location.lng}", name = appContext.getString(R.string.mapvm_dropped_pin), location = location),
+                // Point the camera at the pin. Without this the map keeps the PREVIOUS place's
+                // center; the sheet opening re-frames the camera and yanks the map back to the
+                // last named place you'd selected (issue #65 follow-up, Sonim x320 report).
+                center = location,
                 results = emptyList(),
                 resultsCollapsed = false,
                 showSearchThisArea = false,
@@ -1570,6 +1574,7 @@ class MapViewModel @Inject constructor(
         _state.update {
             it.copy(
                 selected = immediate,
+                center = location, // same stale-center jump as the dropped pin (issue #65)
                 results = emptyList(),
                 resultsCollapsed = false,
                 showSearchThisArea = false,
