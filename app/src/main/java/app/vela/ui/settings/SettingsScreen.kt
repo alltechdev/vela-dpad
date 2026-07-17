@@ -1485,8 +1485,17 @@ private fun VoiceRow(
             }
             installed -> {
                 DpadFocusHandoff(keeper)
-                OutlinedButton(onClick = onUse, modifier = Modifier.dpadFocusKept(keeper)) { Text(stringResource(R.string.settings_voice_row_use)) }
-                IconButton(onClick = onDelete) {
+                // Use + Delete sit side by side, so LEFT/RIGHT must hop between them directly (issue
+                // #65: a bare horizontal move otherwise cleared focus - Delete only reachable from
+                // above, Use only from below). Wire the pair with dpadRowSibling like the other
+                // Settings button rows. The keeper's requester (dpadFocusKept) stays on Use so a
+                // Download->Use handoff still lands the row's focus here.
+                val useDeleteFocus = remember { List(2) { FocusRequester() } }
+                OutlinedButton(
+                    onClick = onUse,
+                    modifier = Modifier.dpadFocusKept(keeper).dpadRowSibling(useDeleteFocus, 0),
+                ) { Text(stringResource(R.string.settings_voice_row_use)) }
+                IconButton(onClick = onDelete, modifier = Modifier.dpadRowSibling(useDeleteFocus, 1)) {
                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_voice_row_remove, v.displayName), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
