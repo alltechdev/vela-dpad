@@ -576,6 +576,10 @@ fun PlaceSheet(
                     // under touch, but a raw-Dialog chooser that AUTO-FOCUSES its first item under
                     // D-pad (a DropdownMenu Popup can't be pre-focused; a raw Dialog can).
                     VelaMenu(expanded = headerMenu, onDismissRequest = { headerMenu = false }) {
+                        // On keypad the Street View pill is dropped to save space; keep it reachable here.
+                        if (softkeysActive && !app.vela.ui.RESTRICTED_BUILD && !isParking) {
+                            item(stringResource(R.string.place_street_view)) { headerMenu = false; onStreetView() }
+                        }
                         item(stringResource(R.string.place_set_as_home)) { headerMenu = false; onSetShortcut(ShortcutKind.HOME) }
                         item(stringResource(R.string.place_set_as_work)) { headerMenu = false; onSetShortcut(ShortcutKind.WORK) }
                     }
@@ -726,35 +730,44 @@ fun PlaceSheet(
             // the identity block so Directions is reachable WITHOUT scrolling (Google's order). Save/
             // Share live in the header; the actual phone number / website domain are tappable detail
             // rows lower down (below the hours), out of the way of the primary action.
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (!softkeysActive) ActionPill(Icons.Default.Directions, stringResource(R.string.place_directions), emphasized = true, onClick = onDirections)
-                if (isParking) {
-                    ActionPill(Icons.Default.Delete, stringResource(R.string.place_clear_parking), onClick = onClearParking)
-                }
-                place.phone?.let { ph ->
-                    ActionPill(Icons.Default.Call, stringResource(R.string.place_call)) {
-                        val dialable = "tel:" + ph.filter { it.isDigit() || it == '+' }
-                        runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse(dialable))) }
+            //
+            // KEYPAD (softkeysActive): drop this whole pill row to reclaim real estate on a tiny
+            // screen - Directions is a soft key, Call/Website already repeat as tappable detail rows
+            // below, and Street View moves into the header overflow (see the VelaMenu above). Only the
+            // parking-only Clear pill (no soft key, no detail-row twin) survives, so the row renders
+            // then only for a parking sheet.
+            if (!softkeysActive || isParking) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (!softkeysActive) ActionPill(Icons.Default.Directions, stringResource(R.string.place_directions), emphasized = true, onClick = onDirections)
+                    if (isParking) {
+                        ActionPill(Icons.Default.Delete, stringResource(R.string.place_clear_parking), onClick = onClearParking)
                     }
-                }
-                if (!app.vela.ui.HideExternalLinks.on.value) {
-                    place.website?.let { site ->
-                        ActionPill(Icons.Default.Language, stringResource(R.string.place_website)) {
-                            app.vela.ui.ExternalLinks.open(context, site)
+                    if (!softkeysActive) {
+                        place.phone?.let { ph ->
+                            ActionPill(Icons.Default.Call, stringResource(R.string.place_call)) {
+                                val dialable = "tel:" + ph.filter { it.isDigit() || it == '+' }
+                                runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse(dialable))) }
+                            }
+                        }
+                        if (!app.vela.ui.HideExternalLinks.on.value) {
+                            place.website?.let { site ->
+                                ActionPill(Icons.Default.Language, stringResource(R.string.place_website)) {
+                                    app.vela.ui.ExternalLinks.open(context, site)
+                                }
+                            }
+                        }
+                        // Street View - the IN-APP panorama viewer (keyless tile-stitch + GL sphere,
+                        // upstream streetview-inapp). NOT under HideExternalLinks: it no longer hands
+                        // off to Google's app. Gated OUT of the restricted flavor (RESTRICTED_BUILD) -
+                        // it still fetches pano tiles from googleapis. On keypad it lives in the ⋮ menu.
+                        if (!app.vela.ui.RESTRICTED_BUILD) {
+                            ActionPill(Icons.Filled.Streetview, stringResource(R.string.place_street_view), onClick = onStreetView)
                         }
                     }
-                }
-                // Street View - the IN-APP panorama viewer (keyless tile-stitch + GL sphere, upstream
-                // streetview-inapp). NOT under HideExternalLinks: it no longer hands off to Google's app,
-                // it's a first-class in-app surface. Gated OUT of the restricted flavor (RESTRICTED_BUILD)
-                // by the fork's own policy - it still fetches pano tiles from googleapis, so the
-                // content-minimal build omits it entirely.
-                if (!app.vela.ui.RESTRICTED_BUILD) {
-                    ActionPill(Icons.Filled.Streetview, stringResource(R.string.place_street_view), onClick = onStreetView)
                 }
             }
 

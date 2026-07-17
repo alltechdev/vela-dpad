@@ -63,15 +63,17 @@ object VelaSoftkeys {
         // overlay the map's bottom chrome (locate FAB / scale bar). Only affects keypad devices,
         // since the bar only ever shows there.
         Yapchik.autoInsetContent = true
-        // A single-ink dark bar that reads in both app themes (the engine's style is global, not
-        // theme-reactive yet - see the rollout plan for the theme-follow follow-up).
+        // A single-ink dark bar - reads as an intentional dark toolbar in BOTH app themes. True
+        // theme-following is deferred: Yapchik applies style colours at bar CONSTRUCTION and
+        // refreshAll() only re-binds labels, so an in-place repaint needs an upstream change (re-apply
+        // style on refresh). See docs/softkeys.md.
         Yapchik.style.apply {
-            backgroundColor = 0xFF14343A.toInt()
-            textColor = 0xFFECECEC.toInt()
-            pressedTextColor = 0xFF4DD0C4.toInt()
             heightDp = 44
             textSizeSp = 15f
             bold = true
+            backgroundColor = 0xFF14343A.toInt()
+            textColor = 0xFFECECEC.toInt()
+            pressedTextColor = 0xFF4DD0C4.toInt()
         }
     }
 

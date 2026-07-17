@@ -101,8 +101,12 @@ detector, new behaviour in new files, both geometries x both flavors + eyeball b
    Close/Directions, search -> none, Settings -> suppressed). Remaining candidates: a live-nav set
    (`Overview` / `End`), a directions set (`Start` / `Back`), and search -> `Clear` / a submit. Each
    needs its own eyeball pass. Also localize the inline English labels.
-3. **Theme-reactive style.** The engine `style` is a global, not theme-aware. Update `Yapchik.style`
-   + `Yapchik.refreshAll()` from `AppTheme` changes so the bar follows Vela light/dark.
+3. **Theme-reactive style (BLOCKED on an upstream change).** The bar is a fixed dark toolbar (reads
+   fine in both themes). Following Vela light/dark needs Yapchik to re-apply `style` colours on
+   `refresh()` - today it sets them at bar CONSTRUCTION only, so `refreshAll()` re-binds labels but
+   never repaints an on-screen bar (device-confirmed: the bar stayed dark after switching to Light).
+   The fix is a small upstream patch (re-tint in `SoftkeyController.refresh` / `SoftkeyBar`); worth
+   sending. Don't hand-patch the vendored copy - that would break re-sync.
 4. **On/off setting + calibration entry.** DONE (see "What shipped" above) - a Settings toggle
    backing `Yapchik.mode` and a `startCalibration` row. Remaining sub-work: a Vela-native profile
    chooser if we ever surface the full list, and wiring the calibrated custom profile into
