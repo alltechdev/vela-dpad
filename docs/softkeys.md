@@ -63,6 +63,14 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
     interaction is "press your soft key" (window-level key capture, not focus navigation). If the
     profile CHOOSER (a navigable single-choice list) is ever surfaced, give it a Vela-native
     `VelaDialog`/`VelaMenu` instead - a bare `AlertDialog` list can't auto-focus under D-pad.
+- **The bare map (first screen) has its own Options menu + a Search key.** LEFT = Options, RIGHT =
+  Search. The Options menu (same bottom-left bordered VelaMenu) holds Zoom / Recenter / Layers /
+  Settings. **Zoom** enters a mode where the D-pad LEFT/RIGHT zoom out/in (the map is engaged +
+  focused so the keys reach `MapDpadController`, and the one BackHandler peels the mode first), with
+  a top-of-screen hint; BACK exits. **Search** opens the search field focused via a new
+  `armFieldSignal` on `SearchBar` (bumping it arms the field, exactly like an OK on the bar). During
+  nav / a route the keys stay Zoom -/+ (no menu/search mid-drive); a place sheet keeps
+  Options/Directions; the search overlay shows no bar.
 - **The LEFT soft key is an Options menu; the place sheet loses ALL its on-screen buttons.** Feature-
   phone convention: on a place sheet the RIGHT key is the one primary action (Directions), the LEFT
   key opens an **Options** menu (the auto-focusing D-pad `VelaMenu`) holding every secondary action -

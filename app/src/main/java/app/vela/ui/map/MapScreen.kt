@@ -296,6 +296,7 @@ fun MapScreen(
     var mapOptionsOpen by remember { mutableStateOf(false) } // bare-map LEFT "Options" menu
     var mapZoomMode by remember { mutableStateOf(false) } // in it, D-pad LEFT/RIGHT zoom the map
     var searchArmSignal by remember { mutableStateOf(0) } // bump to open+focus the search field
+    var layersOpen by remember { mutableStateOf(false) } // the top-right layers panel (also a map-Options item)
     LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
     val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen && !state.showSteps
     LaunchedEffect(browseMap) { if (!browseMap) { mapOptionsOpen = false; mapZoomMode = false } }
@@ -332,6 +333,9 @@ fun MapScreen(
             // Zoom -> a mode where D-pad LEFT/RIGHT zoom out/in (see the key handler + hint below).
             item("Zoom (◀ − ▶ +)") { mapOptionsOpen = false; mapZoomMode = true }
             item("Recenter") { mapOptionsOpen = false; vm.recenter() }
+            if (app.vela.ui.LayersButton.on.value) {
+                item("Layers") { mapOptionsOpen = false; layersOpen = true }
+            }
             item("Settings") { mapOptionsOpen = false; onOpenSettings() }
         }
     }
@@ -356,7 +360,6 @@ fun MapScreen(
     // tap raises it again. Suppressed whenever a focus surface owns the camera (search, a place,
     // directions, the results list) so it never fights that framing. Nav has its own follow.
     var followMe by remember { mutableStateOf(true) }
-    var layersOpen by remember { mutableStateOf(false) } // the top-right layers panel
     // A programmatic camera jump far from the fix (a recents pick, a search hit, a pasted
     // coordinate, a deep link) means the user went to look somewhere else - drop follow exactly
     // like a pan would. Without this, follow was only SUSPENDED while the place sheet owned the
@@ -1470,10 +1473,11 @@ fun MapScreen(
             )
         }
 
-        // Zoom-mode hint (from the bare-map Options menu): while it's on, D-pad LEFT/RIGHT zoom.
+        // Zoom-mode hint (from the bare-map Options menu): while it's on, D-pad LEFT/RIGHT zoom. Sits
+        // at the TOP, under the search bar + chips, so it clears the right-side FABs and the crosshair.
         if (mapZoomMode) {
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 92.dp),
                 shape = RoundedCornerShape(20.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 tonalElevation = 6.dp,
