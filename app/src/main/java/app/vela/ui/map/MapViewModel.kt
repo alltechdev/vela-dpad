@@ -2808,7 +2808,9 @@ class MapViewModel @Inject constructor(
                 val engine = _state.value.selectedEngine?.packageName
                 neuralSynthFor(engine)?.let { voice.neural = it }
                 navSession.replayMode = true
-                navSession.start(route, dest, label, engine)
+                // Pass the REAL travel mode: haptics are per-mode (bike buzzes by default, driving
+                // doesn't), so a demo of a bike route must buzz like the real ride would.
+                navSession.start(route, dest, label, engine, mode = _state.value.travelMode)
                 replayOwnsNav = true
                 locationProvider.replay(fixes, speedup = 1f).collect { loc ->
                     if (replayJob !== coroutineContext[Job]) return@collect // superseded
