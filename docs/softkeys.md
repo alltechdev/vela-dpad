@@ -42,6 +42,15 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
     so the soft keys zoom with zero focus-walk - the issue #65 ask.
 - **Only the map binds keys**, and the engine shows a bar only when a screen has bindings
   (`currentBindings.isNotEmpty()`), so every other screen stays bar-free with no per-screen config.
+- **Contextual per surface.** The map picks its two keys from state (`MapScreen` computes them,
+  `VelaSoftkeys.MapSoftkeys(left, right)` binds them; null slot = unbound, both null = no bar): a
+  place sheet shows `Close` / `Directions` (zoom matters less on a pin - `Directions` fires
+  `routeToSelected`, `Close` fires `clearSelection`), the search overlay shows NO bar (the map isn't
+  visible), and browse / directions / nav show `Zoom -` / `Zoom +`. Settings draws OVER the still-
+  composed map, so `VelaRoot` forces the bar off while it's up (`VelaSoftkeys.SuppressBarWhile`, the
+  engine's per-screen mode override, which still yields to the user's global OFF). Device-verified:
+  bare map = Zoom, search = no bar, pin = Close/Directions (Directions routed), Settings = no bar.
+  Labels are inline English for now (localizing them is a follow-up).
 - **On/off + calibration setting (Settings -> Navigation, keypad devices only).** A `Hardware
   softkeys` switch (shown only when `rememberDpadMode()`) backs `Yapchik.mode`: ON = AUTO (bar on
   keypad phones, hidden on touch), OFF = disabled everywhere. A `Calibrate soft keys` row runs
@@ -82,14 +91,10 @@ to `DpadFocus.kt` (non-composable view of the existing private `detectDpadFirst`
 Ordered by value / risk. Each phase keeps the hard rules: touch byte-identical, gated on the D-pad
 detector, new behaviour in new files, both geometries x both flavors + eyeball before merge.
 
-1. **Contextual per-screen softkeys.** *(Also fixes a known prototype quirk: because the map stays
-   composed under Settings/other full-screen surfaces, its `Zoom -/+` bar currently shows there too -
-   harmless, the keys just zoom the map underneath, but it reads oddly on Settings.)* Move beyond map
-   zoom: bind slots per Vela surface via
-   `Softkeys.of(activity).define(name)` / `.activate(name)` or `whenFocused(viewId)`, driven from a
-   `LaunchedEffect` keyed on the current screen. Candidates: search overlay -> `Clear` / `Search`;
-   place sheet -> `Directions` / `Back`; directions -> `Start` / `Back`; nav -> `Overview` /
-   `End` (or `Zoom -/+` kept during nav). Each needs its own eyeball pass.
+1. **More contextual surfaces.** The map's contexts are wired (browse/nav -> Zoom, place ->
+   Close/Directions, search -> none, Settings -> suppressed). Remaining candidates: a live-nav set
+   (`Overview` / `End`), a directions set (`Start` / `Back`), and search -> `Clear` / a submit. Each
+   needs its own eyeball pass. Also localize the inline English labels.
 3. **Theme-reactive style.** The engine `style` is a global, not theme-aware. Update `Yapchik.style`
    + `Yapchik.refreshAll()` from `AppTheme` changes so the bar follows Vela light/dark.
 4. **On/off setting + calibration entry.** DONE (see "What shipped" above) - a Settings toggle

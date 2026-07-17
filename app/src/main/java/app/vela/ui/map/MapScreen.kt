@@ -261,9 +261,6 @@ fun MapScreen(
     val dpadMode = rememberDpadMode()
     val dpadFirst = rememberDpadFirstDevice()
     val mapDpad = remember { MapDpadController() }
-    // Keypad/D-pad phones: bind the two hardware SOFT keys to map zoom (issue #65). No-op + no bar
-    // on touch phones (gated in the softkey engine's AUTO detector). New behaviour in new files.
-    app.vela.ui.softkey.VelaSoftkeys.MapZoomSoftkeys(mapDpad)
     var mapFocused by remember { mutableStateOf(false) }
     var mapEngaged by remember { mutableStateOf(false) } // arrows pan only while engaged (docs/dpad.md)
     // Focuses the centre map target. Used ONLY for Choose-on-map (entered mid-session, so
@@ -290,6 +287,20 @@ fun MapScreen(
     // The search overlay is open when the entry page is expanded OR we're picking a custom
     // directions origin/stop (that opens the same overlay WITHOUT focusing the field).
     val searchOpen = searchExpanded || state.pickingOrigin || state.pickingStop
+    // Contextual hardware soft keys (keypad phones; no-op + no bar on touch). The map surface picks
+    // what its two soft keys do: while a place sheet is up, Close / Directions (zoom matters less on
+    // a pin); while the search overlay covers the map, nothing (the map isn't visible); otherwise
+    // Zoom -/+. Labels are inline English for now (English-only prototype; see docs/softkeys.md).
+    run {
+        val (skLeft, skRight) = when {
+            searchOpen -> null to null
+            placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key("Close", vm::clearSelection) to
+                app.vela.ui.softkey.VelaSoftkeys.Key("Directions", vm::routeToSelected)
+            else -> app.vela.ui.softkey.VelaSoftkeys.Key("Zoom −") { mapDpad.zoomBy(-1.0) } to
+                app.vela.ui.softkey.VelaSoftkeys.Key("Zoom +") { mapDpad.zoomBy(1.0) }
+        }
+        app.vela.ui.softkey.VelaSoftkeys.MapSoftkeys(skLeft, skRight)
+    }
     // The results panel is open (not collapsed to the "N results" pill) → hide the bottom map
     // chrome (scale bar / locate FAB / Search this area) so it never draws on top of the list at
     // ANY size, not just full screen. The panel and the chrome are siblings in the same Box and the

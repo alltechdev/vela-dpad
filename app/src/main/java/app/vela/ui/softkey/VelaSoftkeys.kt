@@ -11,12 +11,13 @@ import android.app.Activity
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import app.vela.ui.isDpadFirstDevice
-import app.vela.ui.map.MapDpadController
 import com.theonionsarewatching.yapchik.SoftkeyMode
 import com.theonionsarewatching.yapchik.SoftkeyProfileChooser
 import com.theonionsarewatching.yapchik.Softkeys
@@ -74,20 +75,45 @@ object VelaSoftkeys {
         }
     }
 
+    /** One soft-key binding: a label and its action. */
+    class Key(val label: String, val onPress: () -> Unit)
+
     /**
-     * While the map surface is composed, bind the LEFT/RIGHT soft keys to zoom. No-op on a touch
-     * phone (the engine's AUTO detector keeps the bar hidden there, and only a surface that BINDS
-     * keys shows a bar at all - so non-map screens stay bar-free). Cleared on leave.
+     * CONTEXTUAL map soft keys. Pass the LEFT/RIGHT [Key] for the current map context (or null to
+     * leave that slot - and the whole bar when BOTH are null - unbound, so no bar shows). Re-binds
+     * when the labels change; cleared when the map leaves composition. No-op on a touch phone (the
+     * AUTO detector keeps the bar hidden). Labels are the re-bind key; the actions are captured
+     * live (`rememberUpdatedState`) so a changing lambda doesn't churn the binding.
      */
     @Composable
-    fun MapZoomSoftkeys(mapDpad: MapDpadController) {
+    fun MapSoftkeys(left: Key?, right: Key?) {
         val activity = LocalContext.current as? Activity ?: return
-        DisposableEffect(activity, mapDpad) {
-            Softkeys.of(activity).set {
-                left("Zoom −") { mapDpad.zoomBy(-1.0) } // U+2212 MINUS, matches the on-screen button
-                right("Zoom +") { mapDpad.zoomBy(1.0) }
+        val leftNow by rememberUpdatedState(left)
+        val rightNow by rememberUpdatedState(right)
+        LaunchedEffect(left?.label, right?.label) {
+            val ctl = Softkeys.of(activity)
+            if (left == null && right == null) {
+                ctl.clear()
+            } else {
+                ctl.set {
+                    leftNow?.let { k -> left(k.label) { k.onPress() } }
+                    rightNow?.let { k -> right(k.label) { k.onPress() } }
+                }
             }
-            onDispose { Softkeys.of(activity).clear() }
+        }
+        DisposableEffect(activity) { onDispose { Softkeys.of(activity).clear() } }
+    }
+
+    /**
+     * Force the bar OFF on this screen while [suppressed] (e.g. Settings drawn OVER the still-composed
+     * map). Uses the engine's per-screen mode override, which outranks the map's bindings but still
+     * yields to the user's global OFF. Restores (null = inherit) when no longer suppressed.
+     */
+    @Composable
+    fun SuppressBarWhile(suppressed: Boolean) {
+        val activity = LocalContext.current as? Activity ?: return
+        LaunchedEffect(suppressed) {
+            Softkeys.of(activity).screenMode = if (suppressed) SoftkeyMode.OFF else null
         }
     }
 }
