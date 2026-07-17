@@ -252,8 +252,9 @@ auto-engage that Choose-on-map depended on, so pick mode opened dead.
   index's `FocusRequester` and moves L/R by `requestFocus` (never clears at the ends) while consuming
   the key so it can't reach the root swallow. Applied to the vibrate chips (inline, the original), and
   the Export/Import, Test-voice/System-settings, Speak/Nav-sample and voice speed `-`/`+` &
-  speaker `◀`/`▶` button rows. **When you add a button/chip row to a vertical-list screen, wire it with
-  `dpadRowSibling` - do not re-inline the pattern.**
+  speaker `◀`/`▶` button rows, and the Voice-library row's **Use**/**Delete** pair (issue #65: you
+  could only reach Delete from above, Use from below). **When you add a button/chip row to a
+  vertical-list screen, wire it with `dpadRowSibling` - do not re-inline the pattern.**
 - `SelectableRow`'s RadioButton is also `onClick = null` (display-only) so the row is a single
   focus stop. Any new *vertical-list* screen with a lone horizontal row wants the same shape.
 
