@@ -11,13 +11,41 @@ import android.app.Activity
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import app.vela.ui.isDpadFirstDevice
 import app.vela.ui.map.MapDpadController
+import com.theonionsarewatching.yapchik.SoftkeyMode
+import com.theonionsarewatching.yapchik.SoftkeyProfileChooser
 import com.theonionsarewatching.yapchik.Softkeys
 import com.theonionsarewatching.yapchik.Yapchik
 
 object VelaSoftkeys {
+
+    /** Reactive mirror of the engine's resolved on/off state (Yapchik has no Compose state of its
+     * own). Drives the map's +/- consolidation so turning softkeys OFF restores the on-screen
+     * buttons. Same process-wide-holder shape as [app.vela.ui.theme.AppTheme]. */
+    private var activeState by mutableStateOf(false)
+
+    /** Whether the softkey bar is currently resolved-active (mode ON, or AUTO on a keypad device).
+     * Composable read so a mode change recomposes the map's zoom-button gate. */
+    @Composable
+    fun isActive(): Boolean = activeState
+
+    /** Settings: is the feature enabled (AUTO or ON, i.e. not explicitly OFF)? */
+    fun isEnabled(): Boolean = Yapchik.mode != SoftkeyMode.OFF
+
+    /** Settings toggle: ON leaves detection to AUTO (shows on keypad phones, hidden on touch); OFF
+     * disables softkeys everywhere. Persists via the engine and fires the state listener below. */
+    fun setEnabled(enabled: Boolean) {
+        Yapchik.mode = if (enabled) SoftkeyMode.AUTO else SoftkeyMode.OFF
+    }
+
+    /** Settings: run the engine's press-your-keys calibration so a phone whose soft keys emit
+     * non-standard keycodes can be detected. Capture is driven by the key press itself. */
+    fun calibrate(activity: Activity) = SoftkeyProfileChooser.startCalibration(activity)
 
     /** One-time engine setup, called from [app.vela.VelaApp.onCreate]. */
     fun init(app: Application) {
@@ -25,8 +53,11 @@ object VelaSoftkeys {
         // Softkeys are strictly a KEYPAD / D-pad-first feature. Gate the whole engine on Vela's
         // OWN conservative detector (same rule + `vela_force_dpad` test override as the Compose
         // D-pad affordances) so the bar NEVER appears on a touch phone - touch stays byte-identical.
-        // Mode stays AUTO (the default); AUTO resolves through this detector.
+        // Mode stays AUTO (the default, unless the user turned it off); AUTO resolves through this.
         Yapchik.autoDetector = { ctx -> isDpadFirstDevice(ctx) }
+        // Mirror the resolved state into Compose: seed it, then track mode changes.
+        activeState = Yapchik.isActive
+        Yapchik.addStateListener { active -> activeState = active }
         // Reserve bar space by padding the content view while the bar is up, rather than letting it
         // overlay the map's bottom chrome (locate FAB / scale bar). Only affects keypad devices,
         // since the bar only ever shows there.

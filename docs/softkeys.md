@@ -42,6 +42,18 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
     so the soft keys zoom with zero focus-walk - the issue #65 ask.
 - **Only the map binds keys**, and the engine shows a bar only when a screen has bindings
   (`currentBindings.isNotEmpty()`), so every other screen stays bar-free with no per-screen config.
+- **On/off + calibration setting (Settings -> Navigation, keypad devices only).** A `Hardware
+  softkeys` switch (shown only when `rememberDpadMode()`) backs `Yapchik.mode`: ON = AUTO (bar on
+  keypad phones, hidden on touch), OFF = disabled everywhere. A `Calibrate soft keys` row runs
+  `SoftkeyProfileChooser.startCalibration` (press LEFT then RIGHT; capture is key-press-driven, saved
+  as a custom profile) for phones whose soft keys emit non-standard keycodes. `VelaSoftkeys` mirrors
+  the engine's resolved state into a Compose `mutableStateOf` (seeded + a `StateListener`), so the
+  map's `+`/`-` gate reacts live to the toggle. Device-verified: toggle both ways, calibration
+  captured `L:SOFT_LEFT R:SOFT_RIGHT`.
+  - NB calibration uses Yapchik's own framework `AlertDialog`. That's acceptable here because the
+    interaction is "press your soft key" (window-level key capture, not focus navigation). If the
+    profile CHOOSER (a navigable single-choice list) is ever surfaced, give it a Vela-native
+    `VelaDialog`/`VelaMenu` instead - a bare `AlertDialog` list can't auto-focus under D-pad.
 - **The on-screen `+`/`-` are hidden when the bar is up.** On a structurally touchless device the
   softkey bar covers zoom, so the on-screen D-pad `+`/`-` buttons (`MapScreen`, gated on `dpadMode`)
   would be a redundant second affordance and waste bottom-right space at 240x320. They now also gate
@@ -70,17 +82,20 @@ to `DpadFocus.kt` (non-composable view of the existing private `detectDpadFirst`
 Ordered by value / risk. Each phase keeps the hard rules: touch byte-identical, gated on the D-pad
 detector, new behaviour in new files, both geometries x both flavors + eyeball before merge.
 
-1. **Contextual per-screen softkeys.** Move beyond map zoom: bind slots per Vela surface via
+1. **Contextual per-screen softkeys.** *(Also fixes a known prototype quirk: because the map stays
+   composed under Settings/other full-screen surfaces, its `Zoom -/+` bar currently shows there too -
+   harmless, the keys just zoom the map underneath, but it reads oddly on Settings.)* Move beyond map
+   zoom: bind slots per Vela surface via
    `Softkeys.of(activity).define(name)` / `.activate(name)` or `whenFocused(viewId)`, driven from a
    `LaunchedEffect` keyed on the current screen. Candidates: search overlay -> `Clear` / `Search`;
    place sheet -> `Directions` / `Back`; directions -> `Start` / `Back`; nav -> `Overview` /
    `End` (or `Zoom -/+` kept during nav). Each needs its own eyeball pass.
 3. **Theme-reactive style.** The engine `style` is a global, not theme-aware. Update `Yapchik.style`
    + `Yapchik.refreshAll()` from `AppTheme` changes so the bar follows Vela light/dark.
-4. **On/off setting.** A Settings -> Navigation (or Accessibility) row backing `Yapchik.mode`
-   (AUTO/ON/OFF), plus surface `YapchikSettingsDialog` / `SoftkeyProfileChooser.startCalibration`
-   for users whose phone routes soft keys through non-standard keycodes. This is where the parked
-   vendor-guides work lands as a user-calibratable flow.
+4. **On/off setting + calibration entry.** DONE (see "What shipped" above) - a Settings toggle
+   backing `Yapchik.mode` and a `startCalibration` row. Remaining sub-work: a Vela-native profile
+   chooser if we ever surface the full list, and wiring the calibrated custom profile into
+   `res/xml/yapchik_devices.xml` presets (item 5).
 5. **Known-device profiles.** Ship `res/xml/yapchik_devices.xml` with entries for the phones we have
    evidence for (Sonim x320, Kyocera, TCL) so those devices work without calibration; keep UNIVERSAL
    as the fallback. Confirm each device's actual soft-key keycodes on hardware first.

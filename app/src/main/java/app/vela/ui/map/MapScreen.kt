@@ -1425,13 +1425,13 @@ fun MapScreen(
         // DOWN traversal into their rows (measured: DOWN from the results header jumped to
         // the zoom + button instead of the first result). During those, the map is behind
         // a panel anyway; zoom the map via the engaged crosshair after closing the panel.
-        // On a STRUCTURALLY touchless device the hardware-softkey bar (VelaSoftkeys) already gives
+        // On a device where the hardware-softkey bar (VelaSoftkeys) is active it already gives
         // Zoom -/+ with no focus-walk, so the on-screen +/- would be a redundant second affordance
         // (and waste bottom-right space on a 240x320 screen). Hide them there; keep them for a hybrid
-        // touch+keypad phone (dpadMode true but has touch, so the softkey bar is NOT shown) and as
-        // the fallback where soft keys aren't recognized. When a softkeys on/off setting lands, gate
-        // this on the resolved softkey state instead of the raw detector (see docs/softkeys.md).
-        val softkeyBarShown = dpadFirst // == VelaSoftkeys' AUTO gate; the map always binds its keys
+        // touch+keypad phone (dpadMode true but has touch, so the softkey bar is NOT shown) and when
+        // the user has turned softkeys OFF in Settings. Follows the RESOLVED softkey state (mode +
+        // detector), so toggling softkeys off restores these buttons live.
+        val softkeyBarShown = app.vela.ui.softkey.VelaSoftkeys.isActive()
         val zoomButtonsVisible = dpadMode && !softkeyBarShown && !searchOpen && !state.navigating &&
             state.selected == null && !state.directionsOpen && !state.showSteps &&
             state.activeRoute == null && state.routes.isEmpty() &&

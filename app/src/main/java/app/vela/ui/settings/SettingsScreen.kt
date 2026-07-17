@@ -404,6 +404,40 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             SectionTitle(stringResource(R.string.settings_navigation))
             val prefs = remember { context.getSharedPreferences("vela_settings", android.content.Context.MODE_PRIVATE) }
 
+            // Hardware softkeys (keypad phones only). Shown just when the UI is key-driven, so a pure
+            // touch user never sees an irrelevant toggle. On -> AUTO (bar shows on keypad, hidden on
+            // touch); Off disables it and restores the on-screen +/-.
+            if (app.vela.ui.rememberDpadMode()) {
+                var softkeysOn by remember { mutableStateOf(app.vela.ui.softkey.VelaSoftkeys.isEnabled()) }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(R.string.settings_softkeys), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = softkeysOn,
+                        onCheckedChange = {
+                            softkeysOn = it
+                            app.vela.ui.softkey.VelaSoftkeys.setEnabled(it)
+                        },
+                    )
+                }
+                Hint(stringResource(R.string.settings_softkeys_hint))
+                if (softkeysOn) {
+                    val activity = context as? android.app.Activity
+                    Text(
+                        stringResource(R.string.settings_softkeys_calibrate),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .dpadHighlight(DpadShape(6.dp))
+                            .clickable(enabled = activity != null) { activity?.let { app.vela.ui.softkey.VelaSoftkeys.calibrate(it) } }
+                            .padding(vertical = 8.dp),
+                    )
+                    Hint(stringResource(R.string.settings_softkeys_calibrate_hint))
+                }
+            }
+
             var keepAwake by remember { mutableStateOf(prefs.getBoolean("keep_screen_on_nav", true)) }
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 4.dp),
