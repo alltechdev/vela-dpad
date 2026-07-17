@@ -48,6 +48,18 @@ object VelaSoftkeys {
      * non-standard keycodes can be detected. Capture is driven by the key press itself. */
     fun calibrate(activity: Activity) = SoftkeyProfileChooser.startCalibration(activity)
 
+    /** The soft-key bar's REAL on-screen height in physical pixels. The bar is a native view drawn at
+     * the app's ADAPTIVE density (`AdaptiveDensity` shrinks it on narrow screens), but a Compose
+     * `LocalContext`/`LocalDensity` reports BASE density here - so a menu positioned from those sits
+     * ~14 px too high. Reproduce the adaptive scale from the real display so the value equals the bar's
+     * true pixels no matter which density [context] reports (works out to the same px either way). */
+    fun barHeightPx(context: android.content.Context): Int {
+        val dm = context.resources.displayMetrics
+        val logicalWidthDp = dm.widthPixels / dm.density
+        val scale = (logicalWidthDp / app.vela.ui.AdaptiveDensity.MIN_WIDTH_DP).coerceAtMost(1f)
+        return (44 * dm.density * scale).toInt()
+    }
+
     /** One-time engine setup, called from [app.vela.VelaApp.onCreate]. */
     fun init(app: Application) {
         Yapchik.install(app)

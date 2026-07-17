@@ -288,13 +288,16 @@ fun MapScreen(
     // directions origin/stop (that opens the same overlay WITHOUT focusing the field).
     val searchOpen = searchExpanded || state.pickingOrigin || state.pickingStop
     // Contextual hardware soft keys (keypad phones; no-op + no bar on touch). The map surface picks
-    // what its two soft keys do: while a place sheet is up, Close / Directions (zoom matters less on
-    // a pin); while the search overlay covers the map, nothing (the map isn't visible); otherwise
-    // Zoom -/+. Labels are inline English for now (English-only prototype; see docs/softkeys.md).
+    // what its two soft keys do: on a place sheet the LEFT key opens an Options menu (all the
+    // secondary actions, so their on-screen buttons can be dropped - feature-phone convention) and
+    // the RIGHT key is the primary Directions (Close is hardware BACK); the search overlay shows
+    // nothing (the map isn't visible); otherwise Zoom -/+. Labels are inline English for now.
+    var placeOptionsOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
     run {
         val (skLeft, skRight) = when {
             searchOpen -> null to null
-            placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key("Close", vm::clearSelection) to
+            placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key("Options") { placeOptionsOpen = true } to
                 app.vela.ui.softkey.VelaSoftkeys.Key("Directions", vm::routeToSelected)
             else -> app.vela.ui.softkey.VelaSoftkeys.Key("Zoom −") { mapDpad.zoomBy(-1.0) } to
                 app.vela.ui.softkey.VelaSoftkeys.Key("Zoom +") { mapDpad.zoomBy(1.0) }
@@ -1344,6 +1347,8 @@ fun MapScreen(
                 onClose = vm::clearSelection,
                 onToggleSave = vm::toggleSave,
                 onDirections = vm::routeToSelected,
+                optionsMenuOpen = placeOptionsOpen, // keypad: the LEFT "Options" soft key opens the menu
+                onOptionsMenuOpenChange = { placeOptionsOpen = it },
                 onStreetView = { vm.openStreetView(state.selected!!) },
                 onOpenPlace = vm::selectPlace,
                 onOpenSimilar = vm::openSimilar,

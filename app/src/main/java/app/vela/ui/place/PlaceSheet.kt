@@ -221,6 +221,8 @@ fun PlaceSheet(
     onClose: () -> Unit,
     onToggleSave: () -> Unit,
     onDirections: () -> Unit,
+    optionsMenuOpen: Boolean = false, // keypad: opened by the LEFT "Options" soft key (see MapScreen)
+    onOptionsMenuOpenChange: (Boolean) -> Unit = {},
     onStreetView: () -> Unit = {},
     onOpenPlace: (Place) -> Unit = {},
     onOpenSimilar: (app.vela.core.model.SimilarPlace) -> Unit = {},
@@ -556,32 +558,80 @@ fun PlaceSheet(
                     modifier = Modifier.weight(1f),
                 )
                 // Save + Share as compact header actions (preferred look). The name has weight(1f) and
-                // wraps to 2 lines if long, so these stay put without shoving it off.
-                IconButton(onClick = onToggleSave, modifier = Modifier.size(40.dp)) {
-                    Icon(
-                        if (isSaved) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = if (isSaved) stringResource(R.string.place_saved) else stringResource(R.string.place_save),
-                        tint = if (isSaved) MaterialTheme.colorScheme.primary else dim,
-                        modifier = Modifier.size(20.dp),
-                    )
+                // wraps to 2 lines if long, so these stay put without shoving it off. On KEYPAD both are
+                // hidden - they move into the LEFT "Options" soft-key menu below, so the header is just
+                // the name and we reclaim the whole action row.
+                if (!softkeysActive) {
+                    IconButton(onClick = onToggleSave, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            if (isSaved) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = if (isSaved) stringResource(R.string.place_saved) else stringResource(R.string.place_save),
+                            tint = if (isSaved) MaterialTheme.colorScheme.primary else dim,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    ShareIconButton(place, dim)
                 }
-                ShareIconButton(place, dim)
-                // Overflow: pin this place straight to Home/Work (Google-style).
+                // Overflow. Under touch it's the ⋮ button (Set Home / Work). On keypad the SAME menu is
+                // opened by the LEFT "Options" soft key (optionsMenuOpen) and holds every action the
+                // trimmed pills + header gave up - Directions is the RIGHT soft key and Close is BACK, so
+                // those aren't repeated.
                 var headerMenu by remember { mutableStateOf(false) }
                 Box {
-                    IconButton(onClick = { headerMenu = true }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.place_more_options), tint = dim, modifier = Modifier.size(20.dp))
-                    }
-                    // D-pad-first (docs/dpad.md): VelaMenu renders the normal anchored DropdownMenu
-                    // under touch, but a raw-Dialog chooser that AUTO-FOCUSES its first item under
-                    // D-pad (a DropdownMenu Popup can't be pre-focused; a raw Dialog can).
-                    VelaMenu(expanded = headerMenu, onDismissRequest = { headerMenu = false }) {
-                        // On keypad the Street View pill is dropped to save space; keep it reachable here.
-                        if (softkeysActive && !app.vela.ui.RESTRICTED_BUILD && !isParking) {
-                            item(stringResource(R.string.place_street_view)) { headerMenu = false; onStreetView() }
+                    if (!softkeysActive) {
+                        IconButton(onClick = { headerMenu = true }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.place_more_options), tint = dim, modifier = Modifier.size(20.dp))
                         }
-                        item(stringResource(R.string.place_set_as_home)) { headerMenu = false; onSetShortcut(ShortcutKind.HOME) }
-                        item(stringResource(R.string.place_set_as_work)) { headerMenu = false; onSetShortcut(ShortcutKind.WORK) }
+                    }
+                    // D-pad-first (docs/dpad.md): VelaMenu renders the normal anchored DropdownMenu under
+                    // touch, but a raw-Dialog chooser that AUTO-FOCUSES its first item under D-pad.
+                    VelaMenu(
+                        expanded = headerMenu || optionsMenuOpen,
+                        onDismissRequest = { headerMenu = false; onOptionsMenuOpenChange(false) },
+                        // The soft-key Options menu grows from the bottom-left, above the LEFT key
+                        // (feature-phone style). The touch ⋮ path ignores this and stays anchored.
+                        placement = app.vela.ui.VelaMenuPlacement.BottomStart,
+                        // Bar height in real px (the same window-pixel space the dialog is positioned
+                        // in) so the menu's bottom lands flush on the bar.
+                        bottomBarPx = app.vela.ui.softkey.VelaSoftkeys.barHeightPx(context),
+                    ) {
+                        if (softkeysActive) {
+                            if (!app.vela.ui.RESTRICTED_BUILD && !isParking) {
+                                item(stringResource(R.string.place_street_view)) { onOptionsMenuOpenChange(false); onStreetView() }
+                            }
+                            place.phone?.let { ph ->
+                                item(stringResource(R.string.place_call)) {
+                                    onOptionsMenuOpenChange(false)
+                                    val dialable = "tel:" + ph.filter { it.isDigit() || it == '+' }
+                                    runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse(dialable))) }
+                                }
+                            }
+                            if (!app.vela.ui.HideExternalLinks.on.value) {
+                                place.website?.let { site ->
+                                    item(stringResource(R.string.place_website)) { onOptionsMenuOpenChange(false); app.vela.ui.ExternalLinks.open(context, site) }
+                                }
+                            }
+                            item(if (isSaved) stringResource(R.string.place_saved) else stringResource(R.string.place_save)) { onOptionsMenuOpenChange(false); onToggleSave() }
+                            // Share a degoogled geo: pin (opens in any maps app, no google.com), so it
+                            // is applicable in the restricted build too - same content the header
+                            // Share's "Map pin" uses. NOT the google.com link/open-web options.
+                            item(stringResource(R.string.place_share)) {
+                                onOptionsMenuOpenChange(false)
+                                val lat = place.location.lat
+                                val lng = place.location.lng
+                                val txt = "${place.name}\ngeo:$lat,$lng?q=$lat,$lng(${Uri.encode(place.name)})"
+                                runCatching {
+                                    context.startActivity(
+                                        Intent.createChooser(
+                                            Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, txt) },
+                                            context.getString(R.string.place_share_place),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                        item(stringResource(R.string.place_set_as_home)) { headerMenu = false; onOptionsMenuOpenChange(false); onSetShortcut(ShortcutKind.HOME) }
+                        item(stringResource(R.string.place_set_as_work)) { headerMenu = false; onOptionsMenuOpenChange(false); onSetShortcut(ShortcutKind.WORK) }
                     }
                 }
                 if (!softkeysActive) {

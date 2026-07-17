@@ -63,6 +63,15 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
     interaction is "press your soft key" (window-level key capture, not focus navigation). If the
     profile CHOOSER (a navigable single-choice list) is ever surfaced, give it a Vela-native
     `VelaDialog`/`VelaMenu` instead - a bare `AlertDialog` list can't auto-focus under D-pad.
+- **The LEFT soft key is an Options menu; the place sheet loses ALL its on-screen buttons.** Feature-
+  phone convention: on a place sheet the RIGHT key is the one primary action (Directions), the LEFT
+  key opens an **Options** menu (the auto-focusing D-pad `VelaMenu`) holding every secondary action -
+  Street View, Call, Website, Save, Share, Set Home/Work - and Close is hardware BACK. So on keypad the
+  place-sheet header collapses to just the name (no star / share / ⋮) and there's no pill row at all;
+  the sheet is name + address + the soft-key bar. `MapScreen` hoists `placeOptionsOpen`, the LEFT key
+  sets it, and `PlaceSheet` drives the same header `VelaMenu` from it. Touch keeps every button (the
+  menu items only appear when `softkeysActive`). Device-verified: Options opens auto-focused, Street
+  View from the menu opened the pano, Directions routed.
 - **Redundant touch buttons are trimmed when a soft key covers them.** The rule "hardware key
   present -> drop the on-screen button, free the screen" applies to every contextual action, not just
   zoom: while the place-sheet soft keys are active, the on-screen **Directions** pill (both the full
