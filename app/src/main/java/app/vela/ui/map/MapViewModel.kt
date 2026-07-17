@@ -655,7 +655,9 @@ class MapViewModel @Inject constructor(
                 // from working nav (the stale timer never fires while coarse fixes keep coming).
                 if (isGps && (!loc.hasAccuracy() || loc.accuracy <= 50f)) {
                     navSession.onLocation(here, app.vela.ui.Units.imperial.value, speed?.toDouble(),
-                        accuracyM = if (loc.hasAccuracy()) loc.accuracy.toDouble() else null)
+                        accuracyM = if (loc.hasAccuracy()) loc.accuracy.toDouble() else null,
+                        // Course for the engine's heading-vs-route off-route term (upstream 14157b79).
+                        bearingDeg = bearing?.toDouble())
                     lastNavFedMs = nowMs
                     updateSpeedLimit(here) // posted-limit badge for the road under the puck (off-thread)
                     if (_state.value.navStarved) _state.update { it.copy(navStarved = false) }
@@ -2753,23 +2755,34 @@ class MapViewModel @Inject constructor(
             s.toString()
         }
 
+    private var navStartJob: kotlinx.coroutines.Job? = null
+
     fun startNav() {
         val route = _state.value.activeRoute ?: return
+        // RE-ENTRANCY GUARD (upstream 5e3250ae): ignore Start while a start is already in flight
+        // or nav is running - a double-tap used to announce "Starting navigation" more than once.
+        if (navStartJob?.isActive == true || _state.value.navigating) return
         // The pre-nav search's results are stale junk once driving - and the nav bottom slot
         // yields to a NON-EMPTY results list (the in-nav along-route flow), so leftovers from
         // planning made the chooser's Start bar render over a live drive (device 2026-07-14).
         _state.update { it.copy(results = emptyList(), query = "", resultsCollapsed = false) }
-        viewModelScope.launch {
-            // If they hit Start before a picked alternate finished naming, name it first.
+        navStartJob = viewModelScope.launch {
+            // If they hit Start before a picked alternate finished naming, name it first (this IS
+            // on the critical path - the route isn't drivable until it's named - but it's a fast
+            // OSRM snap, not the 25 s Overpass fetch that used to block here).
             val named = if (route.provisional) nameIfNeeded(route).also { _state.update { s -> s.copy(activeRoute = it) } } else route
-            // Optional Google-style "pass the light, then turn" landmark clauses (off by default) - fetch the
-            // route's traffic signals once + fold the clauses into its turns before the session starts.
-            val enriched = enrichLightsIfEnabled(named)
-            if (enriched !== named) _state.update { it.copy(activeRoute = enriched) }
-            // Demo / screenshot / test mode (Settings → Navigation): drive the route as a SYNTHETIC GPS
-            // trace instead of using the real fix, so nav can be shown/tested anywhere (a Davis route
-            // while the phone is elsewhere). Same replay pipeline as a recorded trip.
-            if (settingsPrefs.getBoolean("demo_drive", false)) startDemoDrive(enriched) else launchNav(enriched)
+            // START IMMEDIATELY. The optional "pass the light, then turn" landmark clauses need a
+            // live Overpass fetch (up to a 25 s server timeout) - awaiting it here left Start dead
+            // for up to ~20 s with the toggle on (upstream 5e3250ae). Nav starts on the un-enriched
+            // route; the clauses fold in a beat later via NavSession.applyEnrichedRoute (same
+            // polyline, only turn text changes), or never, if the fetch is slow - best-effort text.
+            // Demo / screenshot / test mode (Settings → Navigation): drive the route as a SYNTHETIC
+            // GPS trace instead of the real fix (same replay pipeline as a recorded trip).
+            if (settingsPrefs.getBoolean("demo_drive", false)) startDemoDrive(named) else launchNav(named)
+            launch {
+                val enriched = enrichLightsIfEnabled(named)
+                if (enriched !== named) navSession.applyEnrichedRoute(enriched)
+            }
         }
     }
 
