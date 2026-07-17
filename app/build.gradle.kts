@@ -8,6 +8,27 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// GraphHopper's MMapDataAccess uses JDK-13 absolute-bulk ByteBuffer methods (ART API 34+ only):
+// an artifact transform rewrites those call sites to app.vela.core.util.ByteBufferCompat so
+// offline region graphs load on the API 26-33 keypad phones this fork targets. See
+// buildSrc/src/main/kotlin/GraphHopperByteBufferPatch.kt. Upstream has no equivalent - their
+// test hardware is all API 34+, where the real methods exist and the patched calls behave
+// identically.
+val bbPatched = Attribute.of("graphhopperByteBufferPatched", Boolean::class.javaObjectType)
+dependencies {
+    attributesSchema { attribute(bbPatched) }
+    artifactTypes.getByName("jar") { attributes.attribute(bbPatched, false) }
+    registerTransform(GraphHopperByteBufferPatch::class.java) {
+        from.attribute(bbPatched, false)
+            .attribute(org.gradle.api.artifacts.type.ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, org.gradle.api.artifacts.type.ArtifactTypeDefinition.JAR_TYPE)
+        to.attribute(bbPatched, true)
+            .attribute(org.gradle.api.artifacts.type.ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, org.gradle.api.artifacts.type.ArtifactTypeDefinition.JAR_TYPE)
+    }
+}
+configurations.configureEach {
+    if (isCanBeResolved) attributes.attribute(bbPatched, true)
+}
+
 android {
     namespace = "app.vela"
     compileSdk = 35
@@ -44,7 +65,7 @@ android {
             "String",
             "ROUTING_MANIFEST_URL",
             "\"${(project.findProperty("routingManifestUrl") as String?)
-                ?: "https://github.com/PimpinPumpkin/Vela/releases/download/routing-graphs/routing-manifest.json"}\"",
+                ?: "https://github.com/PimpinPumpkin/Vela/releases/download/routing-graphs/routing-manifest-v2.json"}\"",
         )
         // Open building-footprint overlay (Microsoft, ODbL) PMTiles catalog - same override pattern
         // (-PoverlayManifestUrl=http://127.0.0.1:8099/... for local testing via `adb reverse`).

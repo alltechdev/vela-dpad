@@ -1326,6 +1326,27 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     (v11 compiles custom models via **Janino** → JVM bytecode ART can't load); (3) **swallow `close()`**
     (MMAP unmap uses `Unsafe.invokeCleaner`, absent on Android - keep one engine for the process
     lifetime).
+  - **Three MORE pre-API-34 workarounds (2026-07-17, fork-only - upstream has none and is silently
+    broken on every device below Android 14; all three are upstream-worthy). Offline routing had NEVER
+    worked on this fork's target phones (API 26-33) until these:**
+    (4) **the car custom model is built PROGRAMMATICALLY** (`carModel()`), never via
+    `GHUtility.loadCustomModelFromJar` - Jackson bean-introspects `Statement`, a Java 17 RECORD, and
+    the record probe needs `Class.getRecordComponents` (ART API 34+); record CONSTRUCTORS are fine.
+    Keep `carModel()` in lockstep with the jar's bundled `custom_models/car.json` (content must match
+    or the baked per-profile version hashes in `properties` reject the graph).
+    (5) **profiles are set via `hopper.setProfiles` + `chPreparationHandler.setCHProfiles` AFTER
+    `init(cfg)`, never inside the config** - `GraphHopper.init` force-round-trips every profile's
+    custom model through Jackson (`writeValueAsBytes` + `readValue`, GraphHopper.java ~1631), hitting
+    the same record probe.
+    (6) **a Gradle artifact transform patches `graphhopper-core-*.jar`**
+    (`buildSrc/src/main/kotlin/GraphHopperByteBufferPatch.kt`, registered in `app/build.gradle.kts`):
+    MMapDataAccess reads/writes graph segments with the JDK-13 absolute-bulk
+    `ByteBuffer.get/put(int, byte[], int, int)` (ART API 34+); the transform rewrites those six call
+    sites - the only ones in the whole dependency tree, verified by constant-pool scan - to
+    `app.vela.core.util.ByteBufferCompat` (`duplicate()+position()`, byte-identical semantics).
+    buildSrc deliberately has NO AGP dependency (AGP there splits plugin classloaders and breaks the
+    root plugins block - the reason this is an artifact transform, not AGP ASM instrumentation).
+    Device-proven end-to-end on API 33: v2 graph download → load → offline route with street names.
   - **R8:** `consumer-rules.pro` keeps `com.graphhopper.**` + hppc/jts/jackson wholesale (GraphHopper
     resolves a lot reflectively) and `-dontwarn`s the excluded/absent refs - release build is clean
     (**but +~10 MB APK; tighter keeps / on-demand delivery is a later optimisation**).
