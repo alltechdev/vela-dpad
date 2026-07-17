@@ -293,16 +293,47 @@ fun MapScreen(
     // the RIGHT key is the primary Directions (Close is hardware BACK); the search overlay shows
     // nothing (the map isn't visible); otherwise Zoom -/+. Labels are inline English for now.
     var placeOptionsOpen by remember { mutableStateOf(false) }
+    var mapOptionsOpen by remember { mutableStateOf(false) } // bare-map LEFT "Options" menu
+    var mapZoomMode by remember { mutableStateOf(false) } // in it, D-pad LEFT/RIGHT zoom the map
+    var searchArmSignal by remember { mutableStateOf(0) } // bump to open+focus the search field
     LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
+    val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen && !state.showSteps
+    LaunchedEffect(browseMap) { if (!browseMap) { mapOptionsOpen = false; mapZoomMode = false } }
+    // Entering zoom mode engages + focuses the map so the D-pad reaches its key handler (LEFT/RIGHT
+    // then zoom); leaving it drops the engage.
+    LaunchedEffect(mapZoomMode) {
+        if (mapZoomMode) { runCatching { mapFocusRequester.requestFocus() }; mapEngaged = true }
+    }
     run {
         val (skLeft, skRight) = when {
             searchOpen -> null to null
             placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key("Options") { placeOptionsOpen = true } to
                 app.vela.ui.softkey.VelaSoftkeys.Key("Directions", vm::routeToSelected)
-            else -> app.vela.ui.softkey.VelaSoftkeys.Key("Zoom −") { mapDpad.zoomBy(-1.0) } to
-                app.vela.ui.softkey.VelaSoftkeys.Key("Zoom +") { mapDpad.zoomBy(1.0) }
+            // During nav / a route, keep BOTH zoom keys (no menu/search mid-drive).
+            state.navigating || state.directionsOpen || state.showSteps ->
+                app.vela.ui.softkey.VelaSoftkeys.Key("Zoom −") { mapDpad.zoomBy(-1.0) } to
+                    app.vela.ui.softkey.VelaSoftkeys.Key("Zoom +") { mapDpad.zoomBy(1.0) }
+            // The FIRST screen (bare browse map): an Options menu (Zoom / Recenter / Settings) on the
+            // LEFT, quick Search on the RIGHT.
+            else -> app.vela.ui.softkey.VelaSoftkeys.Key("Options") { mapOptionsOpen = true } to
+                app.vela.ui.softkey.VelaSoftkeys.Key("Search") { searchArmSignal++ }
         }
         app.vela.ui.softkey.VelaSoftkeys.MapSoftkeys(skLeft, skRight)
+    }
+    // The bare-map LEFT "Options" menu (keypad only; VelaMenu is a no-op popup under touch). Grows
+    // from the bottom-left on top of the soft-key bar, feature-phone style.
+    if (mapOptionsOpen) {
+        VelaMenu(
+            expanded = true,
+            onDismissRequest = { mapOptionsOpen = false },
+            placement = app.vela.ui.VelaMenuPlacement.BottomStart,
+            bottomBarPx = app.vela.ui.softkey.VelaSoftkeys.barHeightPx(context),
+        ) {
+            // Zoom -> a mode where D-pad LEFT/RIGHT zoom out/in (see the key handler + hint below).
+            item("Zoom (◀ − ▶ +)") { mapOptionsOpen = false; mapZoomMode = true }
+            item("Recenter") { mapOptionsOpen = false; vm.recenter() }
+            item("Settings") { mapOptionsOpen = false; onOpenSettings() }
+        }
     }
     // The results panel is open (not collapsed to the "N results" pill) → hide the bottom map
     // chrome (scale bar / locate FAB / Search this area) so it never draws on top of the list at
@@ -400,7 +431,7 @@ fun MapScreen(
     // search overlay is up over an engaged map. Order: cancel map-pick → disengage map →
     // close search → peel nav/route/place/results.
     BackHandler(
-        enabled = mapEngaged || searchOpen || state.showSteps || state.navigating || state.transitNav != null ||
+        enabled = mapZoomMode || mapEngaged || searchOpen || state.showSteps || state.navigating || state.transitNav != null ||
             state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty() ||
             state.selected != null ||
             state.results.isNotEmpty(),
@@ -408,6 +439,8 @@ fun MapScreen(
         when {
             state.transitNav != null -> vm.endTransitNav()
             state.pickOnMap != null -> vm.cancelChooseOnMap()
+            // Leave zoom mode (entered from the bare-map Options menu) back to the plain map.
+            mapZoomMode -> { mapZoomMode = false; mapEngaged = false }
             // Disengage map control only when nothing more prominent is open (a sheet /
             // search / route sitting on top should peel first).
             mapEngaged && !searchOpen && !state.showSteps && !state.navigating &&
@@ -775,8 +808,10 @@ fun MapScreen(
                             KeyEventType.KeyDown -> when (ev.key) {
                                 Key.DirectionUp -> { mapDpad.panBy(0f, -pan); true }
                                 Key.DirectionDown -> { mapDpad.panBy(0f, pan); true }
-                                Key.DirectionLeft -> { mapDpad.panBy(-pan, 0f); true }
-                                Key.DirectionRight -> { mapDpad.panBy(pan, 0f); true }
+                                // In zoom mode (entered from the bare-map Options menu) LEFT/RIGHT ZOOM
+                                // out/in instead of panning; otherwise they pan as usual.
+                                Key.DirectionLeft -> { if (mapZoomMode) mapDpad.zoomBy(-1.0) else mapDpad.panBy(-pan, 0f); true }
+                                Key.DirectionRight -> { if (mapZoomMode) mapDpad.zoomBy(1.0) else mapDpad.panBy(pan, 0f); true }
                                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                                     val n = ev.nativeKeyEvent
                                     if (n.repeatCount == 0) {
@@ -976,6 +1011,7 @@ fun MapScreen(
                         dpadMode = dpadMode,
                         offline = state.offline,
                         onMic = onMic,
+                        armFieldSignal = searchArmSignal, // the bare-map RIGHT "Search" soft key opens it
                     )
                     }
                     when {
@@ -1432,6 +1468,23 @@ fun MapScreen(
                 onConfirm = vm::confirmMapPick,
                 onCancel = vm::cancelChooseOnMap,
             )
+        }
+
+        // Zoom-mode hint (from the bare-map Options menu): while it's on, D-pad LEFT/RIGHT zoom.
+        if (mapZoomMode) {
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                tonalElevation = 6.dp,
+            ) {
+                Text(
+                    stringResource(R.string.map_zoom_mode_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
 
         // D-pad zoom buttons (docs/dpad.md): pinch has no key equivalent, so give zoom a

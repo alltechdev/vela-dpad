@@ -75,6 +75,9 @@ fun SearchBar(
     // Voice search: tap to dictate a query (tier-1 on-device Whisper, or tier-2 a system voice-input
     // app). Null = no mic. Sits at the right when the field is EMPTY, Google-style.
     onMic: (() -> Unit)? = null,
+    // Bump this (from a "Search" soft key, say) to OPEN + focus the field from outside - same as an OK
+    // on the bar. 0 = never armed externally.
+    armFieldSignal: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     // D-pad (docs/dpad.md): mere focus traversal must NOT fall into the text field (its
@@ -85,6 +88,8 @@ fun SearchBar(
     // hardware-keyboard phone keeps it hidden so a shown IME can't swallow the BACK key.
     var fieldArmed by remember { mutableStateOf(false) }
     val fieldFocus = remember { FocusRequester() }
+    // External open (a "Search" soft key): arming the field focuses it, which opens the overlay.
+    LaunchedEffect(armFieldSignal) { if (armFieldSignal > 0) fieldArmed = true }
     // The field is driven by a TextFieldValue (not the bare String) so we OWN the caret: on a D-pad
     // device LEFT/RIGHT then move the cursor WITHIN the text and only escape to Back/X at the ends
     // (issue #24 - L/R jumped straight out of the field). Kept in sync with the external String query
