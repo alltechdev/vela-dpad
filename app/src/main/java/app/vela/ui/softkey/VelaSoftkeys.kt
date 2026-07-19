@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -75,10 +76,15 @@ object VelaSoftkeys {
         // overlay the map's bottom chrome (locate FAB / scale bar). Only affects keypad devices,
         // since the bar only ever shows there.
         Yapchik.autoInsetContent = true
-        // A single-ink dark bar - reads as an intentional dark toolbar in BOTH app themes. True
-        // theme-following is deferred: Yapchik applies style colours at bar CONSTRUCTION and
-        // refreshAll() only re-binds labels, so an in-place repaint needs an upstream change (re-apply
-        // style on refresh). See docs/softkeys.md.
+        // Disable Yapchik's nav-bar GUARD. On FRAMEWORK-themed activities (Vela's window theme is
+        // android:Theme.Material) with a nav-bar-hide policy, Yapchik grows the bar by the device's
+        // probable navbar height to clear vendor bottom-strips that survive a hide. Vela draws its own
+        // edge-to-edge Compose UI (no such strip) and reserves the bar via autoInsetContent, so that
+        // guard is just phantom height - it made the bar look DOUBLE-tall on devices with no real nav
+        // bar (tester report). 0 = off.
+        Yapchik.navGuardDp = 0
+        // The bar FOLLOWS the app theme (see MapSoftkeys, which repaints on a Light/Dark flip). These
+        // are the dark-theme seed colours; MapSoftkeys re-applies per theme before showing the bar.
         Yapchik.style.apply {
             heightDp = 44
             textSizeSp = 15f
@@ -105,16 +111,22 @@ object VelaSoftkeys {
         val leftNow by rememberUpdatedState(left)
         val rightNow by rememberUpdatedState(right)
         // Theme-follow: Yapchik colours the bar at CONSTRUCTION and refresh() only re-binds labels, so
-        // to repaint we must REBUILD it. clear() then set() inside one effect body is atomic (both run
-        // before the next frame), so there's no flicker - and re-keying on the theme rebuilds it with
-        // the new colours when the user flips Light/Dark.
+        // to REPAINT we must rebuild (clear()+set()). But rebuilding on EVERY context switch churns the
+        // bar view - and under a nav-bar-hide policy that briefly reveals + re-hides the system bar, a
+        // visible flash on each screen change. So rebuild ONLY when the theme actually flipped; a plain
+        // label change just re-set()s in place (no churn, no flash).
         val dark = app.vela.ui.theme.isAppInDarkTheme()
         val modal = modalDepth.intValue > 0 // a VelaDialog is up -> hide the bar (keys go to it)
+        val lastDark = remember { mutableStateOf<Boolean?>(null) }
         LaunchedEffect(left?.label, right?.label, dark, modal) {
-            applyThemeColors(dark)
             val ctl = Softkeys.of(activity)
-            ctl.clear() // force a fresh SoftkeyBar so the theme colours take
-            if (!modal && (leftNow != null || rightNow != null)) {
+            val themeFlipped = lastDark.value?.let { it != dark } == true
+            lastDark.value = dark
+            applyThemeColors(dark)
+            if (modal || (leftNow == null && rightNow == null)) {
+                ctl.clear()
+            } else {
+                if (themeFlipped) ctl.clear() // drop the old-colour bar so set() rebuilds it repainted
                 ctl.set {
                     leftNow?.let { k -> left(k.label) { k.onPress() } }
                     rightNow?.let { k -> right(k.label) { k.onPress() } }
