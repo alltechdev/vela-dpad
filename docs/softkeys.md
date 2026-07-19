@@ -41,9 +41,16 @@ stays source-identical for re-sync).
     the bar NEVER appears on a touch phone. Mode stays `AUTO`; AUTO resolves through that detector.
   - `autoInsetContent = true` - the bar reserves its height by padding the content view rather than
     overlaying the map's bottom chrome (locate FAB / scale bar). Only affects keypad devices.
+  - `navGuardDp = 0` - DISABLE Yapchik's nav-bar guard. Vela's window theme is `android:Theme.Material`
+    (a FRAMEWORK theme), so with a nav-bar-hide policy Yapchik would grow the bar by the device's
+    probable navbar height to clear vendor bottom-strips. Vela draws its own edge-to-edge Compose UI
+    (no strip) and already reserves the bar via autoInsetContent, so that was phantom height - it made
+    the bar look DOUBLE-tall on a device with no real nav bar (tester report, fixed + confirmed).
   - A single-ink `style` that FOLLOWS the app theme (dark bar in dark, light in light). Yapchik
-    colours the bar at construction, so `MapSoftkeys` REBUILDS it on a theme flip (`clear()` then
-    `set()` in one effect body is atomic - no flicker); the bind effect re-keys on `isAppInDarkTheme()`.
+    colours the bar at construction, so `MapSoftkeys` REBUILDS it - but ONLY when the theme actually
+    flipped (tracked via a remembered `lastDark`); a plain context switch re-`set()`s in place. An
+    unconditional rebuild churned the bar view on every screen change and, under the nav-bar-hide
+    policy, briefly revealed + re-hid the system bar = a visible flash (tester report, fixed).
   - `Key(label, onPress)` + `MapSoftkeys(left, right)` (composable, called once in `MapScreen`): the
     seam the map binds through. `MapScreen` computes the two `Key`s from state; a null slot is unbound,
     both null shows no bar; cleared on leave. Re-keys on the labels, the theme, and modal depth (below).
@@ -59,7 +66,7 @@ stays source-identical for re-sync).
 
   | Surface | LEFT | RIGHT |
   |---|---|---|
-  | Bare map | Options (Zoom · Recenter · Layers · Settings) | Search |
+  | Bare map | Options (Move map · Recenter · Layers · Settings) | Search |
   | Place sheet | Options (all secondary actions) | Directions |
   | Choose-on-map | Cancel | Set start / stop |
   | Route preview | Steps | Start |
@@ -84,10 +91,16 @@ stays source-identical for re-sync).
     profile CHOOSER (a navigable single-choice list) is ever surfaced, give it a Vela-native
     `VelaDialog`/`VelaMenu` instead - a bare `AlertDialog` list can't auto-focus under D-pad.
 - **The bare map (first screen) has its own Options menu + a Search key.** LEFT = Options, RIGHT =
-  Search. The Options menu (same bottom-left bordered VelaMenu) holds Zoom / Recenter / Layers /
-  Settings. **Zoom** enters a mode where the D-pad LEFT/RIGHT zoom out/in (the map is engaged +
-  focused so the keys reach `MapDpadController`, and the one BackHandler peels the mode first), with
-  a top-of-screen hint; BACK exits. **Search** opens the search field focused via a new
+  Search. The Options menu (bottom-left bordered VelaMenu) holds Recenter / Layers / Settings plus ONE
+  adaptive map-motion item that reflects the mode you're in (tester's model - you never see the mode
+  you're already in):
+  - Bare map -> **Move map**: engages + focuses the map so the D-pad PANS it, with a top hint.
+  - Moving (engaged) -> **Zoom**: enters a mode where the D-pad LEFT/RIGHT zoom out/in, own hint.
+  - Zooming -> **Stop zoom**: drops back to moving.
+
+  So the modes NEST - bare map -> Move map -> Zoom - and BACK peels one level at a time (zoom ->
+  move-map -> bare map); the single map BackHandler owns that. `moveMapArm` / `mapZoomMode` drive the
+  engage; `mapEngaged` is the existing pan state. **Search** opens the search field focused via a new
   `armFieldSignal` on `SearchBar` (bumping it arms the field, exactly like an OK on the bar). (Other
   surfaces per the table above: route preview = Steps/Start, turn-by-turn = Options/Zoom, place sheet
   = Options/Directions, search overlay = no bar.)
@@ -140,8 +153,8 @@ Most of this is DONE (marked below); what remains is hardware-blocked or optiona
 hard rules: touch byte-identical, gated on the D-pad detector, both geometries x both flavors + eyeball.
 
 1. **Contextual surfaces. DONE.** Every map context is wired:
-   - **Bare map** -> Options / Search (Options = Zoom / Recenter / Layers / Settings; Zoom = a D-pad
-     zoom mode).
+   - **Bare map** -> Options / Search (Options = Recenter / Layers / Settings + one adaptive item:
+     Move map when idle, Zoom once moving, Stop zoom while zooming; the modes nest, BACK peels one).
    - **Place sheet** -> Options / Directions (Close is BACK).
    - **Choose-on-map** (crosshair to set a route origin/stop) -> Cancel / Set start|stop.
    - **Route preview** -> Steps / Start (Start begins the drive, notification-permission-aware).

@@ -555,14 +555,19 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   integration lives in `app/ui/softkey/VelaSoftkeys.kt` (install + gate + the `Key`/`MapSoftkeys`
   seam); `MapScreen` picks the two keys CONTEXTUALLY from a `when` (bare map = Options / Search, place
   sheet = Options / Directions, choose-on-map = Cancel / Set, route preview = Steps / Start,
-  turn-by-turn = Options / Zoom-mode, search overlay = none). Each Options popup is a feature-phone
-  `VelaMenu(placement = BottomStart)` (bordered, flush on the bar). The whole design is
-  `docs/softkeys.md`. Key mechanisms to reuse, not reinvent: **`SuppressBarWhile`** forces the bar off
-  for a whole screen (Settings over the map); **`SuppressBarForModal`** (a reactive `modalDepth` any
-  `VelaDialog` bumps) hides it while a modal is up - a `VelaMenu` is NOT a modal, so it keeps the bar;
-  theme-following is a REBUILD (yapchik colours at construction, so `MapSoftkeys` clear()+set()s on a
-  theme flip); labels are localized (all 14 locales). The `softkey` phase in `full_coverage.sh` (+
-  `K_SOFT_LEFT`/`K_SOFT_RIGHT` in `tests/dpad/lib.sh`) captures the menus. **Softkeys gate on
+  turn-by-turn = Options / Zoom-mode, search overlay = none). The bare-map Options menu has ONE
+  ADAPTIVE map-motion item that nests: Move map (idle) -> Zoom (once moving) -> Stop zoom (while
+  zooming); BACK peels one mode at a time (zoom -> move-map -> bare map), owned by the single map
+  BackHandler. Each Options popup is a feature-phone `VelaMenu(placement = BottomStart)` (bordered,
+  flush on the bar). The whole design is `docs/softkeys.md`. Key mechanisms to reuse, not reinvent:
+  **`SuppressBarWhile`** forces the bar off for a whole screen (Settings over the map);
+  **`SuppressBarForModal`** (a reactive `modalDepth` any `VelaDialog` bumps) hides it while a modal is
+  up - a `VelaMenu` is NOT a modal, so it keeps the bar; theme-following is a REBUILD but ONLY on an
+  actual theme flip (an unconditional rebuild churned the bar + flashed the system bar every screen
+  switch); `navGuardDp = 0` kills Yapchik's phantom nav-guard height (Vela's FRAMEWORK window theme
+  would otherwise double the bar's height on a device with no real nav bar). Labels are localized (all
+  14 locales). The `softkey` phase in `full_coverage.sh` (+ `K_SOFT_LEFT`/`K_SOFT_RIGHT` in
+  `tests/dpad/lib.sh`) captures the menus. **Softkeys gate on
   `isDpadFirstDevice` (same detector as the Compose D-pad affordances) so they NEVER show on touch** -
   keep any new binding on that gate, through `Softkeys.of(activity)` / `VelaSoftkeys`, not a fork of
   the engine. When a soft key covers an action, DROP the redundant on-screen button on keypad (gated
