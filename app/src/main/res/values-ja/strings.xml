@@ -529,4 +529,5 @@
     <string name="softkey_recenter">中央に戻す</string>
     <string name="softkey_mute">ミュート</string>
     <string name="softkey_unmute">ミュート解除</string>
+    <string name="softkey_move_map">地図を移動</string>
 </resources>

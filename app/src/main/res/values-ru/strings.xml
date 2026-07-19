@@ -517,4 +517,5 @@
     <string name="softkey_recenter">Центрировать</string>
     <string name="softkey_mute">Без звука</string>
     <string name="softkey_unmute">Включить звук</string>
+    <string name="softkey_move_map">Двигать карту</string>
 </resources>

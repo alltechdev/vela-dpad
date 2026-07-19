@@ -296,6 +296,7 @@ fun MapScreen(
     var navOptionsOpen by remember { mutableStateOf(false) } // in-nav LEFT "Options" menu
     var mapOptionsOpen by remember { mutableStateOf(false) } // bare-map LEFT "Options" menu
     var mapZoomMode by remember { mutableStateOf(false) } // in it, D-pad LEFT/RIGHT zoom the map
+    var moveMapArm by remember { mutableStateOf(false) } // Options "Move map" -> engage the map to pan
     var searchArmSignal by remember { mutableStateOf(0) } // bump to open+focus the search field
     var layersOpen by remember { mutableStateOf(false) } // the top-right layers panel (also a map-Options item)
     LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
@@ -303,6 +304,12 @@ fun MapScreen(
     val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen &&
         !state.showSteps && state.pickOnMap == null
     LaunchedEffect(browseMap) { if (!browseMap) { mapOptionsOpen = false; mapZoomMode = false } }
+    // "Move map" (from the Options menu): engage + focus the map so the D-pad pans it. Same engage
+    // zoom mode uses, minus the zoom flag - so BACK out of zoom lands HERE (still panning), then a
+    // second BACK disengages (see the BackHandler).
+    LaunchedEffect(moveMapArm) {
+        if (moveMapArm) { runCatching { mapFocusRequester.requestFocus() }; mapEngaged = true; mapZoomMode = false; moveMapArm = false }
+    }
     // Entering zoom mode engages + focuses the map so the D-pad reaches its key handler (LEFT/RIGHT
     // then zoom); leaving it drops the engage.
     LaunchedEffect(mapZoomMode) {
@@ -369,7 +376,8 @@ fun MapScreen(
             placement = app.vela.ui.VelaMenuPlacement.BottomStart,
             bottomBarPx = app.vela.ui.softkey.VelaSoftkeys.barHeightPx(context),
         ) {
-            // Zoom -> a mode where D-pad LEFT/RIGHT zoom out/in (see the key handler + hint below).
+            // Move map -> engage the map so the D-pad pans it (hint below); Zoom -> the zoom sub-mode.
+            item(stringResource(R.string.softkey_move_map)) { mapOptionsOpen = false; moveMapArm = true }
             item(stringResource(R.string.softkey_zoom_menu)) { mapOptionsOpen = false; mapZoomMode = true }
             item(stringResource(R.string.softkey_recenter)) { mapOptionsOpen = false; vm.recenter() }
             if (app.vela.ui.LayersButton.on.value) {
@@ -496,8 +504,9 @@ fun MapScreen(
         when {
             state.transitNav != null -> vm.endTransitNav()
             state.pickOnMap != null -> vm.cancelChooseOnMap()
-            // Leave zoom mode (entered from the bare-map Options menu) back to the plain map.
-            mapZoomMode -> { mapZoomMode = false; mapEngaged = false }
+            // BACK out of zoom drops to MOVE-MAP (still engaged for panning), not all the way out; a
+            // second BACK then disengages via the mapEngaged case below.
+            mapZoomMode -> mapZoomMode = false
             // Disengage map control only when nothing more prominent is open (a sheet /
             // search / route sitting on top should peel first).
             mapEngaged && !searchOpen && !state.showSteps && !state.navigating &&
@@ -1514,6 +1523,24 @@ fun MapScreen(
                 onConfirm = vm::confirmMapPick,
                 onCancel = vm::cancelChooseOnMap,
             )
+        }
+
+        // Move-map hint (keypad): engaged for panning - via Options "Move map", or after backing out
+        // of zoom. Not during choose-on-map (that shows its own "Move the map to set..." banner).
+        if (dpadFirst && mapEngaged && !mapZoomMode && state.pickOnMap == null) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 92.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                tonalElevation = 6.dp,
+            ) {
+                Text(
+                    stringResource(R.string.map_move_mode_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
         }
 
         // Zoom-mode hint (from the bare-map Options menu): while it's on, D-pad LEFT/RIGHT zoom. Sits

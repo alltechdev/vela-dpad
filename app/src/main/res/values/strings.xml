@@ -64,10 +64,12 @@
     <string name="settings_softkeys_calibrate" translatable="false">Calibrate soft keys</string>
     <string name="settings_softkeys_calibrate_hint" translatable="false">If the soft keys don\'t zoom, tap here and press your left then right soft key so Vela learns their codes.</string>
     <string name="map_zoom_mode_hint" translatable="false">Zoom:  ◀ out   ·   in ▶      BACK to exit</string>
+    <string name="map_move_mode_hint" translatable="false">Move map:  ◀ ▲ ▼ ▶      BACK to exit</string>
     <!-- Hardware soft-key labels. The symbol-heavy zoom ones stay English (translatable=false); the
          plain words are localised. Directions/Layers/Settings reuse existing strings. -->
     <string name="softkey_options">Options</string>
     <string name="softkey_search">Search</string>
+    <string name="softkey_move_map">Move map</string>
     <string name="softkey_recenter">Recenter</string>
     <string name="softkey_mute">Mute</string>
     <string name="softkey_unmute">Unmute</string>
