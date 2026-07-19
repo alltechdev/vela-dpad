@@ -44,7 +44,7 @@ cover_one() {
   # redoing the whole ~13 min tour (e.g. PHASES=settings to iterate just the deep Settings sub-sections).
   # Each phase pins its own screenshot NUMBER base, so a subset writes the SAME 01..16 filenames a full
   # run would - a partial run overwrites only its slice and leaves the rest in place. Default = all.
-  local ALLPHASES="firstrun map search place streetview directions settings voice parking"
+  local ALLPHASES="firstrun map search place streetview directions settings voice parking softkey"
   local phases="${PHASES:-$ALLPHASES}" full=0; [ "$phases" = "$ALLPHASES" ] && full=1
   phase() { case " $phases " in *" $1 "*) return 0;; *) return 1;; esac; }
   # Flavor-aware output: a run against the RESTRICTED flavor writes to its own directory so it can
@@ -208,6 +208,25 @@ cover_one() {
     # Leave the device clean: clear the spot through the hub.
     tap_desc "Parked car" && sleep 1.5 && tap_center "Clear parking" && sleep 1
   else mark "parking-saved" 0; mark "parking-menu" 0; mark "parking-car-sheet" 0; fi
+  fi
+
+  # --- hardware soft-key menus (keypad bar) ---------------------------------------------------
+  # The base phases capture the BAR in every frame (dpad is forced), but never PRESS a soft key, so
+  # the Options popups + zoom mode go uncaptured. Drive them here: LEFT opens the bottom-left menu.
+  if phase softkey; then i=22
+  goto_map; key "$K_DOWN"
+  key "$K_SOFT_LEFT" 1                              # bare map: LEFT -> Options menu
+  if on_screen "Recenter"; then
+    mark "softkey-map-options" 1
+    key "$K_OK" 1; mark "softkey-zoom-mode" 1        # OK on Zoom (first item) -> D-pad zoom mode + hint
+    key "$K_BACK" 1
+  else mark "softkey-map-options" 0; mark "softkey-zoom-mode" 0; fi
+  [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
+  if [ "$haveResults" = 1 ]; then
+    open_first_place; key "$K_SOFT_LEFT" 1           # place sheet: LEFT -> place Options menu
+    on_screen_contains "Directions" || on_screen "Street View"; mark "softkey-place-options" 1
+    key "$K_BACK" 1; key "$K_BACK" 1
+  else mark "softkey-place-options" 0; fi
   fi
 
   echo "-- coverage: $id ($phases) --"; printf '%b\n' "$checklist"

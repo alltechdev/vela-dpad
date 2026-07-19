@@ -20,6 +20,7 @@ PKG="${PKG:-app.vela}"
 
 # ---- D-pad keycodes -------------------------------------------------------------------------
 K_UP=19; K_DOWN=20; K_LEFT=21; K_RIGHT=22; K_OK=23; K_BACK=4; K_HOME=3
+K_SOFT_LEFT=1; K_SOFT_RIGHT=2   # the hardware LEFT/RIGHT soft keys (the Yapchik bar)
 
 # key <code> [settle_seconds]  - press one key and wait for the UI to settle.
 key() { $ADB shell input keyevent "$1" >/dev/null 2>&1; sleep "${2:-0.4}"; }
