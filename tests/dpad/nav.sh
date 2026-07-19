@@ -123,7 +123,10 @@ reach_directions() {
     key "$K_LEFT"
     key "$K_OK" 5
   fi
-  on_screen "Add stop"                   # a directions-panel-only row
+  # Directions-panel proof. "Add stop" is the row we used, but at 240x320 it sits BELOW the fold, so a
+  # working panel read as a failure (the kyocera directions/route-steps miss). Accept any of the
+  # panel-only markers instead: the ETA/route summary or the Start/Steps soft keys it puts on the bar.
+  on_screen "Add stop" || on_screen_contains "Arrive" || on_screen "Fastest" || on_screen "Steps"
 }
 
 # open_choose_on_map - drill all the way to the Choose-on-map pick overlay (edit the origin ->

@@ -231,6 +231,10 @@ cover_one() {
   # Park: under soft-keys the on-screen P FAB is decluttered away (#76) and Park lives in the bare-map
   # Options menu (LEFT soft key); on touch the FAB is still there. park_action opens it the right way
   # per layout. Drive the hub: save -> re-open -> Find my car -> car sheet -> re-open -> clear (clean).
+  # IDEMPOTENT START: a spot left over from an earlier run (or a run that failed before its cleanup)
+  # makes the entry read "Parked car", not "Save parking spot", so this phase used to fail forever
+  # after one bad run - device-seen on the restricted 240x320 leg. Clear any existing spot first.
+  if park_action "Parked car"; then sleep 1.2; tap_center "Clear parking"; sleep 1.2; fi
   if park_action "Save parking spot"; then
     sleep 1.5; mark "parking-saved" 1              # pin + "Parked" toast
     if park_action "Parked car" && sleep 1.5 && on_screen "Find my car"; then
