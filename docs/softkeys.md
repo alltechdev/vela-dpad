@@ -165,9 +165,13 @@ detector, new behaviour in new files, both geometries x both flavors + eyeball b
    own D-pad-focusable buttons + BACK are the answer path. `VelaMenu` (the bottom-left Options popups)
    is intentionally NOT a modal here - it grows flush from the bar and keeps it. Device-verified
    (first-run voice/offline dialogs show no bar; the Options menu keeps its bar).
-7. **Auditor integration.** Teach `tests/dpad` / `tests/small_screen` about the bar: its height
-   changes the clip envelope at 240x320, and a `softkey` phase in `full_coverage.sh` would capture it
-   per device/flavor. Add once the surface set is stable.
+7. **Auditor integration. DONE (capture).** `full_coverage.sh` has a `softkey` phase that presses the
+   LEFT key to open the bare-map Options menu, enters D-pad zoom mode, and opens the place Options
+   menu - the surfaces the other phases never reach because they don't press a soft key (the bar
+   itself is already in every frame, since the tour forces D-pad). Reference frames are committed for
+   both geometries x both flavors (the restricted place menu shows Street View/Website correctly
+   dropped). `K_SOFT_LEFT`/`K_SOFT_RIGHT` (1/2) added to `tests/dpad/lib.sh`. Still open: a numeric
+   clip assertion for the bar's reserved band at 240x320 (today it's eyeballed from the frames).
 
 ## Open questions to resolve on real hardware
 
