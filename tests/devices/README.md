@@ -41,6 +41,8 @@ takes `VELA_SMALL=WxH VELA_SMALL_DPI=<dpi>` to sweep each device.
 | [Sonim XP3 (XP3800)](sonim-xp3/findings.md) | 2.6" | 240x320 | portrait | ~154 (160) | FULLY COVERED (20/20) | own full_coverage run; frames in `sonim-xp3/screenshots/full/` |
 | [Kyocera DuraXV](kyocera-duraxv/findings.md) | - | 240x320 | portrait | ~160 | FULLY COVERED (20/20) | own full_coverage run; frames in `kyocera-duraxv/screenshots/full/` |
 | [Sonim X320 (XP3 Plus 5G)](sonim-x320/findings.md) | 2.95" | 480x854 | portrait | ~332 (320) | FULLY COVERED (20/20) | driven at 480x854@320; AdaptiveDensity generalizes |
+| Sonim X320 @ low density (sonim-x320-225) | 2.95" | 480x854 | portrait | **225** | PARTIAL | same panel, user-reported low-density setup; declutter / Options+Park / parking verified in `sonim-x320/screenshots/full-dens225/`; full run pending |
+| Kyocera DuraXe e4830 (kyocera-duraxe-e4830) | - | 240x320 | portrait | **120** | PARTIAL | tester-reported (jtechforums); wider in dp than the 160-dpi 240x320 profiles. Options→Layers verified at this density; full run pending |
 
 Status meaning: FULLY COVERED (20/20) = a full `full_coverage.sh <id>` run at that profile's simulated
 geometry reported 20 COVERED, 0 MISSED (all surfaces: first-run x4, bare map, search x2, place x2,

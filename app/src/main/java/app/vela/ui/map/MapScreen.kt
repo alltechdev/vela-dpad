@@ -1776,10 +1776,11 @@ fun MapScreen(
             // whole browse map, since follow is armed by default.
             // Layers button, top-right under the search bar + chips (browse map only): satellite,
             // traffic, transit and terrain in one Google-style panel. Filled tint = any layer on.
+            // The layers BUTTON: touch/hybrid only. Under soft-keys it's decluttered away and the
+            // bare-map Options menu carries Layers instead (#76).
             if (app.vela.ui.LayersButton.on.value && !softkeyBarShown && state.selected == null && !searchOpen &&
                 !state.navigating && !state.replaying && state.results.isEmpty()
             ) {
-                val ctx = androidx.compose.ui.platform.LocalContext.current
                 val anyLayerOn = app.vela.ui.SatelliteLayer.on.value || Traffic.on.value ||
                     app.vela.ui.TransitLayer.on.value || app.vela.ui.Topography.on.value
                 Box(
@@ -1804,10 +1805,24 @@ fun MapScreen(
                             )
                         }
                     }
-                    // The layers panel, Google-style: SATELLITE swaps the base look, the rest are
-                    // overlays. Same holders Settings flips, so the two stay in sync. VelaMenu, not
-                    // a bare DropdownMenu - the D-pad rule (docs/dpad.md): a Popup can't be
-                    // pre-focused, so key-first devices get the auto-focusing chooser dialog.
+                }
+            }
+            // The layers PANEL, hoisted OUT of the button block. It used to live inside it, so when the
+            // button was decluttered under soft-keys the panel went uncomposed with it - the Options ->
+            // Layers item then set layersOpen into the void and Layers was UNREACHABLE on a keypad phone
+            // (tester report, Kyocera DuraXe e4830). Same trap the Park hub had. Google-style: SATELLITE
+            // swaps the base look, the rest are overlays; same holders Settings flips, so the two stay in
+            // sync. VelaMenu, not a bare DropdownMenu - the D-pad rule (docs/dpad.md): a Popup can't be
+            // pre-focused, so key-first devices get the auto-focusing chooser dialog. Inert while closed;
+            // the TopEnd box keeps the touch dropdown anchored where the button sits.
+            if (app.vela.ui.LayersButton.on.value) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(top = 128.dp, end = 14.dp),
+                ) {
                     app.vela.ui.VelaMenu(
                         expanded = layersOpen,
                         onDismissRequest = { layersOpen = false },

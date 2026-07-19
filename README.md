@@ -21,13 +21,15 @@ A degoogled maps and navigation client for Android. Runs on GrapheneOS and other
 | TCL Flip 2 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`tcl-flip-2/screenshots/full/`](tests/devices/tcl-flip-2/screenshots/full/)) |
 | Sonim XP3 (XP3800) | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`sonim-xp3/screenshots/full/`](tests/devices/sonim-xp3/screenshots/full/)) |
 | Sonim X320 (XP3 Plus 5G) | 480x854 @ 320 | **FULLY COVERED (20/20)** ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
+| Sonim X320 @ low density | 480x854 @ **225** | PARTIAL - declutter/Options/parking surfaces verified ([`sonim-x320/screenshots/full-dens225/`](tests/devices/sonim-x320/screenshots/full-dens225/)); full run pending |
+| Kyocera DuraXe e4830 | 240x320 @ **120** | PARTIAL - reported by a tester; Options→Layers verified at this density; full run pending |
 
 The 20 surfaces: first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay,
 results, place sheet (+ expanded), directions, route steps, Settings incl. the deep Voice-library /
 Offline / Saved-places sub-sections, voice search, and parking (saved spot, hub menu, parked-car
 sheet).
 
-All five profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
+The five FULLY COVERED profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
 surface at the device's geometry and prints **RESULT: FULLY COVERED (0 MISSED)** - the hard requirement
 for calling a device supported (see [`AGENTS.md`](AGENTS.md)). NOT yet in the gate: live turn-by-turn
 navigation cards and transit itineraries. **Real-hardware confirmation: none** - the geometry is
@@ -163,6 +165,27 @@ Read [`CONTRIBUTING.md`](docs/CONTRIBUTING.md) first: it covers the hard rules (
 static Google keys, degoogled runtime, the `:core`/`:app` boundary, D-pad-first UI,
 docs-in-the-same-commit, translations for all 11 locales) and how to send a change.
 Security issues go through [`SECURITY.md`](docs/SECURITY.md), not a public issue.
+
+## Credits
+
+### Yapchik — the hardware soft-key engine
+
+The LEFT/RIGHT hardware soft-key bar that makes Vela drivable on a keypad phone is
+[**Yapchik**](https://github.com/theonionsarewatching/yapchik) by **theonionsarewatching**, vendored
+here as the [`:yapchik`](yapchik/) module.
+
+- **Copyright © 2026 theonionsarewatching** — <https://github.com/theonionsarewatching/yapchik>
+- **GNU Lesser General Public License v3.0** — see [`yapchik/LICENSE`](yapchik/LICENSE) and
+  [`yapchik/NOTICE`](yapchik/NOTICE). LGPL-3.0 inside Vela's GPL-3.0 is compatible.
+- Vendored **source-identical** and kept as its own Gradle module so it stays a cleanly replaceable
+  library that can be re-synced from upstream — Vela does not fork it or hand-edit its files.
+- Zero dependencies (framework-only), which is what makes it viable on these devices.
+- **On the license history:** Yapchik was originally PolyForm Noncommercial, which is GPL-incompatible
+  and would have made vendoring impossible. The author relicensed it to LGPL-3.0 — that relicense is
+  the only reason the soft-key bar can ship inside Vela at all, and the reason this stays
+  F-Droid-eligible. Thank you.
+
+Integration design + the contextual key map: [`docs/softkeys.md`](docs/softkeys.md).
 
 ## License
 

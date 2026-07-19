@@ -28,6 +28,8 @@ DEVICES="
 kyocera-e4810|240x320|160
 kyocera-duraxv|240x320|160
 sonim-x320|480x854|320
+sonim-x320-225|480x854|225
+kyocera-duraxe-e4830|240x320|120
 sonim-xp3|240x320|160
 tcl-flip-2|240x320|160
 "   # every committed target is its own row - each profile gets its own full-coverage record
@@ -259,7 +261,19 @@ cover_one() {
     key "$K_SOFT_LEFT" 1; key "$K_OK" 1              # now MOVING: Options -> Zoom is the first item
     mark "softkey-zoom-mode" 1                       # -> D-pad zoom mode + hint
     key "$K_BACK" 1; key "$K_BACK" 1                 # zoom -> move-map -> bare map
-  else mark "softkey-map-options" 0; mark "softkey-move-map" 0; mark "softkey-zoom-mode" 0; fi
+    # ACTIVATE the Options entries that open something, don't just prove the menu renders. The menu
+    # drawing correctly is NOT evidence its items work: Layers was decluttered off the map but its
+    # PANEL stayed nested in the (now uncomposed) button block, so the entry set state into the void
+    # and Layers was unreachable on every keypad phone - and this phase still passed (tester report,
+    # Kyocera DuraXe e4830). Anything the menu opens gets opened here now.
+    key "$K_SOFT_LEFT" 1
+    if tap_center "Layers"; then
+      sleep 1
+      if on_screen_contains "Satellite" || on_screen_contains "Terrain"; then mark "softkey-layers-panel" 1
+      else mark "softkey-layers-panel" 0; fi
+      key "$K_BACK" 1
+    else mark "softkey-layers-panel" 0; fi
+  else mark "softkey-map-options" 0; mark "softkey-move-map" 0; mark "softkey-zoom-mode" 0; mark "softkey-layers-panel" 0; fi
   [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
   if [ "$haveResults" = 1 ]; then
     open_first_place; key "$K_SOFT_LEFT" 1           # place sheet: LEFT -> place Options menu

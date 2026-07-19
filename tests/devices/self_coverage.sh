@@ -21,6 +21,8 @@ PKG="${VELA_PKG:-app.vela.debug}"
 DEVICES="
 kyocera-e4810|240x320|160
 sonim-x320|480x854|320
+sonim-x320-225|480x854|225
+kyocera-duraxe-e4830|240x320|120
 "
 restore() { $ADB shell wm size reset >/dev/null 2>&1; $ADB shell wm density reset >/dev/null 2>&1; }
 trap restore EXIT
