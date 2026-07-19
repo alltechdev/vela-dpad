@@ -293,11 +293,13 @@ fun MapScreen(
     // the RIGHT key is the primary Directions (Close is hardware BACK); the search overlay shows
     // nothing (the map isn't visible); otherwise Zoom -/+. Labels are inline English for now.
     var placeOptionsOpen by remember { mutableStateOf(false) }
+    var navOptionsOpen by remember { mutableStateOf(false) } // in-nav LEFT "Options" menu
     var mapOptionsOpen by remember { mutableStateOf(false) } // bare-map LEFT "Options" menu
     var mapZoomMode by remember { mutableStateOf(false) } // in it, D-pad LEFT/RIGHT zoom the map
     var searchArmSignal by remember { mutableStateOf(0) } // bump to open+focus the search field
     var layersOpen by remember { mutableStateOf(false) } // the top-right layers panel (also a map-Options item)
     LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
+    LaunchedEffect(state.navigating) { if (!state.navigating) navOptionsOpen = false }
     val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen && !state.showSteps
     LaunchedEffect(browseMap) { if (!browseMap) { mapOptionsOpen = false; mapZoomMode = false } }
     // Entering zoom mode engages + focuses the map so the D-pad reaches its key handler (LEFT/RIGHT
@@ -305,18 +307,41 @@ fun MapScreen(
     LaunchedEffect(mapZoomMode) {
         if (mapZoomMode) { runCatching { mapFocusRequester.requestFocus() }; mapEngaged = true }
     }
+    // Start navigation from a previewed route - asks for the notification permission first on 13+
+    // (the drive posts an ongoing notification), then starts. Shared by the on-screen Start button and
+    // the RIGHT "Start" soft key, so it's defined before the soft-key bindings that reference it.
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { vm.startNav() }
+    val onStartNav: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            vm.startNav()
+        }
+    }
     run {
         val skOptions = stringResource(R.string.softkey_options)
-        val skZoomOut = stringResource(R.string.softkey_zoom_out)
-        val skZoomIn = stringResource(R.string.softkey_zoom_in)
+        val routePreview = state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty()
         val (skLeft, skRight) = when {
             searchOpen -> null to null
+            // Turn-by-turn: LEFT opens the nav Options menu (Mute / Steps / Recenter / End) so a keypad
+            // driver can actually control the drive; RIGHT enters zoom mode.
+            state.navigating -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { navOptionsOpen = true } to
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.softkey_zoom_menu)) { mapZoomMode = true }
             placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { placeOptionsOpen = true } to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_directions), vm::routeToSelected)
-            // During nav / a route, keep BOTH zoom keys (no menu/search mid-drive).
-            state.navigating || state.directionsOpen || state.showSteps ->
-                app.vela.ui.softkey.VelaSoftkeys.Key(skZoomOut) { mapDpad.zoomBy(-1.0) } to
-                    app.vela.ui.softkey.VelaSoftkeys.Key(skZoomIn) { mapDpad.zoomBy(1.0) }
+            // The turn-list overlay (reached while previewing a route): RIGHT starts the drive.
+            state.showSteps -> null to
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_start), onStartNav)
+            // A previewed route (before driving): LEFT sees the turn list, RIGHT starts navigation -
+            // no more walking focus to the on-screen Start button.
+            routePreview -> app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.nav_steps), vm::openSteps) to
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_start), onStartNav)
             // The FIRST screen (bare browse map): an Options menu (Zoom / Recenter / Settings) on the
             // LEFT, quick Search on the RIGHT.
             else -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { mapOptionsOpen = true } to
@@ -340,6 +365,21 @@ fun MapScreen(
                 item(stringResource(R.string.map_layers)) { mapOptionsOpen = false; layersOpen = true }
             }
             item(stringResource(R.string.settings_title)) { mapOptionsOpen = false; onOpenSettings() }
+        }
+    }
+    // The in-nav LEFT "Options" menu: the drive controls a keypad driver otherwise can't reach.
+    if (navOptionsOpen) {
+        VelaMenu(
+            expanded = true,
+            onDismissRequest = { navOptionsOpen = false },
+            placement = app.vela.ui.VelaMenuPlacement.BottomStart,
+            bottomBarPx = app.vela.ui.softkey.VelaSoftkeys.barHeightPx(context),
+        ) {
+            val muteLabel = if (state.voiceMuted) R.string.softkey_unmute else R.string.softkey_mute
+            item(stringResource(muteLabel)) { navOptionsOpen = false; vm.toggleVoice() }
+            item(stringResource(R.string.nav_steps)) { navOptionsOpen = false; vm.openSteps() }
+            item(stringResource(R.string.softkey_recenter)) { navOptionsOpen = false; vm.recenterNav() }
+            item(stringResource(R.string.nav_end)) { navOptionsOpen = false; vm.stopNav() }
         }
     }
     // The results panel is open (not collapsed to the "N results" pill) → hide the bottom map
@@ -535,20 +575,6 @@ fun MapScreen(
         }
     }
 
-    val notifPermLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { vm.startNav() }
-    val onStartNav: () -> Unit = {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS,
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            vm.startNav()
-        }
-    }
 
     // Voice search has TWO paths (see VoiceSearch): tier-1 records + transcribes on-device with Vela's
     // own Whisper model (needs RECORD_AUDIO, asked at point of use); tier-2 hands off to an installed
@@ -809,7 +835,10 @@ fun MapScreen(
                                 else -> false
                             }
                         }
-                        val pan = 0.22f // fraction of the view per press; holds auto-repeat
+                        // Fraction of the view per press; holds auto-repeat. Halved from 0.22 to 0.11
+                        // (issue #65 review: the coarse step over-shot; finer gives real control, and
+                        // auto-repeat still crosses the view quickly on a held key).
+                        val pan = 0.11f
                         when (ev.type) {
                             KeyEventType.KeyDown -> when (ev.key) {
                                 Key.DirectionUp -> { mapDpad.panBy(0f, -pan); true }

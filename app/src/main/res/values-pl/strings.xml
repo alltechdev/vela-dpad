@@ -515,4 +515,6 @@
     <string name="softkey_options">Opcje</string>
     <string name="softkey_search">Szukaj</string>
     <string name="softkey_recenter">Wyśrodkuj</string>
+    <string name="softkey_mute">Wycisz</string>
+    <string name="softkey_unmute">Włącz dźwięk</string>
 </resources>

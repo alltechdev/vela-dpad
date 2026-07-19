@@ -527,4 +527,6 @@
     <string name="softkey_options">选项</string>
     <string name="softkey_search">搜索</string>
     <string name="softkey_recenter">居中</string>
+    <string name="softkey_mute">静音</string>
+    <string name="softkey_unmute">取消静音</string>
 </resources>

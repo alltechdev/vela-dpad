@@ -510,4 +510,6 @@
     <string name="softkey_options">אפשרויות</string>
     <string name="softkey_search">חיפוש</string>
     <string name="softkey_recenter">מרכוז</string>
+    <string name="softkey_mute">השתקה</string>
+    <string name="softkey_unmute">ביטול השתקה</string>
 </resources>

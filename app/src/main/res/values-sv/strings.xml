@@ -507,4 +507,6 @@
     <string name="softkey_options">Alternativ</string>
     <string name="softkey_search">Sök</string>
     <string name="softkey_recenter">Centrera</string>
+    <string name="softkey_mute">Ljud av</string>
+    <string name="softkey_unmute">Ljud på</string>
 </resources>

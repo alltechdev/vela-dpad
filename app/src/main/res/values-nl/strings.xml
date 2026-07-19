@@ -507,4 +507,6 @@
     <string name="softkey_options">Opties</string>
     <string name="softkey_search">Zoeken</string>
     <string name="softkey_recenter">Centreren</string>
+    <string name="softkey_mute">Dempen</string>
+    <string name="softkey_unmute">Dempen opheffen</string>
 </resources>

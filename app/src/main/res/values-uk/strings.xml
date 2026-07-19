@@ -515,4 +515,6 @@
     <string name="softkey_options">Опції</string>
     <string name="softkey_search">Пошук</string>
     <string name="softkey_recenter">Центрувати</string>
+    <string name="softkey_mute">Без звуку</string>
+    <string name="softkey_unmute">Увімкнути звук</string>
 </resources>

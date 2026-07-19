@@ -507,4 +507,6 @@
     <string name="softkey_options">Opciones</string>
     <string name="softkey_search">Buscar</string>
     <string name="softkey_recenter">Centrar</string>
+    <string name="softkey_mute">Silenciar</string>
+    <string name="softkey_unmute">Activar sonido</string>
 </resources>
