@@ -1190,14 +1190,20 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                     LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                 } ?: Row(Modifier.padding(vertical = 4.dp)) {
-                    Button(onClick = { vm.downloadUpdate() }) { Text(stringResource(R.string.update_install)) }
+                    // D-pad (issue #65): these were plain Material buttons with no visible focus ring,
+                    // so a keypad user couldn't SEE the update button highlighted. dpadHighlight gives
+                    // them the fork's focus ring, like the map UpdateCard already has.
+                    Button(onClick = { vm.downloadUpdate() }, modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape)) { Text(stringResource(R.string.update_install)) }
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }) { Text(stringResource(R.string.update_later)) }
+                    TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }, modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape)) { Text(stringResource(R.string.update_later)) }
                 }
-            } ?: OutlinedButton(onClick = {
-                updateStatus = checkingText
-                vm.checkForUpdateNow { found -> updateStatus = if (found) null else noneText }
-            }) { Text(stringResource(R.string.settings_update_check_now)) }
+            } ?: OutlinedButton(
+                modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                onClick = {
+                    updateStatus = checkingText
+                    vm.checkForUpdateNow { found -> updateStatus = if (found) null else noneText }
+                },
+            ) { Text(stringResource(R.string.settings_update_check_now)) }
             updateStatus?.let { Hint(it) }
             // Breathing room under the last control so the button doesn't sit right on the
             // gesture bar at the end of the scroll.
