@@ -217,10 +217,12 @@ cover_one() {
   goto_map; key "$K_DOWN"
   key "$K_SOFT_LEFT" 1                              # bare map: LEFT -> Options menu
   if on_screen "Recenter"; then
-    mark "softkey-map-options" 1
-    key "$K_OK" 1; mark "softkey-zoom-mode" 1        # OK on Zoom (first item) -> D-pad zoom mode + hint
-    key "$K_BACK" 1
-  else mark "softkey-map-options" 0; mark "softkey-zoom-mode" 0; fi
+    mark "softkey-map-options" 1                     # bare-map menu: Move map (no Zoom yet) / Recenter / ...
+    key "$K_OK" 1; mark "softkey-move-map" 1         # Move map (first item) -> engage to pan + hint
+    key "$K_SOFT_LEFT" 1; key "$K_OK" 1              # now MOVING: Options -> Zoom is the first item
+    mark "softkey-zoom-mode" 1                       # -> D-pad zoom mode + hint
+    key "$K_BACK" 1; key "$K_BACK" 1                 # zoom -> move-map -> bare map
+  else mark "softkey-map-options" 0; mark "softkey-move-map" 0; mark "softkey-zoom-mode" 0; fi
   [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
   if [ "$haveResults" = 1 ]; then
     open_first_place; key "$K_SOFT_LEFT" 1           # place sheet: LEFT -> place Options menu

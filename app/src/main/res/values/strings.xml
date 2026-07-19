@@ -70,6 +70,7 @@
     <string name="softkey_options">Options</string>
     <string name="softkey_search">Search</string>
     <string name="softkey_move_map">Move map</string>
+    <string name="softkey_stop_zoom">Stop zoom</string>
     <string name="softkey_recenter">Recenter</string>
     <string name="softkey_mute">Mute</string>
     <string name="softkey_unmute">Unmute</string>

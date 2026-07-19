@@ -376,9 +376,14 @@ fun MapScreen(
             placement = app.vela.ui.VelaMenuPlacement.BottomStart,
             bottomBarPx = app.vela.ui.softkey.VelaSoftkeys.barHeightPx(context),
         ) {
-            // Move map -> engage the map so the D-pad pans it (hint below); Zoom -> the zoom sub-mode.
-            item(stringResource(R.string.softkey_move_map)) { mapOptionsOpen = false; moveMapArm = true }
-            item(stringResource(R.string.softkey_zoom_menu)) { mapOptionsOpen = false; mapZoomMode = true }
+            // One adaptive map-motion item (tester's model): from the bare map only "Move map"; once
+            // you're MOVING, only "Zoom" (Move map would be redundant); while ZOOMING, "Stop zoom"
+            // (drops back to moving). BACK exits each mode. So you never see a mode you're already in.
+            when {
+                mapZoomMode -> item(stringResource(R.string.softkey_stop_zoom)) { mapOptionsOpen = false; mapZoomMode = false }
+                mapEngaged -> item(stringResource(R.string.softkey_zoom_menu)) { mapOptionsOpen = false; mapZoomMode = true }
+                else -> item(stringResource(R.string.softkey_move_map)) { mapOptionsOpen = false; moveMapArm = true }
+            }
             item(stringResource(R.string.softkey_recenter)) { mapOptionsOpen = false; vm.recenter() }
             if (app.vela.ui.LayersButton.on.value) {
                 item(stringResource(R.string.map_layers)) { mapOptionsOpen = false; layersOpen = true }

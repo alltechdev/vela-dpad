@@ -510,4 +510,5 @@
     <string name="softkey_mute">Muet</string>
     <string name="softkey_unmute">Activer le son</string>
     <string name="softkey_move_map">Déplacer la carte</string>
+    <string name="softkey_stop_zoom">Arrêter le zoom</string>
 </resources>

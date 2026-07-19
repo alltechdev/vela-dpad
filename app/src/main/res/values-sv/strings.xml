@@ -510,4 +510,5 @@
     <string name="softkey_mute">Ljud av</string>
     <string name="softkey_unmute">Ljud på</string>
     <string name="softkey_move_map">Flytta karta</string>
+    <string name="softkey_stop_zoom">Sluta zooma</string>
 </resources>

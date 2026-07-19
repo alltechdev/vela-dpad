@@ -510,4 +510,5 @@
     <string name="softkey_mute">Muto</string>
     <string name="softkey_unmute">Riattiva audio</string>
     <string name="softkey_move_map">Sposta mappa</string>
+    <string name="softkey_stop_zoom">Ferma zoom</string>
 </resources>
