@@ -300,7 +300,8 @@ fun MapScreen(
     var layersOpen by remember { mutableStateOf(false) } // the top-right layers panel (also a map-Options item)
     LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
     LaunchedEffect(state.navigating) { if (!state.navigating) navOptionsOpen = false }
-    val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen && !state.showSteps
+    val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen &&
+        !state.showSteps && state.pickOnMap == null
     LaunchedEffect(browseMap) { if (!browseMap) { mapOptionsOpen = false; mapZoomMode = false } }
     // Entering zoom mode engages + focuses the map so the D-pad reaches its key handler (LEFT/RIGHT
     // then zoom); leaving it drops the engage.
@@ -329,6 +330,16 @@ fun MapScreen(
         val routePreview = state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty()
         val (skLeft, skRight) = when {
             searchOpen -> null to null
+            // Choose-on-map: LEFT cancels, RIGHT sets the point (matching the on-screen Cancel / Set
+            // start|stop; OK at the crosshair and BACK do the same, this just labels them on the bar).
+            state.pickOnMap != null -> app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.mapscreen_cancel), vm::cancelChooseOnMap) to
+                app.vela.ui.softkey.VelaSoftkeys.Key(
+                    stringResource(
+                        if (state.pickOnMap == app.vela.ui.map.MapPick.ORIGIN) R.string.mapscreen_choose_set_start
+                        else R.string.mapscreen_choose_set_stop,
+                    ),
+                    vm::confirmMapPick,
+                )
             // Turn-by-turn: LEFT opens the nav Options menu (Mute / Steps / Recenter / End) so a keypad
             // driver can actually control the drive; RIGHT enters zoom mode.
             state.navigating -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { navOptionsOpen = true } to
