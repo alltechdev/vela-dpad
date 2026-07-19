@@ -38,6 +38,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -84,6 +85,15 @@ class GoogleMapsDataSource @Inject constructor(
     private val diag: DiagLog,
     private val routeEngine: RouteEngine,
 ) : MapDataSource {
+
+    /** Caps how many ambient category requests parse AT ONCE. Each response builds a large
+     *  JsonElement tree (~tens of MB for a dense area); the multi-term fan-out fired them all in
+     *  parallel, so a fresh launch / fast far pan allocated a burst of transient parse trees at once,
+     *  filled the heap and stalled every allocation on a blocking GC. Bounding to 4 caps the peak
+     *  transient heap with the same final pool - the streaming onPartial paint keeps first dots fast.
+     *  Shared across calls so a pan mid-load can't double the burst. (Port of upstream
+     *  PimpinPumpkin/Vela 283fba17.) */
+    private val ambientFanout = kotlinx.coroutines.sync.Semaphore(4)
 
     override suspend fun search(query: String, near: LatLng?): SearchResult = io {
         session.ensure()
@@ -144,14 +154,16 @@ class GoogleMapsDataSource @Inject constructor(
             // their prominence low, so they surface in quiet/residential views without crowding businesses.
             "school", "park",
         )
-        suspend fun fetchTerm(term: String): List<Place> = runCatching {
-            val pb = SearchPb.build(term, center, cal.searchPb)
-                .replaceFirst(Regex("!1d[0-9.]+"), "!1d${spanMeters.toInt()}")
-                .replaceFirst(Regex("!4f[0-9.]+"), "!4f${String.format(java.util.Locale.US, "%.1f", zoom)}")
-                .replaceFirst(Regex("!7i\\d+"), "!7i60") // deep pool per term, so zooming in can go down the rank
-            val url = "${cal.searchEndpoint}&q=${term.enc()}&pb=${pb.enc()}".localized()
-            SearchParser.parse(term, GoogleResponse.parse(get(url)), center, cal.paths).places
-        }.getOrDefault(emptyList())
+        suspend fun fetchTerm(term: String): List<Place> = ambientFanout.withPermit {
+            runCatching {
+                val pb = SearchPb.build(term, center, cal.searchPb)
+                    .replaceFirst(Regex("!1d[0-9.]+"), "!1d${spanMeters.toInt()}")
+                    .replaceFirst(Regex("!4f[0-9.]+"), "!4f${String.format(java.util.Locale.US, "%.1f", zoom)}")
+                    .replaceFirst(Regex("!7i\\d+"), "!7i60") // deep pool per term, so zooming in can go down the rank
+                val url = "${cal.searchEndpoint}&q=${term.enc()}&pb=${pb.enc()}".localized()
+                SearchParser.parse(term, GoogleResponse.parse(get(url)), center, cal.paths).places
+            }.getOrDefault(emptyList())
+        }
         var all = coroutineScope {
             terms.map { term -> async { fetchTerm(term) } }.awaitAll().flatten()
         }

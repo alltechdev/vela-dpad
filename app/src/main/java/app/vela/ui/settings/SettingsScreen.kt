@@ -1039,6 +1039,24 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 }) { Text(stringResource(R.string.settings_diag_export)) }
             }
 
+            // Compatibility (TextureView) rendering - a hardware escape hatch (port of upstream
+            // PimpinPumpkin/Vela 261156e2 + df2b8570). Writes the "texture_render" pref that
+            // VelaMapView reads when it creates the map; needs an app restart to apply. Also flips
+            // itself on via the two-crash sentinel when a GPU driver kills the map at init.
+            var textureRender by remember { mutableStateOf(prefs.getBoolean("texture_render", app.vela.ui.map.fragileGpuDefault())) }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.settings_texture_render), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = textureRender,
+                    onCheckedChange = { on -> textureRender = on; prefs.edit().putBoolean("texture_render", on).apply() },
+                )
+            }
+            Hint(stringResource(R.string.settings_texture_render_hint))
+
             // Trip recording - more invasive than diagnostics (it's your exact routes),
             // so it's a separate opt-in. Records nav GPS traces for replay testing.
             LaunchedEffect(Unit) { vm.refreshTripRecording() }

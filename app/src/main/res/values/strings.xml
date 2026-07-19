@@ -130,6 +130,9 @@
     <string name="settings_privacy_button">What data Google receives</string>
     <string name="settings_diagnostics">Diagnostics</string>
     <string name="settings_diagnostics_hint">Off by default. When on, Vela keeps a short local log of what it did (your searches, routes, and any “needs recalibration” hiccups) so if something misbehaves you can export it and hand it to a developer. It stays on this phone and is never uploaded; you pick where the export goes. Turning it off wipes the log.</string>
+    <!-- Compatibility (TextureView) rendering toggle - niche developer/hardware escape hatch, English-only for now like the other technical strings. -->
+    <string name="settings_texture_render" translatable="false">Compatibility rendering</string>
+    <string name="settings_texture_render_hint" translatable="false">Draws the map through a compatibility path that avoids some devices\' graphics-driver bugs. Turns itself on if the map crashed the app at startup. Slightly slower; needs an app restart to apply.</string>
     <string name="settings_share_diagnostics">Share diagnostics</string>
     <string name="settings_diag_nothing">Nothing recorded yet. Use the app, then export.</string>
     <string name="settings_diag_export">Export debug session</string>

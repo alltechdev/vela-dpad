@@ -381,11 +381,36 @@ fun VelaMapView(
     // surface child) non-focusable, unconditionally: touch gestures don't need view focus,
     // so nothing is lost, and key events now flow to the Compose focus system.
     val mapView = remember {
-        MapView(context).apply {
+        // GPU-driver crash fallback (port of upstream PimpinPumpkin/Vela 261156e2 + df2b8570,
+        // issue #95): some budget GL drivers kill the process the instant the map's GL surface
+        // initializes - before the user can reach any setting. Sentinel: mark "initializing" here,
+        // clear it on the first finished render (below). Two consecutive launches dying mid-init flip
+        // the map to TEXTUREVIEW rendering - a different EGL path that dodges most of these driver
+        // bugs at a small perf cost - and the flag sticks until the Developer toggle clears it. A
+        // healthy device clears the sentinel every launch and never accumulates a count.
+        val prefs = context.getSharedPreferences("vela_settings", android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean("map_init_inflight", false)) {
+            val n = prefs.getInt("map_init_crashes", 0) + 1
+            if (n >= 2) prefs.edit().putBoolean("texture_render", true).putInt("map_init_crashes", 0).apply()
+            else prefs.edit().putInt("map_init_crashes", n).apply()
+        }
+        prefs.edit().putBoolean("map_init_inflight", true).apply()
+        val opts = org.maplibre.android.maps.MapLibreMapOptions.createFromAttributes(context)
+            .textureMode(prefs.getBoolean("texture_render", fragileGpuDefault()))
+        MapView(context, opts).apply {
             onCreate(null)
             isFocusable = false
             isFocusableInTouchMode = false
             descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            // First finished render = the GL surface survived init: clear the crash sentinel and decay
+            // the counter (texture_render itself is untouched, so an engaged fallback keeps carrying
+            // the device on future launches). Our fork has no other didBecomeIdle listener, so this is
+            // the whole hook (upstream folds it into their overlay-gate listener, which we don't have).
+            addOnDidBecomeIdleListener {
+                if (prefs.getBoolean("map_init_inflight", false)) {
+                    prefs.edit().putBoolean("map_init_inflight", false).putInt("map_init_crashes", 0).apply()
+                }
+            }
         }
     }
 
@@ -2388,6 +2413,22 @@ private fun applySatelliteLabels(style: Style) {
  * (see styleKey), so each pass starts from Liberty's defaults - no need to undo.
  * No-ops on non-OpenMapTiles styles (e.g. the MapLibre demo basemap). Keyless.
  */
+/** Known-fragile GPU stacks start in compatibility (TextureView) rendering from the FIRST launch -
+ *  no crashes needed to learn. Unisoc-built devices identify in `Build.HARDWARE` ("ums*" for the
+ *  ums512/T618 class, "sp98*" for older Spreadtrum) and pair budget Mali GPUs with drivers documented
+ *  to crash GL apps ON ANDROID 14. Android-14-scoped on purpose: the same silicon on older Android
+ *  renders fine through SurfaceView, and defaulting those into TextureView would be a pointless perf
+ *  downgrade on exactly the weakest GPUs; pre-14 fragile devices are caught by the two-crash sentinel
+ *  in VelaMapView instead. Only sets the DEFAULT - the "texture_render" Developer toggle beats it
+ *  either way. (Port of upstream PimpinPumpkin/Vela 261156e2 + df2b8570.) */
+internal fun fragileGpuDefault(): Boolean =
+    android.os.Build.VERSION.SDK_INT >= 34 &&
+        (
+            android.os.Build.HARDWARE.startsWith("ums") ||
+                android.os.Build.HARDWARE.startsWith("sp98") ||
+                android.os.Build.SOC_MANUFACTURER.contains("unisoc", ignoreCase = true)
+            )
+
 private fun applyMapTheme(style: Style, dark: Boolean) {
     if (style.getSource("openmaptiles") == null) return
     if (dark) applyDark(style) else applyLight(style)
