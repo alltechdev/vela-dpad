@@ -28,9 +28,11 @@ per-vendor problem the parked softkey-vendor-guides notes were about.
   NOWHERE; the D-pad arrows, OK and BACK stay Vela's. Yapchik's `ReservedKeys` refuses to ever bind
   those, and `UNIVERSAL` deliberately excludes BACK.
 
-## What shipped (the prototype)
+## What shipped
 
-Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
+Contextual hardware soft keys for keypad phones, gated to keypad devices, touch byte-identical. Built
+on the vendored `:yapchik` engine; ALL the UX below is Vela's own, built beside the engine (yapchik
+stays source-identical for re-sync).
 
 - `app/ui/softkey/VelaSoftkeys.kt` (the whole integration):
   - `init()` (called from `VelaApp.onCreate`): `Yapchik.install`, then `Yapchik.autoDetector =
@@ -39,22 +41,36 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
     the bar NEVER appears on a touch phone. Mode stays `AUTO`; AUTO resolves through that detector.
   - `autoInsetContent = true` - the bar reserves its height by padding the content view rather than
     overlaying the map's bottom chrome (locate FAB / scale bar). Only affects keypad devices.
-  - A global single-ink dark `style` that reads in both app themes.
-  - `MapZoomSoftkeys(mapDpad)` (composable, called once in `MapScreen`): while the map is composed,
-    binds `left("Zoom -") { mapDpad.zoomBy(-1.0) }` / `right("Zoom +") { mapDpad.zoomBy(1.0) }`,
-    cleared on leave. `MapDpadController.zoomBy` eases the camera with no dependence on focus/engage,
-    so the soft keys zoom with zero focus-walk - the issue #65 ask.
+  - A single-ink `style` that FOLLOWS the app theme (dark bar in dark, light in light). Yapchik
+    colours the bar at construction, so `MapSoftkeys` REBUILDS it on a theme flip (`clear()` then
+    `set()` in one effect body is atomic - no flicker); the bind effect re-keys on `isAppInDarkTheme()`.
+  - `Key(label, onPress)` + `MapSoftkeys(left, right)` (composable, called once in `MapScreen`): the
+    seam the map binds through. `MapScreen` computes the two `Key`s from state; a null slot is unbound,
+    both null shows no bar; cleared on leave. Re-keys on the labels, the theme, and modal depth (below).
+  - `SuppressBarWhile(bool)`: force the bar OFF for a whole SCREEN drawn over the still-composed map
+    (Settings), via the engine's per-screen mode override (still yields to the user's global OFF).
+  - `SuppressBarForModal()` + a reactive `modalDepth` counter: a `VelaDialog` bumps the count while
+    open; `MapSoftkeys` watches it and CLEARS the bar while any modal is up (its keys go to the dialog
+    window). A `VelaMenu` (the Options popups) is NOT a `VelaDialog`, so it keeps the bar.
 - **Only the map binds keys**, and the engine shows a bar only when a screen has bindings
   (`currentBindings.isNotEmpty()`), so every other screen stays bar-free with no per-screen config.
-- **Contextual per surface.** The map picks its two keys from state (`MapScreen` computes them,
-  `VelaSoftkeys.MapSoftkeys(left, right)` binds them; null slot = unbound, both null = no bar): a
-  place sheet shows `Close` / `Directions` (zoom matters less on a pin - `Directions` fires
-  `routeToSelected`, `Close` fires `clearSelection`), the search overlay shows NO bar (the map isn't
-  visible), and browse / directions / nav show `Zoom -` / `Zoom +`. Settings draws OVER the still-
-  composed map, so `VelaRoot` forces the bar off while it's up (`VelaSoftkeys.SuppressBarWhile`, the
-  engine's per-screen mode override, which still yields to the user's global OFF). Device-verified:
-  bare map = Zoom, search = no bar, pin = Close/Directions (Directions routed), Settings = no bar.
-  Labels are inline English for now (localizing them is a follow-up).
+- **Contextual per surface.** `MapScreen` picks the two keys from state (the `when` at the top of the
+  composable):
+
+  | Surface | LEFT | RIGHT |
+  |---|---|---|
+  | Bare map | Options (Zoom · Recenter · Layers · Settings) | Search |
+  | Place sheet | Options (all secondary actions) | Directions |
+  | Choose-on-map | Cancel | Set start / stop |
+  | Route preview | Steps | Start |
+  | Turn list | — | Start |
+  | Turn-by-turn nav | Options (Mute/Unmute · Steps · Recenter · End) | Zoom mode |
+  | Search overlay | — (no bar) | — |
+
+  Settings draws OVER the still-composed map, so `VelaRoot` forces the bar off while it's up
+  (`SuppressBarWhile`). Labels are LOCALIZED into all 14 locales (the new words - Options / Search /
+  Recenter / Mute / Unmute; the rest reuse existing strings; the symbol-heavy zoom-mode label stays
+  English). Device-verified on a physical M5 across every row.
 - **On/off + calibration setting (Settings -> Navigation, keypad devices only).** A `Hardware
   softkeys` switch (shown only when `rememberDpadMode()`) backs `Yapchik.mode`: ON = AUTO (bar on
   keypad phones, hidden on touch), OFF = disabled everywhere. A `Calibrate soft keys` row runs
@@ -72,9 +88,9 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
   Settings. **Zoom** enters a mode where the D-pad LEFT/RIGHT zoom out/in (the map is engaged +
   focused so the keys reach `MapDpadController`, and the one BackHandler peels the mode first), with
   a top-of-screen hint; BACK exits. **Search** opens the search field focused via a new
-  `armFieldSignal` on `SearchBar` (bumping it arms the field, exactly like an OK on the bar). During
-  nav / a route the keys stay Zoom -/+ (no menu/search mid-drive); a place sheet keeps
-  Options/Directions; the search overlay shows no bar.
+  `armFieldSignal` on `SearchBar` (bumping it arms the field, exactly like an OK on the bar). (Other
+  surfaces per the table above: route preview = Steps/Start, turn-by-turn = Options/Zoom, place sheet
+  = Options/Directions, search overlay = no bar.)
 - **The LEFT soft key is an Options menu; the place sheet loses ALL its on-screen buttons.** Feature-
   phone convention: on a place sheet the RIGHT key is the one primary action (Directions), the LEFT
   key opens an **Options** menu (the auto-focusing D-pad `VelaMenu`) holding every secondary action -
@@ -99,24 +115,29 @@ Map-only zoom softkeys, gated to keypad devices, touch byte-identical.
   hardware zoom keys). When a softkeys on/off setting lands, gate this on the resolved softkey state
   instead of the raw detector.
 
-Shared-file edits are minimal and anchored: one `VelaSoftkeys.init` line in `VelaApp`, one
-`MapZoomSoftkeys()` call in `MapScreen`, and one public `isDpadFirstDevice(context)` accessor added
-to `DpadFocus.kt` (non-composable view of the existing private `detectDpadFirst`).
+Shared-file edits are minimal and anchored: one `VelaSoftkeys.init` line in `VelaApp`; the
+`MapSoftkeys()` call + the contextual `when` + the Options-menu `VelaMenu`s in `MapScreen`; one
+`SuppressBarForModal()` call in `VelaDialog`; an `armFieldSignal` param on `SearchBar`; and one public
+`isDpadFirstDevice(context)` accessor in `DpadFocus.kt` (non-composable view of the private
+`detectDpadFirst`). Companion #65 tuning: the D-pad map pan step in `MapScreen` (`0.22 -> 0.11`).
 
-## Testing done (prototype)
+## Testing done
 
 - CI gates: `:core:test`, `:app:assembleStandardRelease` + `:app:assembleRestrictedRelease`, D-pad
   `audit_static.sh` 0 violations.
+- The `softkey` phase in `full_coverage.sh` captures the Options menus + zoom mode; reference frames
+  committed for both geometries x both flavors (the restricted place menu drops Street View/Website).
 - On device, forced via `adb shell settings put global vela_force_dpad 1`:
-  - Touch (gate NOT met): no bar - confirmed.
-  - D-pad gate met: the `Zoom -` / `Zoom +` bar appears; `adb shell input keyevent 1` (SOFT_LEFT)
-    zooms out, `keyevent 2` (SOFT_RIGHT) zooms in (scale bar 200 ft <-> 10 mi).
-  - Verified at 240x320 and 480x854, standard AND restricted flavor.
+  - Touch (gate NOT met): no bar - confirmed (physical M5, real detection off).
+  - D-pad gate met: end-to-end on a physical keypad+touch phone (M5, 480x640) - every contextual
+    surface, the nav Options menu with Mute toggling to Unmute live, Start begins the drive,
+    Choose-on-map sets the point, and a `VelaDialog` hides the bar while up.
+  - Full coverage matrix at 240x320 and 480x854, standard AND restricted (10/10, no touch regression).
 
-## Rollout plan (beyond the prototype)
+## Rollout status
 
-Ordered by value / risk. Each phase keeps the hard rules: touch byte-identical, gated on the D-pad
-detector, new behaviour in new files, both geometries x both flavors + eyeball before merge.
+Most of this is DONE (marked below); what remains is hardware-blocked or optional. Each item kept the
+hard rules: touch byte-identical, gated on the D-pad detector, both geometries x both flavors + eyeball.
 
 1. **Contextual surfaces. DONE.** Every map context is wired:
    - **Bare map** -> Options / Search (Options = Zoom / Recenter / Layers / Settings; Zoom = a D-pad

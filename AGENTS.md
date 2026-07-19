@@ -553,14 +553,20 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   module so it stays cleanly REPLACEABLE - re-sync from upstream by recopying, don't hand-edit its
   files. It is NOT under detekt (Vela's dead-code gate would false-positive its public API). Vela's
   integration lives in `app/ui/softkey/VelaSoftkeys.kt` (install + gate + the `Key`/`MapSoftkeys`
-  seam); `MapScreen` picks the two keys CONTEXTUALLY (bare map = Options / Search, place sheet =
-  Options / Directions, nav/route = Zoom -/+, search overlay = none) and the feature-phone Options
-  menu is a `VelaMenu(placement = BottomStart)` (bordered, flush on the bar). The whole design +
-  rollout plan is `docs/softkeys.md`. **Softkeys gate on `isDpadFirstDevice` (same detector as the
-  Compose D-pad affordances) so they NEVER show on touch** - keep any new softkey binding on that
-  gate, and new bindings go through `Softkeys.of(activity)` / `VelaSoftkeys`, not a fork of the
-  engine. When a soft key covers an action, DROP the redundant on-screen button on keypad (gated on
-  `VelaSoftkeys.isActive()`), the way the map's +/- and the place sheet's whole button row are.
+  seam); `MapScreen` picks the two keys CONTEXTUALLY from a `when` (bare map = Options / Search, place
+  sheet = Options / Directions, choose-on-map = Cancel / Set, route preview = Steps / Start,
+  turn-by-turn = Options / Zoom-mode, search overlay = none). Each Options popup is a feature-phone
+  `VelaMenu(placement = BottomStart)` (bordered, flush on the bar). The whole design is
+  `docs/softkeys.md`. Key mechanisms to reuse, not reinvent: **`SuppressBarWhile`** forces the bar off
+  for a whole screen (Settings over the map); **`SuppressBarForModal`** (a reactive `modalDepth` any
+  `VelaDialog` bumps) hides it while a modal is up - a `VelaMenu` is NOT a modal, so it keeps the bar;
+  theme-following is a REBUILD (yapchik colours at construction, so `MapSoftkeys` clear()+set()s on a
+  theme flip); labels are localized (all 14 locales). The `softkey` phase in `full_coverage.sh` (+
+  `K_SOFT_LEFT`/`K_SOFT_RIGHT` in `tests/dpad/lib.sh`) captures the menus. **Softkeys gate on
+  `isDpadFirstDevice` (same detector as the Compose D-pad affordances) so they NEVER show on touch** -
+  keep any new binding on that gate, through `Softkeys.of(activity)` / `VelaSoftkeys`, not a fork of
+  the engine. When a soft key covers an action, DROP the redundant on-screen button on keypad (gated
+  on `VelaSoftkeys.isActive()`), the way the map's +/- and the place sheet's whole button row are.
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.
