@@ -4,14 +4,16 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.view.InputDevice
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusDirection
@@ -319,6 +321,10 @@ fun Modifier.dpadFieldEscape(): Modifier = composed {
     }
 }
 
+/** The D-pad focus-ring colour - a distinct orange that never blends with Vela's teal-filled controls
+ * (a teal ring on the teal ON-switch read as "green on green"). Overridable per call via ringColor. */
+private val DpadFocusRing = androidx.compose.ui.graphics.Color(0xFFFF6D00)
+
 /**
  * A clearly visible focus ring for D-pad traversal, drawn only while the element (or a
  * descendant - Material buttons host their own focus target) holds focus AND the UI is
@@ -342,11 +348,45 @@ fun Modifier.dpadHighlight(
         .onFocusEvent { focused = it.hasFocus }
         .then(
             if (show) {
-                Modifier.border(2.dp, ringColor ?: MaterialTheme.colorScheme.primary, shape)
+                // A distinct ORANGE ring, not the teal primary: teal blended into Vela's teal-filled
+                // controls - a teal ring on the ON (teal) switch was invisible, "green on green" (tester
+                // 2026-07-19). Orange contrasts on teal, grey, and both light/dark; 3dp reads clearly at
+                // arm's length and stays unmistakable after looking away.
+                Modifier.border(3.dp, ringColor ?: DpadFocusRing, shape)
             } else {
                 Modifier
             },
         )
+}
+
+/**
+ * A Material [androidx.compose.material3.Switch] that carries the D-pad focus ring (teal) instead
+ * of only the faint default grey focus state - the Settings toggles were "always hard to tell when
+ * they are highlighted" (tester feedback 2026-07-19). Drop-in replacement for `Switch`; the ring
+ * hugs the switch pill via CircleShape.
+ */
+@androidx.compose.runtime.Composable
+fun VelaSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    // Ring the switch's 32dp TRACK, not its 48dp min-touch-target box, so the orange ring hugs the
+    // pill exactly rather than floating as a taller oval (clean-wrap rule, tester 2026-07-19). The
+    // Switch keeps its full 48dp touch target - it overflows the shorter, non-clipping ring box.
+    Box(
+        modifier
+            .requiredHeight(32.dp)
+            .dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
+    }
 }
 
 /**

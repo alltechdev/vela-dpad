@@ -25,7 +25,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -151,7 +150,7 @@ fun VelaMenuScope.toggleItem(text: String, checked: Boolean, onToggle: (Boolean)
         ) {
             Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(16.dp))
-            Switch(checked = checked, onCheckedChange = onToggle)
+            VelaSwitch(checked = checked, onCheckedChange = onToggle)
         }
         return
     }
@@ -186,7 +185,7 @@ fun VelaMenuScope.toggleItem(text: String, checked: Boolean, onToggle: (Boolean)
     ) {
         Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(16.dp))
-        Switch(checked = checked, onCheckedChange = onToggle)
+        VelaSwitch(checked = checked, onCheckedChange = onToggle)
     }
 }
 

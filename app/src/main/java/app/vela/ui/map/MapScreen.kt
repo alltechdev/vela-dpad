@@ -360,6 +360,15 @@ fun MapScreen(
             // no more walking focus to the on-screen Start button.
             routePreview -> app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.nav_steps), vm::openSteps) to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_start), onStartNav)
+            // An update is offered on the browse map: LEFT dismisses ("Later"), RIGHT installs - the
+            // same soft-key pattern every other surface uses, so Install is reliably reachable and
+            // labelled instead of stranding D-pad focus on the on-screen "Later" button (the two
+            // buttons sit in a Row and LEFT/RIGHT are soft-keys, not focus traversal - issue #74 "can
+            // only get to ignore"; #76 item B "no install/cancel labels, right key installs"). The
+            // on-screen buttons stay for touch; skipped while the download progress bar is showing.
+            state.updateInfo != null && state.updateDownloadPct == null ->
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.update_later)) { vm.dismissUpdate() } to
+                    app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.update_install)) { vm.downloadUpdate() }
             // The FIRST screen (bare browse map): an Options menu (Zoom / Recenter / Settings) on the
             // LEFT, quick Search on the RIGHT.
             else -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { mapOptionsOpen = true } to

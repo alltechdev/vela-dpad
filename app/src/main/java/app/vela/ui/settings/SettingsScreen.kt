@@ -39,7 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Switch
+import app.vela.ui.VelaSwitch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -255,7 +255,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_live_traffic), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.Traffic.on.value,
                     onCheckedChange = { app.vela.ui.Traffic.set(context, it) },
                 )
@@ -267,7 +267,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_transit_layer), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.TransitLayer.on.value,
                     onCheckedChange = { app.vela.ui.TransitLayer.set(context, it) },
                 )
@@ -279,7 +279,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_topography), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.Topography.on.value,
                     onCheckedChange = { app.vela.ui.Topography.set(context, it) },
                 )
@@ -291,7 +291,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_layers_button), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.LayersButton.on.value,
                     onCheckedChange = { app.vela.ui.LayersButton.set(context, it) },
                 )
@@ -303,7 +303,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_flock), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.Flock.on.value,
                     onCheckedChange = { app.vela.ui.Flock.set(context, it) },
                 )
@@ -315,7 +315,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_flock_route_alert), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.FlockRouteAlert.on.value,
                     onCheckedChange = { app.vela.ui.FlockRouteAlert.set(context, it) },
                 )
@@ -327,7 +327,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_buildings_3d), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.Buildings3d.on.value,
                     onCheckedChange = { app.vela.ui.Buildings3d.set(context, it) },
                 )
@@ -344,7 +344,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_show_reviews), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.ShowReviews.on.value,
                     onCheckedChange = { app.vela.ui.ShowReviews.set(context, it) },
                 )
@@ -356,7 +356,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_read_all_reviews), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.LiveReviews.on.value,
                     onCheckedChange = { app.vela.ui.LiveReviews.set(context, it) },
                 )
@@ -368,7 +368,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_load_photos), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.LoadPhotos.on.value,
                     onCheckedChange = { app.vela.ui.LoadPhotos.set(context, it) },
                 )
@@ -380,7 +380,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_hide_adult), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.HideAdult.on.value,
                     onCheckedChange = { app.vela.ui.HideAdult.set(context, it) },
                 )
@@ -392,7 +392,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_hide_external_links), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.HideExternalLinks.on.value,
                     onCheckedChange = { app.vela.ui.HideExternalLinks.set(context, it) },
                 )
@@ -414,7 +414,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(stringResource(R.string.settings_softkeys), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                    Switch(
+                    VelaSwitch(
                         checked = softkeysOn,
                         onCheckedChange = {
                             softkeysOn = it
@@ -444,7 +444,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_keep_screen_on), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = keepAwake,
                     onCheckedChange = {
                         keepAwake = it
@@ -460,7 +460,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_traffic_lights), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = trafficLights,
                     onCheckedChange = {
                         trafficLights = it
@@ -525,7 +525,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_demo_drive), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = demoDrive,
                     onCheckedChange = {
                         demoDrive = it
@@ -542,7 +542,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_sim_location), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.SimLocation.on,
                     onCheckedChange = { on -> if (on) vm.simulateLocationHere() else vm.stopSimulateLocation() },
                 )
@@ -708,7 +708,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_voice_search_toggle), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = app.vela.ui.VoiceSearch.enabled.value,
                     onCheckedChange = { app.vela.ui.VoiceSearch.set(context, it) },
                 )
@@ -1056,7 +1056,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_share_diagnostics), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = state.diagnosticsEnabled,
                     onCheckedChange = { on -> if (on) showDiagConsent = true else vm.setDiagnostics(false) },
                 )
@@ -1084,7 +1084,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_texture_render), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = textureRender,
                     onCheckedChange = { on -> textureRender = on; prefs.edit().putBoolean("texture_render", on).apply() },
                 )
@@ -1105,7 +1105,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_save_trips), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = state.tripRecordingEnabled,
                     onCheckedChange = { on -> if (on) showTripConsent = true else vm.setTripRecording(false) },
                 )
@@ -1214,7 +1214,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.settings_update_auto), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(
+                VelaSwitch(
                     checked = selfUpdate,
                     onCheckedChange = { selfUpdate = it; prefs.edit().putBoolean("self_update_check", it).apply() },
                 )
@@ -1244,13 +1244,15 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 } ?: Row(Modifier.padding(vertical = 4.dp)) {
                     // D-pad (issue #65): these were plain Material buttons with no visible focus ring,
                     // so a keypad user couldn't SEE the update button highlighted. dpadHighlight gives
-                    // them the fork's focus ring, like the map UpdateCard already has.
-                    Button(onClick = { vm.downloadUpdate() }, modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape)) { Text(stringResource(R.string.update_install)) }
+                    // them the fork's focus ring, like the map UpdateCard already has. The ring shape
+                    // MUST match each button's OWN shape - CircleShape drew a circle over a pill (tester
+                    // report), so pass the matching ButtonDefaults shape per button type.
+                    Button(onClick = { vm.downloadUpdate() }, modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.shape)) { Text(stringResource(R.string.update_install)) }
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }, modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape)) { Text(stringResource(R.string.update_later)) }
+                    TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }, modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.textShape)) { Text(stringResource(R.string.update_later)) }
                 }
             } ?: OutlinedButton(
-                modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.outlinedShape),
                 onClick = {
                     updateStatus = checkingText
                     vm.checkForUpdateNow { found -> updateStatus = if (found) null else noneText }
