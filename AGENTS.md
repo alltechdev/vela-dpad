@@ -571,7 +571,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   `isDpadFirstDevice` (same detector as the Compose D-pad affordances) so they NEVER show on touch** -
   keep any new binding on that gate, through `Softkeys.of(activity)` / `VelaSoftkeys`, not a fork of
   the engine. When a soft key covers an action, DROP the redundant on-screen button on keypad (gated
-  on `VelaSoftkeys.isActive()`), the way the map's +/- and the place sheet's whole button row are.
+  on `VelaSoftkeys.isActive()`), the way the map's +/-, the place sheet's whole button row, and - tester
+  #76 - the bare-map **search bar** (the RIGHT soft key opens it), the **Layers** button and the **Park**
+  FAB are; Layers + Park move into the Options menu (now Move-map/Zoom / Recenter / Layers / Park /
+  Settings), Park's hub + history hoisted out of the hidden FAB, and with the search bar gone the
+  category chips ride up into its freed slot. The bare-map update card's actions ride the bar too
+  (Not now / Update). **Harness:** `full_coverage.sh` + `nav.sh` branch on `softkeys_shown()` (the
+  `vela_force_dpad` gate) - search/settings/voice/park enter via the soft keys under D-pad and via the
+  on-screen bar/gear/FAB otherwise (`open_search`, `park_action`, conditional `run_coffee`/
+  `open_settings`) - so a non-forced (touch) run is never broken.
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.

@@ -27,6 +27,13 @@ key() { $ADB shell input keyevent "$1" >/dev/null 2>&1; sleep "${2:-0.4}"; }
 # keys <code>...  - press several keys in sequence (default settle each).
 keys() { for c in "$@"; do key "$c"; done; }
 
+# softkeys_shown - is the hardware soft-key bar up (keypad mode)? True when D-pad mode is forced,
+# which the whole device suite does (setup.sh / full_coverage) - and that is EXACTLY when the search
+# bar + its gear/mic are decluttered off the bare map (#76), search moves to the RIGHT soft key and
+# Settings/Park to the bare-map Options menu (LEFT). Nav helpers branch on this so the soft-key paths
+# are used under D-pad WITHOUT breaking the on-screen search-bar paths a non-forced (touch) run needs.
+softkeys_shown() { [ "$($ADB shell settings get global vela_force_dpad 2>/dev/null | tr -d '\r\n ')" = "1" ]; }
+
 # launch_fresh [settle_seconds]  - force-stop + cold launch.
 launch_fresh() {
   # VERIFY the app actually reaches the foreground and RETRY if not. A BACK press during a traversal

@@ -260,6 +260,11 @@ fun MapScreen(
     // on-screen zoom buttons. mapDpad is the key→camera seam into VelaMapView.
     val dpadMode = rememberDpadMode()
     val dpadFirst = rememberDpadFirstDevice()
+    // Soft-key bar ACTUALLY shown (a real keypad phone). dpadMode is ALSO true on a HYBRID touch+D-pad
+    // phone where Yapchik's AUTO detector keeps the bar hidden - decluttering the search bar / FABs /
+    // update-card buttons must gate on THIS, not dpadMode, or a hybrid user loses those controls with
+    // no soft-key bar to reach them (F/#76, user report). Reactive, so a Settings softkey toggle updates live.
+    val softkeyBarShown = app.vela.ui.softkey.VelaSoftkeys.isActive()
     val mapDpad = remember { MapDpadController() }
     var mapFocused by remember { mutableStateOf(false) }
     var mapEngaged by remember { mutableStateOf(false) } // arrows pan only while engaged (docs/dpad.md)
@@ -372,9 +377,33 @@ fun MapScreen(
             // The FIRST screen (bare browse map): an Options menu (Zoom / Recenter / Settings) on the
             // LEFT, quick Search on the RIGHT.
             else -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { mapOptionsOpen = true } to
-                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.softkey_search)) { searchArmSignal++ }
+                // RIGHT opens search. Under D-pad the collapsed search bar is hidden (decluttered,
+                // F/#76), so also expand it here - setting searchExpanded renders the overlay (with
+                // the mic) and the arm signal focuses the field.
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.softkey_search)) { searchExpanded = true; searchArmSignal++ }
         }
         app.vela.ui.softkey.VelaSoftkeys.MapSoftkeys(skLeft, skRight)
+    }
+    // Parking state, hoisted above the bare-map Options menu so a keypad user can reach Park there
+    // too - the on-screen Park FAB is decluttered away under soft-keys (F/#76). NO spot -> save here;
+    // spot set -> open the hub (Find my car / Move / Earlier / Clear). The FAB below (touch/hybrid
+    // only) and the hoisted hub + history sheet are all wired to this same state.
+    val parkingSavedMsg = stringResource(R.string.map_parking_saved)
+    val parkingNoFixMsg = stringResource(R.string.map_parking_no_fix)
+    val parkingMovedMsg = stringResource(R.string.map_parking_moved)
+    val parkingClearedMsg = stringResource(R.string.map_parking_cleared)
+    val parkedCarLabel = stringResource(R.string.map_parked_car)
+    val parkingSaveLabel = stringResource(R.string.map_parking_save)
+    val parkingSet = state.parkingSpot != null
+    var showParkingHistory by remember { mutableStateOf(false) }
+    var showParkingMenu by remember { mutableStateOf(false) }
+    val parkingTapAction = {
+        if (parkingSet) {
+            showParkingMenu = true
+        } else {
+            val msg = if (vm.saveParkingSpot()) parkingSavedMsg else parkingNoFixMsg
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
     }
     // The bare-map LEFT "Options" menu (keypad only; VelaMenu is a no-op popup under touch). Grows
     // from the bottom-left on top of the soft-key bar, feature-phone style.
@@ -396,6 +425,12 @@ fun MapScreen(
             item(stringResource(R.string.softkey_recenter)) { mapOptionsOpen = false; vm.recenter() }
             if (app.vela.ui.LayersButton.on.value) {
                 item(stringResource(R.string.map_layers)) { mapOptionsOpen = false; layersOpen = true }
+            }
+            // Park, replacing the decluttered-away FAB (F/#76): no spot -> "Save parking spot"; spot
+            // set -> "Parked car", which opens the hub (Find my car / Move / Earlier / Clear).
+            item(if (parkingSet) parkedCarLabel else parkingSaveLabel, Icons.Default.LocalParking) {
+                mapOptionsOpen = false
+                parkingTapAction()
             }
             item(stringResource(R.string.settings_title)) { mapOptionsOpen = false; onOpenSettings() }
         }
@@ -1030,7 +1065,12 @@ fun MapScreen(
                         },
                     ),
             ) {
-                Column(Modifier.statusBarsPadding().padding(12.dp)) {
+                // With the search bar decluttered under soft-keys (F/#76) nothing sits above the
+                // category chips, so pull the whole top overlay up flush to the status bar - reclaim
+                // the bar's old slot instead of leaving its ~20dp gap above the chips. Touch/hybrid
+                // (bar still shown) and the search page (fills the screen) keep the normal 12dp.
+                val topOverlayPad = if (softkeyBarShown && !searchOpen && !state.directionsOpen) 4.dp else 12.dp
+                Column(Modifier.statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = topOverlayPad, bottom = 12.dp)) {
                     // Directions mode: the search bar swaps for the Google-style endpoints card
                     // (origin / stops / destination, swap, back) - the rows that used to sit in
                     // the bottom chooser. Hidden while the search overlay is up (picking an
@@ -1056,9 +1096,9 @@ fun MapScreen(
                             onClose = vm::clearRoute,
                         )
                     }
-                    // The search bar hides while the endpoints card above replaces it in
-                    // directions mode.
-                    if (!(state.directionsOpen && !searchOpen)) {
+                    // The search bar hides while the endpoints card replaces it in directions mode,
+                    // AND under D-pad on the bare map (decluttered - the RIGHT soft key opens it; F/#76).
+                    if (!(state.directionsOpen && !searchOpen) && (!softkeyBarShown || searchOpen)) {
                     SearchBar(
                         query = state.query,
                         searching = state.searching,
@@ -1588,7 +1628,6 @@ fun MapScreen(
         // touch+keypad phone (dpadMode true but has touch, so the softkey bar is NOT shown) and when
         // the user has turned softkeys OFF in Settings. Follows the RESOLVED softkey state (mode +
         // detector), so toggling softkeys off restores these buttons live.
-        val softkeyBarShown = app.vela.ui.softkey.VelaSoftkeys.isActive()
         val zoomButtonsVisible = dpadMode && !softkeyBarShown && !searchOpen && !state.navigating &&
             state.selected == null && !state.directionsOpen && !state.showSteps &&
             state.activeRoute == null && state.routes.isEmpty() &&
@@ -1640,28 +1679,13 @@ fun MapScreen(
             ) {
                 Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.mapscreen_center_on_my_location))
             }
-            // Parking button, its OWN control above the locate FAB. TAP with NO spot -> save here
-            // (the one-tap "I parked" path). TAP with a spot set (teal) -> a small hub menu (Find my
-            // car / Move parking here / Earlier spots / Clear) so re-parking is one obvious choice
-            // instead of a clear-then-tap-again dance. LONG-PRESS jumps straight to history. D-pad:
-            // the box is focusable with a ring; OK does what a tap does; the hub is a VelaMenu
-            // (auto-focusing under D-pad - a bare DropdownMenu cannot be, docs/dpad.md).
-            val parkingSavedMsg = stringResource(R.string.map_parking_saved)
-            val parkingNoFixMsg = stringResource(R.string.map_parking_no_fix)
-            val parkingMovedMsg = stringResource(R.string.map_parking_moved)
-            val parkingClearedMsg = stringResource(R.string.map_parking_cleared)
-            val parkedCarLabel = stringResource(R.string.map_parked_car)
-            val parkingSet = state.parkingSpot != null
-            var showParkingHistory by remember { mutableStateOf(false) }
-            var showParkingMenu by remember { mutableStateOf(false) }
-            val parkingTapAction = {
-                if (parkingSet) {
-                    showParkingMenu = true
-                } else {
-                    val msg = if (vm.saveParkingSpot()) parkingSavedMsg else parkingNoFixMsg
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                }
-            }
+            // Parking button, its OWN control above the locate FAB (touch/hybrid only - under soft-keys
+            // it's decluttered away and Options -> Park drives the same action; F/#76). TAP with NO spot
+            // -> save here (the one-tap "I parked" path). TAP with a spot set (teal) -> the hub menu
+            // (Find my car / Move parking here / Earlier spots / Clear). LONG-PRESS jumps straight to
+            // history. D-pad (hybrid): the box is focusable with a ring; OK does what a tap does. State
+            // + hub + history are hoisted above the Options menu so the keypad path can reach them too.
+            if (!softkeyBarShown) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = if (parkingSet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
@@ -1700,26 +1724,37 @@ fun MapScreen(
                             if (parkingSet) R.string.map_parked_car else R.string.map_parking_save,
                         ),
                     )
-                    // The parking hub, anchored to the button. Only reachable when a spot is set.
-                    app.vela.ui.VelaMenu(expanded = showParkingMenu, onDismissRequest = { showParkingMenu = false }) {
-                        item(stringResource(R.string.map_parking_find), Icons.Default.DirectionsCar) { showParkingMenu = false; vm.showParkedCar(parkedCarLabel) }
-                        // "Move parking here" overwrites the current spot with your live fix; the old
-                        // one is not lost - saveParkingSpot archives it to history. Hidden with no fix.
-                        if (state.myLocation != null) {
-                            item(stringResource(R.string.map_parking_move_here), Icons.Default.MyLocation) {
-                                showParkingMenu = false
-                                val msg = if (vm.saveParkingSpot()) parkingMovedMsg else parkingNoFixMsg
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        if (state.parkingHistory.size > 1) {
-                            item(stringResource(R.string.map_parking_earlier), Icons.Default.History) { showParkingMenu = false; showParkingHistory = true }
-                        }
-                        item(stringResource(R.string.map_parking_clear), Icons.Default.Delete) {
+                }
+            }
+            }
+            // The parking hub, hoisted OUT of the FAB so it still opens when the FAB is hidden under
+            // soft-keys (Options -> Park drives it then). Under D-pad it's a centred chooser (anchor-
+            // independent); under touch the BottomEnd box anchors it where the FAB sits. Inert unless a
+            // spot is set - showParkingMenu is only ever raised when parkingSet.
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 24.dp, bottom = chromeLift + 92.dp),
+            ) {
+                app.vela.ui.VelaMenu(expanded = showParkingMenu, onDismissRequest = { showParkingMenu = false }) {
+                    item(stringResource(R.string.map_parking_find), Icons.Default.DirectionsCar) { showParkingMenu = false; vm.showParkedCar(parkedCarLabel) }
+                    // "Move parking here" overwrites the current spot with your live fix; the old
+                    // one is not lost - saveParkingSpot archives it to history. Hidden with no fix.
+                    if (state.myLocation != null) {
+                        item(stringResource(R.string.map_parking_move_here), Icons.Default.MyLocation) {
                             showParkingMenu = false
-                            vm.clearParkingSpot()
-                            Toast.makeText(context, parkingClearedMsg, Toast.LENGTH_SHORT).show()
+                            val msg = if (vm.saveParkingSpot()) parkingMovedMsg else parkingNoFixMsg
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
+                    }
+                    if (state.parkingHistory.size > 1) {
+                        item(stringResource(R.string.map_parking_earlier), Icons.Default.History) { showParkingMenu = false; showParkingHistory = true }
+                    }
+                    item(stringResource(R.string.map_parking_clear), Icons.Default.Delete) {
+                        showParkingMenu = false
+                        vm.clearParkingSpot()
+                        Toast.makeText(context, parkingClearedMsg, Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -1741,7 +1776,7 @@ fun MapScreen(
             // whole browse map, since follow is armed by default.
             // Layers button, top-right under the search bar + chips (browse map only): satellite,
             // traffic, transit and terrain in one Google-style panel. Filled tint = any layer on.
-            if (app.vela.ui.LayersButton.on.value && state.selected == null && !searchOpen &&
+            if (app.vela.ui.LayersButton.on.value && !softkeyBarShown && state.selected == null && !searchOpen &&
                 !state.navigating && !state.replaying && state.results.isEmpty()
             ) {
                 val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -1938,7 +1973,7 @@ fun MapScreen(
                         downloadPct = state.updateDownloadPct,
                         onUpdate = { vm.downloadUpdate(); focusToMap() },
                         onDismiss = { vm.dismissUpdate(); focusToMap() },
-                        dpad = dpadMode,
+                        softkeys = softkeyBarShown,
                     )
                 }
                 state.notices.forEachIndexed { i, n ->
@@ -2873,11 +2908,11 @@ private fun UpdateCard(
     onUpdate: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    // Under D-pad the card is driven by its own soft-key bar (LEFT Not now / RIGHT Update), so the
-    // on-screen buttons below are HIDDEN then - they'd double up with the soft keys (user report).
-    // Info cards show on the bare map only, where that soft-key bar is always present, so nothing
-    // is stranded. Touch keeps the on-screen buttons.
-    dpad: Boolean = false,
+    // When the soft-key bar is shown (a real keypad phone) the card is driven by it (LEFT Not now /
+    // RIGHT Update), so the on-screen buttons below are HIDDEN then - they'd double up with the soft
+    // keys (user report). Info cards show on the bare map only, where that bar is always present, so
+    // nothing is stranded. TOUCH and HYBRID (D-pad but no soft-key bar) keep the on-screen buttons.
+    softkeys: Boolean = false,
 ) {
     Card(
         modifier.fillMaxWidth(),
@@ -2894,8 +2929,8 @@ private fun UpdateCard(
                     progress = { downloadPct / 100f },
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
                 )
-            } else if (!dpad) {
-                // Touch only - under D-pad the soft-key bar drives Not now / Update (see param note).
+            } else if (!softkeys) {
+                // Touch + hybrid; the soft-key bar drives Not now / Update when it's shown (see param note).
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.update_later)) }
                     TextButton(onClick = onUpdate) { Text(stringResource(R.string.update_install)) }

@@ -12,7 +12,10 @@ dismiss_onboarding() {
   # after two consecutive settled misses.
   local misses=0
   for _ in $(seq 1 8); do
-    if on_screen "Not now"; then key "$K_OK" 1.2; misses=0
+    # The first-run chain: the diagnostics consent + "Offline maps" dialogs dismiss with "Not now";
+    # the "Spoken navigation voice" dialog's auto-focused dismiss is "Use system voice". OK activates
+    # whichever is up (both are the safe/decline choice). Keep clearing until two settled misses.
+    if on_screen "Not now" || on_screen "Use system voice"; then key "$K_OK" 1.2; misses=0
     else misses=$((misses + 1)); [ "$misses" -ge 2 ] && break; sleep 0.6; fi
   done
 }
@@ -26,8 +29,25 @@ goto_map() {
   dismiss_onboarding
 }
 
-# focus_search_bar - from the bare map (nothing focused), the first DOWN lands on the search bar.
+# focus_search_bar - from the bare map (nothing focused), the first DOWN lands on the search bar (the
+# on-screen touch layout). NOTE: under soft-keys the bar is decluttered (#76) and the first DOWN lands
+# on the category CHIPS instead - callers that want the search OVERLAY should use open_search.
 focus_search_bar() { key "$K_DOWN"; }
+
+# open_search - open the search overlay (armed field + Home/Work/recents). Under soft-keys the search
+# bar is decluttered off the bare map (#76) so the RIGHT soft key opens it; otherwise DOWN focuses the
+# on-screen bar and OK opens it. Use this instead of `focus_search_bar; key OK` so BOTH layouts work.
+open_search() {
+  if softkeys_shown; then key "$K_SOFT_RIGHT" 1.5; else focus_search_bar; key "$K_OK" 1.5; fi
+}
+
+# park_action <label> - open the Park action the layout-correct way. Under soft-keys the on-screen P
+# FAB is decluttered (#76) so Park lives in the bare-map Options menu (LEFT soft key) - open it and tap
+# the row; on touch the FAB itself carries the content-desc, so tap it directly. <label> is
+# "Save parking spot" (no spot yet) or "Parked car" (spot set). Returns non-zero if not found.
+park_action() {
+  if softkeys_shown; then key "$K_SOFT_LEFT" 1; tap_center "$1"; else tap_desc "$1"; fi
+}
 
 # open_settings - robustly open Settings from anywhere. The first DOWN can land on the search FIELD or
 # the gear depending on focus order (and adaptive density shifts it), and RIGHT-from-field only reaches
@@ -38,26 +58,36 @@ open_settings() {
   local a
   for a in 1 2 3 4; do
     goto_map
-    # Reach the gear by its content-desc, not a fixed RIGHT count: the voice-search MIC sits
-    # between the search field and the gear now, so the old "RIGHT once from the field" landed on
-    # the mic and OK opened dictation instead of Settings (the restricted-run settings cascade).
-    # tap_desc is layout/flavor-proof; the gear's D-PAD reach is separately proven by
-    # audit_dynamic's traversal (this gate is coverage, not the reachability auditor).
-    if tap_desc "Settings"; then
-      for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.5; done
+    if softkeys_shown; then
+      # Soft-keys declutter the search bar + its gear away (#76); Settings moved into the bare-map
+      # Options menu (LEFT soft key). Open it and pick Settings.
+      key "$K_SOFT_LEFT" 1
+      { on_screen "Settings" && tap_center "Settings"; } || key "$K_BACK" 1
+    else
+      # Touch/hybrid: the on-screen search-bar gear is still there. Tap it by content-desc (the old
+      # layout/flavor-proof path, unchanged) - the MIC sits between field and gear, so tap_desc not RIGHT.
+      tap_desc "Settings"
     fi
+    for _ in 1 2 3; do on_screen "Appearance" && return 0; sleep 0.5; done
     key "$K_BACK" 1                          # opened something else? back out, retry
   done
   return 1
 }
 
-# run_coffee - from the bare map, run the "Coffee" category chip search; waits for results.
-# Leaves focus in the results list. Returns 0 if "N results" appeared.
+# run_coffee - from the bare map, run a category chip search; waits for results. Leaves focus in the
+# results list. Returns 0 if "N results" appeared. Under soft-keys (dpad forced) the search bar is
+# decluttered away (#76), so the FIRST down lands straight on the category chips row (Restaurants) -
+# no search bar to pass first. Any category yields a result set; RIGHT moves to Coffee for the name.
 run_coffee() {
-  focus_search_bar          # search bar
-  key "$K_DOWN"             # -> category chips row
-  # land on a chip, then OK. The Coffee chip is the middle one; RIGHT once from the first.
-  key "$K_OK" 5            # OK the focused chip -> search
+  # Run a category chip search. Under soft-keys the search bar is decluttered so the FIRST down IS the
+  # chips row - D-pad to Coffee and OK. In the touch layout the chips sit UNDER the on-screen search
+  # bar, and a D-pad DOWN would focus that bar and auto-EXPAND it into the overlay (hiding the chips),
+  # so TAP the chip directly instead. Either way a category search yields the same result set.
+  if softkeys_shown; then
+    key "$K_DOWN"; key "$K_RIGHT"; key "$K_OK" 5
+  else
+    tap_center "Coffee" || tap_center "Restaurants"; sleep 4
+  fi
   for _ in 1 2 3 4 5 6; do
     ui_dump
     if $ADB shell cat /sdcard/ui.xml 2>/dev/null | grep -qE 'text="[0-9]+ results"'; then return 0; fi
@@ -78,11 +108,15 @@ reach_directions() {
   run_coffee || return 1
   open_first_place
   key "$K_OK" 1                          # expand the sheet so the action pills are on screen
-  # Reach the Directions pill by its TEXT, not a fixed DOWN count: the sheet's row layout varies
-  # by flavor (the restricted build has no photo strip and no Website pill, so a blind 3-DOWN
-  # overshot the pills row - the flavor-cascade bug). tap_center is flavor/layout-proof; the
-  # D-pad REACH of the pill is separately proven by audit_dynamic's traversal.
-  if tap_center "Directions"; then
+  # Under soft-keys the place sheet's whole button row is DROPPED and Directions IS the RIGHT soft key
+  # - press it. (tap_center would land on the soft-key BAR's "Directions" label, which happened to work
+  # at 480x854 but missed at 240x320 - the kyocera directions/route-steps regression.)
+  # On touch, reach the Directions pill by its TEXT, not a fixed DOWN count: the sheet's row layout
+  # varies by flavor (the restricted build has no photo strip and no Website pill, so a blind 3-DOWN
+  # overshot the pills row - the flavor-cascade bug). tap_center is flavor/layout-proof.
+  if softkeys_shown; then
+    key "$K_SOFT_RIGHT" 4
+  elif tap_center "Directions"; then
     sleep 4
   else
     keys "$K_DOWN" "$K_DOWN" "$K_DOWN"   # fallback: the old walk (dump raced / text off-screen)
