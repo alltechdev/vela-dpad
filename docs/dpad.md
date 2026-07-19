@@ -452,7 +452,10 @@ Those are handled by the vendored `:yapchik` engine, NOT this file's D-pad syste
 in [`softkeys.md`](softkeys.md). They intercept ONLY the softkey codes (`SOFT_LEFT/RIGHT`, `MENU`,
 `F1/F2`) - never the D-pad arrows/OK/BACK this file owns - so the two systems are orthogonal. The bar
 gates on the SAME `isDpadFirstDevice` detector (+ `vela_force_dpad` override) as the affordances here,
-so softkeys and D-pad rings agree on which devices are keypad-first. Prototype: map `Zoom -`/`Zoom +`.
+so softkeys and D-pad rings agree on which devices are keypad-first. The bar is CONTEXTUAL per map
+surface (Options / Search / Directions / Steps / Start / zoom mode) - see `softkeys.md`. One overlap
+to know: the Options "Zoom" item enters a mode where D-pad LEFT/RIGHT zoom instead of pan, and the
+single map BackHandler here peels that mode before anything else.
 
 ## Known limitations / follow-ups (also on the ROADMAP)
 
