@@ -118,14 +118,21 @@ to `DpadFocus.kt` (non-composable view of the existing private `detectDpadFirst`
 Ordered by value / risk. Each phase keeps the hard rules: touch byte-identical, gated on the D-pad
 detector, new behaviour in new files, both geometries x both flavors + eyeball before merge.
 
-1. **More contextual surfaces.** Wired: bare map -> Options / Search (Options = Zoom / Recenter /
-   Layers / Settings, Zoom = a D-pad zoom mode), place sheet -> Options / Directions, nav / route ->
-   Zoom -/+, search overlay -> none, Settings -> suppressed. Labels are LOCALIZED (Options / Search /
-   Recenter translated into all 14 locales; Directions / Layers / Settings reuse existing strings;
-   the symbol-heavy zoom labels stay English). Optional remaining: a live-nav set (`Overview` /
-   `End`) and a directions `Start` set - deferred on purpose, since mid-drive the two zoom keys are
-   the safer default (a menu/extra action while driving is a distraction). Each would need its own
-   eyeball pass.
+1. **Contextual surfaces. DONE.** Every map context is wired:
+   - **Bare map** -> Options / Search (Options = Zoom / Recenter / Layers / Settings; Zoom = a D-pad
+     zoom mode).
+   - **Place sheet** -> Options / Directions (Close is BACK).
+   - **Route preview** -> Steps / Start (Start begins the drive, notification-permission-aware).
+   - **Turn-list overlay** -> Start on the right.
+   - **Turn-by-turn nav** -> Options / Zoom. The nav Options menu is Mute/Unmute (live mute state),
+     Steps, Recenter, End - a keypad driver's full control set, which was the real gap (you can't
+     walk focus while driving). Zoom on the right enters zoom mode mid-nav.
+   - **Search overlay** -> no bar; **Settings** -> suppressed.
+
+   Labels are LOCALIZED (Options / Search / Recenter / Mute / Unmute translated into all 14 locales;
+   Directions / Layers / Settings / Start / Steps / End / Recenter reuse existing strings; the
+   symbol-heavy zoom-mode label stays English). Companion #65 tuning also landed: the D-pad map pan
+   step dropped 0.22 -> 0.11 (finer control; the coarse step over-shot).
 3. **Theme-reactive style.** DONE. Yapchik colours the bar at CONSTRUCTION and `refresh()` only
    re-binds labels, so to repaint we REBUILD: `VelaSoftkeys.MapSoftkeys` re-keys its bind effect on
    `isAppInDarkTheme()` and does `clear()` then `set()` in one effect body (atomic - both run before
