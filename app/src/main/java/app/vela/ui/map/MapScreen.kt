@@ -1938,7 +1938,7 @@ fun MapScreen(
                         downloadPct = state.updateDownloadPct,
                         onUpdate = { vm.downloadUpdate(); focusToMap() },
                         onDismiss = { vm.dismissUpdate(); focusToMap() },
-                        takeFocus = cardTakesFocus,
+                        dpad = dpadMode,
                     )
                 }
                 state.notices.forEachIndexed { i, n ->
@@ -2873,10 +2873,11 @@ private fun UpdateCard(
     onUpdate: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    // D-pad: no traversal path reaches this card (see the call site), so when true the
-    // primary button places focus on itself. The explicit rings are needed too - a
-    // TextButton's stock focus overlay is invisible on the tinted card container.
-    takeFocus: Boolean = false,
+    // Under D-pad the card is driven by its own soft-key bar (LEFT Not now / RIGHT Update), so the
+    // on-screen buttons below are HIDDEN then - they'd double up with the soft keys (user report).
+    // Info cards show on the bare map only, where that soft-key bar is always present, so nothing
+    // is stranded. Touch keeps the on-screen buttons.
+    dpad: Boolean = false,
 ) {
     Card(
         modifier.fillMaxWidth(),
@@ -2893,17 +2894,11 @@ private fun UpdateCard(
                     progress = { downloadPct / 100f },
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp),
                 )
-            } else {
+            } else if (!dpad) {
+                // Touch only - under D-pad the soft-key bar drives Not now / Update (see param note).
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
-                    ) { Text(stringResource(R.string.update_later)) }
-                    TextButton(
-                        onClick = onUpdate,
-                        modifier = (if (takeFocus) Modifier.dpadModeAutoFocus() else Modifier)
-                            .dpadHighlight(androidx.compose.foundation.shape.CircleShape),
-                    ) { Text(stringResource(R.string.update_install)) }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.update_later)) }
+                    TextButton(onClick = onUpdate) { Text(stringResource(R.string.update_install)) }
                 }
             }
         }
