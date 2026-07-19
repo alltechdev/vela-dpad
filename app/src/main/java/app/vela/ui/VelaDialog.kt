@@ -66,6 +66,9 @@ fun VelaDialog(
     dismissLowEmphasis: Boolean = false,
     text: @Composable () -> Unit,
 ) {
+    // Hide the hardware soft-key bar while this modal is up (keypad only) - its keys go to the dialog
+    // window, so a bar behind the scrim would be inert; answer with the dialog's own buttons + BACK.
+    app.vela.ui.softkey.VelaSoftkeys.SuppressBarForModal()
     Dialog(onDismissRequest = onDismissRequest, properties = DialogProperties()) {
         Surface(
             shape = RoundedCornerShape(28.dp),

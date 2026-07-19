@@ -109,11 +109,12 @@ object VelaSoftkeys {
         // before the next frame), so there's no flicker - and re-keying on the theme rebuilds it with
         // the new colours when the user flips Light/Dark.
         val dark = app.vela.ui.theme.isAppInDarkTheme()
-        LaunchedEffect(left?.label, right?.label, dark) {
+        val modal = modalDepth.intValue > 0 // a VelaDialog is up -> hide the bar (keys go to it)
+        LaunchedEffect(left?.label, right?.label, dark, modal) {
             applyThemeColors(dark)
             val ctl = Softkeys.of(activity)
             ctl.clear() // force a fresh SoftkeyBar so the theme colours take
-            if (leftNow != null || rightNow != null) {
+            if (!modal && (leftNow != null || rightNow != null)) {
                 ctl.set {
                     leftNow?.let { k -> left(k.label) { k.onPress() } }
                     rightNow?.let { k -> right(k.label) { k.onPress() } }
@@ -151,6 +152,24 @@ object VelaSoftkeys {
         val activity = LocalContext.current as? Activity ?: return
         LaunchedEffect(suppressed) {
             Softkeys.of(activity).screenMode = if (suppressed) SoftkeyMode.OFF else null
+        }
+    }
+
+    /** How many modal [app.vela.ui.VelaDialog]s are currently on screen. While > 0 the map bar hides:
+     * a dialog is a separate window, so the physical soft keys go to IT - a bar behind the scrim would
+     * be inert and misleading, and its own buttons (D-pad-focusable) + BACK are how you answer it.
+     * A reactive count (not a mode flag) because setting `screenMode` doesn't remove an already-drawn
+     * bar; [MapSoftkeys] watches this and CLEARS instead, which does. VelaMenu (the Options popups) is
+     * a plain Dialog, NOT a VelaDialog, so it never bumps this and keeps its bar. */
+    private val modalDepth = androidx.compose.runtime.mutableIntStateOf(0)
+
+    /** Bump [modalDepth] while a modal is composed; a simple counter nests correctly (stacked dialogs,
+     * a dialog over Settings). Call from [app.vela.ui.VelaDialog]. */
+    @Composable
+    fun SuppressBarForModal() {
+        DisposableEffect(Unit) {
+            modalDepth.intValue++
+            onDispose { modalDepth.intValue = (modalDepth.intValue - 1).coerceAtLeast(0) }
         }
     }
 }
