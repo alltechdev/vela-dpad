@@ -122,6 +122,7 @@ detector, new behaviour in new files, both geometries x both flavors + eyeball b
    - **Bare map** -> Options / Search (Options = Zoom / Recenter / Layers / Settings; Zoom = a D-pad
      zoom mode).
    - **Place sheet** -> Options / Directions (Close is BACK).
+   - **Choose-on-map** (crosshair to set a route origin/stop) -> Cancel / Set start|stop.
    - **Route preview** -> Steps / Start (Start begins the drive, notification-permission-aware).
    - **Turn-list overlay** -> Start on the right.
    - **Turn-by-turn nav** -> Options / Zoom. The nav Options menu is Mute/Unmute (live mute state),
@@ -133,6 +134,11 @@ detector, new behaviour in new files, both geometries x both flavors + eyeball b
    Directions / Layers / Settings / Start / Steps / End / Recenter reuse existing strings; the
    symbol-heavy zoom-mode label stays English). Companion #65 tuning also landed: the D-pad map pan
    step dropped 0.22 -> 0.11 (finer control; the coarse step over-shot).
+
+   One edge case is deliberately NOT wired yet: the full-screen TRANSIT-guidance sheet
+   (`state.transitNav`) still falls through to the browse keys. It should suppress the bar (map not
+   visible), same as the search overlay - but reaching it needs a live transit route + GPS fix, which
+   the test device couldn't get indoors, so it's left unverified rather than shipped blind.
 3. **Theme-reactive style.** DONE. Yapchik colours the bar at CONSTRUCTION and `refresh()` only
    re-binds labels, so to repaint we REBUILD: `VelaSoftkeys.MapSoftkeys` re-keys its bind effect on
    `isAppInDarkTheme()` and does `clear()` then `set()` in one effect body (atomic - both run before
@@ -151,9 +157,14 @@ detector, new behaviour in new files, both geometries x both flavors + eyeball b
    TCL is `SOFT_LEFT=1`/`SOFT_RIGHT=2` = already UNIVERSAL. So a devices XML today would only restate
    UNIVERSAL; the real answer for odd-keycode phones is the shipped CALIBRATION flow. Add named
    entries once a target phone is dumped.
-6. **Dialog coverage (open question).** Yapchik wraps the ACTIVITY window; Vela's raw-`Dialog`
-   `VelaMenu`/`VelaDialog` are separate windows, so softkeys won't appear over them without per-dialog
-   wiring. Decide whether that matters (softkeys are most valuable on the map) or wire the dialogs.
+6. **Dialog coverage. RESOLVED.** Yapchik wraps the ACTIVITY window; a `VelaDialog`/`VelaMenu` is a
+   separate window, and the physical soft keys go to whichever window is focused - so a bar sitting
+   behind a dialog's scrim is inert. The decision: a MODAL answers itself. `VelaDialog` hides the bar
+   while up (a `SuppressBarForModal` reactive counter that `MapSoftkeys` watches and `clear()`s for -
+   setting `screenMode` doesn't remove an already-drawn bar) and restores it on dismiss; the dialog's
+   own D-pad-focusable buttons + BACK are the answer path. `VelaMenu` (the bottom-left Options popups)
+   is intentionally NOT a modal here - it grows flush from the bar and keeps it. Device-verified
+   (first-run voice/offline dialogs show no bar; the Options menu keeps its bar).
 7. **Auditor integration.** Teach `tests/dpad` / `tests/small_screen` about the bar: its height
    changes the clip envelope at 240x320, and a `softkey` phase in `full_coverage.sh` would capture it
    per device/flavor. Add once the surface set is stable.
