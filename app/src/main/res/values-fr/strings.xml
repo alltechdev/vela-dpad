@@ -511,4 +511,11 @@
     <string name="softkey_unmute">Activer le son</string>
     <string name="softkey_move_map">Déplacer la carte</string>
     <string name="softkey_stop_zoom">Arrêter le zoom</string>
+    <string name="voice_error_title">La recherche vocale n\'a pas démarré</string>
+    <string name="voice_error_retry">Réessayer</string>
+    <string name="voice_error_model">Le modèle vocal n\'est pas prêt. Téléchargez-le à nouveau dans Paramètres \u2192 Recherche.</string>
+    <string name="voice_error_permission">Vela a besoin de l\'autorisation du micro pour écouter. Accordez-la dans les paramètres d\'application d\'Android.</string>
+    <string name="voice_error_vad">Une partie du modèle vocal est manquante. Téléchargez-le à nouveau dans Paramètres \u2192 Recherche.</string>
+    <string name="voice_error_audio">Ce téléphone n\'a pas ouvert son micro pour Vela. Fermez toute autre application qui enregistre du son et réessayez.</string>
+    <string name="voice_error_recording">L\'enregistrement s\'est arrêté de manière inattendue. Réessayez.</string>
 </resources>

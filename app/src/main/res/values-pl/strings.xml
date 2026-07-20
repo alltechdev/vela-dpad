@@ -519,4 +519,11 @@
     <string name="softkey_unmute">Włącz dźwięk</string>
     <string name="softkey_move_map">Przesuń mapę</string>
     <string name="softkey_stop_zoom">Zakończ zoom</string>
+    <string name="voice_error_title">Wyszukiwanie głosowe nie ruszyło</string>
+    <string name="voice_error_retry">Spróbuj ponownie</string>
+    <string name="voice_error_model">Model głosowy nie jest gotowy. Pobierz go ponownie w Ustawienia \u2192 Wyszukiwanie.</string>
+    <string name="voice_error_permission">Vela potrzebuje uprawnienia do mikrofonu. Przyznaj je w ustawieniach aplikacji Androida.</string>
+    <string name="voice_error_vad">Brakuje części modelu głosowego. Pobierz go ponownie w Ustawienia \u2192 Wyszukiwanie.</string>
+    <string name="voice_error_audio">Ten telefon nie udostępnił mikrofonu Veli. Zamknij inne aplikacje nagrywające dźwięk i spróbuj ponownie.</string>
+    <string name="voice_error_recording">Nagrywanie nieoczekiwanie się zatrzymało. Spróbuj ponownie.</string>
 </resources>

@@ -511,4 +511,11 @@
     <string name="softkey_unmute">Ljud på</string>
     <string name="softkey_move_map">Flytta karta</string>
     <string name="softkey_stop_zoom">Sluta zooma</string>
+    <string name="voice_error_title">Röstsökningen startade inte</string>
+    <string name="voice_error_retry">Försök igen</string>
+    <string name="voice_error_model">Röstmodellen är inte redo. Ladda ner den igen under Inställningar \u2192 Sök.</string>
+    <string name="voice_error_permission">Vela behöver mikrofonbehörighet för att lyssna. Ge den i Androids appinställningar.</string>
+    <string name="voice_error_vad">En del av röstmodellen saknas. Ladda ner den igen under Inställningar \u2192 Sök.</string>
+    <string name="voice_error_audio">Telefonen öppnade inte mikrofonen för Vela. Stäng andra appar som spelar in ljud och försök igen.</string>
+    <string name="voice_error_recording">Inspelningen stoppades oväntat. Försök igen.</string>
 </resources>

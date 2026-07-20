@@ -519,4 +519,11 @@
     <string name="softkey_unmute">Увімкнути звук</string>
     <string name="softkey_move_map">Рухати карту</string>
     <string name="softkey_stop_zoom">Вийти із зуму</string>
+    <string name="voice_error_title">Голосовий пошук не запустився</string>
+    <string name="voice_error_retry">Повторити</string>
+    <string name="voice_error_model">Голосова модель не готова. Завантажте її знову в Налаштуваннях \u2192 Пошук.</string>
+    <string name="voice_error_permission">Vela потрібен дозвіл на мікрофон. Надайте його в налаштуваннях додатків Android.</string>
+    <string name="voice_error_vad">Частина голосової моделі відсутня. Завантажте її знову в Налаштуваннях \u2192 Пошук.</string>
+    <string name="voice_error_audio">Цей телефон не відкрив мікрофон для Vela. Закрийте інші додатки, що записують звук, і спробуйте ще раз.</string>
+    <string name="voice_error_recording">Запис несподівано зупинився. Спробуйте ще раз.</string>
 </resources>
