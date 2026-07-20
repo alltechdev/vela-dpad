@@ -20,9 +20,20 @@ Privacy-first, F-Droid, GPLv3; every new data flow is opt-in and documented in
   phones, touch byte-identical. A full CONTEXTUAL two-key bar (bare map / place / choose-on-map /
   route / nav, each with its own keys + feature-phone Options menus), on/off + calibration setting,
   theme-following bar, localized labels, and modal-dialog handling; device-verified on physical
-  hardware. See [`docs/softkeys.md`](softkeys.md). Remaining is hardware-blocked only: known-device
-  keycode profiles need real Sonim/Kyocera dumps (the shipped calibration flow covers unknown keys) -
-  where the parked softkey-vendor-guides work would land.
+  hardware. A second pass (#76) then decluttered every remaining surface - a control is dropped only
+  where a soft key, hardware BACK or an Options menu already carries it - and bound the surfaces that
+  had been inheriting the wrong keys (Street View, arrival, the turn list's dead LEFT key, the
+  resume-nav prompt). See [`docs/softkeys.md`](softkeys.md), whose Gotchas section is worth reading
+  before touching any of it.
+  Remaining, and NOT all hardware-blocked:
+  - **OPEN BUG (software):** while the bar is active, PROGRAMMATIC focus never lands, so surfaces that
+    auto-focus on open (the search overlay, Settings) start with nothing highlighted and cost one
+    keypress. Key-driven focus is fine, and `Yapchik.mode = OFF` avoids it. Five hypotheses are already
+    disproven on device - read Gotcha 1 in docs/softkeys.md before attempting a sixth.
+  - **Harness gap:** the soft-keys-off (touch) legs cannot drive first-run or directions, so they give
+    no verdict for those surfaces. The app is fine there; the phases drive with D-pad OK.
+  - **Hardware-blocked:** known-device keycode profiles need real Sonim/Kyocera dumps (the shipped
+    calibration flow covers unknown keys) - where the parked softkey-vendor-guides work would land.
 - **Explore / Nearby.** A bottom-sheet of nearby restaurants and things to do, reusing the
   keyless categorised POI search ranked by distance and rating. Events are the sparse part
   (no keyless Google feed; likely OSM plus a public events source later). Start as "Nearby."

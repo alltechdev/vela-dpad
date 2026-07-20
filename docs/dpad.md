@@ -82,6 +82,23 @@ ring you can't tell where you are - technically operable but practically unusabl
     field solves the same trap inline - see Trap C - because it also needs the BACK/close
     handling in the same key handler.)
 
+- `VelaSwitch(checked, onCheckedChange)` - drop-in Material `Switch` that carries the focus ring on
+  its 32dp TRACK. Material's own focus state on a switch was invisible in practice ("green on green"
+  on the teal ON state, tester 2026-07-19).
+- `DpadRingBox(shape) { control }` - a focus ring that HUGS its control. Material pads buttons and
+  chips out to the 48dp minimum touch target while they DRAW at 40dp / 32dp, so a `dpadHighlight` on
+  the control's own modifier measures the inflated box and draws visibly clear of it. This rings a
+  parent pinned to the real height; `hasFocus` propagates up from the focused child, which keeps its
+  full touch target by overflowing the shorter, non-clipping box. **Pass the control's own shape** -
+  a `CircleShape` pill ringed with an 8dp rounded rect is the same bug in a different costume.
+- `Modifier.dpadClickable { }` - `clickable` that drops Material's grey FOCUS state layer while input
+  is key-driven, so a row carrying `dpadHighlight` does not draw two focus signals at once. Touch
+  keeps its normal press ripple. Pair it with `dpadHighlight` on the same row; it is also listed in
+  `audit_static.sh`'s ring-required set, so a converted row is still audited.
+- `Modifier.dpadRingWhen(active, shape)` - the ring for a control whose FOCUS LIVES ON ITS ROW. A menu
+  row of "label + switch" is ONE focus stop, so ringing the row wraps the whole option; track the row's
+  focus with `onFocusEvent` and hand it here to ring the switch instead (matching Settings).
+
 ### The MapLibre `MapView` steals D-pad keys - the load-bearing fix
 
 **Finding 0 (the reason "nothing happened"):** MapLibre's `MapView` calls `requestFocus()`
@@ -348,13 +365,19 @@ Touch phones are unaffected: all of the above is gated on `dpadMode`.
 
 `dpadHighlight` applied to: search bar card, suggestion/shortcut/saved rows, search
 result rows, "Hide results" bar, category chips, both re-center FABs, the zoom
-buttons, steps-sheet rows, both sheet handles, the maneuver banner. Material
-buttons/switches/dialogs keep their built-in focus indication (adequate on those
-components; extend the pass if a spot proves hard to see).
+buttons, steps-sheet rows, both sheet handles, the maneuver banner.
+
+**Material's built-in focus indication turned out NOT to be adequate**, contrary to what this section
+used to say - testers reported it repeatedly. The ring is now a distinct **orange** (`0xFFFF6D00`,
+3dp), because the teal primary disappeared into Vela's teal-filled controls ("green on green" on an ON
+switch). Switches use `VelaSwitch`, buttons and chips use `DpadRingBox` so the ring hugs the control
+rather than its 48dp touch target, and rows use `dpadClickable` so Material's grey focus layer does
+not double up with the ring. If you add a control, use those helpers rather than relying on the
+component's own indication.
 
 The search bar's text region insets its content 10 dp inside the ring: the ring is
 drawn on the Box whose edge is exactly where the first typed letter starts, so with no
-inset the 2 dp stroke cut straight through that letter on every keypad-phone search.
+inset the ring's stroke cut straight through that letter on every keypad-phone search.
 (Ported from upstream 3b7b7bd.)
 
 ## Feature-phone screen sizes (adaptive density + device matrix)
