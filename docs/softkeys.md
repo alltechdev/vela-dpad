@@ -70,9 +70,9 @@ stays source-identical for re-sync).
   | Place sheet | Options (all secondary actions) | Directions |
   | Choose-on-map | Cancel | Set start / stop |
   | Route preview | Steps | Start |
-  | Turn list | — | Start |
+  | Turn list | - | Start |
   | Turn-by-turn nav | Options (Mute/Unmute · Steps · Recenter · End) | Zoom mode |
-  | Search overlay | — (no bar) | — |
+  | Search overlay | - (no bar) | - |
 
   Settings draws OVER the still-composed map, so `VelaRoot` forces the bar off while it's up
   (`SuppressBarWhile`). Labels are LOCALIZED into all 14 locales (the new words - Options / Search /
@@ -158,6 +158,54 @@ screenshots still look correct. The Layers case shipped and was found by a teste
 e4830. Both panels are now siblings of their (gated) buttons, each in its own `TopEnd`/`BottomEnd`
 box so the touch dropdown still anchors correctly. Before gating a control, grep what its block
 contains.
+
+It nearly bit a third time: hiding the **locate FAB** meant adding `!softkeyBarShown` to the block
+it sits in - and the parking hub menu + history sheet are hoisted *inside that same block*. Gating
+the block would have taken Options -> Park down exactly like Layers. The gate went on the FAB alone.
+
+### Everywhere else the same pass reached
+
+Same rule throughout: a control only goes away when its action is already on a soft key, on hardware
+BACK, or on an Options menu. Nothing lost, screen gained.
+
+| Surface | Dropped under soft-keys | Where the action lives now |
+| --- | --- | --- |
+| Bare map | locate FAB, "Search this area" | Options -> Recenter (which re-arms free-drive follow exactly as the FAB tap did), Options -> Search this area |
+| Bare map | resume-nav card's Dismiss/Resume buttons | LEFT = Dismiss, RIGHT = Resume |
+| Route preview | Start + Steps buttons, the top card's back arrow | RIGHT = Start, LEFT = Steps (already bound), BACK closes |
+| Turn list | close X | LEFT = Close - **it was `null` before**, a dead labelled key on the one surface still drawing its own Close |
+| Choose on map | Cancel X + "Set start/stop" button | LEFT = Cancel, RIGHT = Set (and BACK / OK-on-crosshair, as before) |
+| In-nav | Mute / Steps / End buttons, search + recenter FABs | nav Options: Mute, Steps, **Search along route** (new), Recenter, End |
+
+The in-nav card keeps only the ETA - which also un-breaks the headline, since the button row it used
+to fight for width forced "14 min" into an ellipsis.
+
+### Two bugs this audit turned up (not clutter)
+
+- **Arrival had no soft-key branch at all.** `arrived` is set with `navigating` already false, so the
+  card fell through to the route-preview branch and the bar offered **Start** - a drive to the place
+  you had just reached. Worse, BACK routed to `clearRoute()`, which does not clear `arrived`, so the
+  card could not be dismissed. Now: RIGHT = Done, and BACK calls `finishNav()`.
+- **Street View inherited the place sheet's keys.** `placeSheetUp` stays true under the panorama (the
+  sheet is merely not composed), so the bar read "Options | Directions": LEFT set state nothing
+  rendered, and RIGHT started routing from behind the pano. Now LEFT = Close, RIGHT unbound.
+
+### Focus-ring polish (tester @SILB, x320)
+
+- **The ring must hug the control, not Material's touch target.** `minimumInteractiveComponentSize()`
+  pads a chip's layout to 48dp while it draws at 32dp (buttons: 40dp), so a ring on the control's own
+  modifier measured the inflated box and floated clear of it. `DpadRingBox` / the `VelaSwitch` pattern
+  puts the ring on a parent pinned to the real height - `hasFocus` still propagates from the child,
+  which keeps its full touch target by overflowing the shorter, non-clipping box.
+- **Match the shape, too:** the category chips are `CircleShape` pills but were ringed with an 8dp
+  rounded rect.
+- **One focus signal, not two.** `dpadHighlight(...).clickable(...)` drew Material's grey focus state
+  layer *and* the orange ring on the same row. `dpadClickable` drops the indication while input is
+  key-driven, so touch keeps its press ripple.
+- **Ring the toggle, not the row.** A `VelaMenu` toggle row is one focus stop (the row), so the ring
+  wrapped the whole option while Settings hugged the switch pill. The row now tracks focus and hands
+  it to a ring around the switch, which is also read-only there (`onCheckedChange = null`) so it is
+  not a second focus stop inside a row that is already one.
 
 ## Testing done
 

@@ -602,6 +602,42 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   Both are fixed by hoisting the panel to a sibling of the gated button, keeping its own `TopEnd`/
   `BottomEnd` box so the touch dropdown still anchors where the button sits, and leaving it inert
   while closed. **Before gating any on-screen control, grep what is declared inside its block.**
+  It came within one edit of a third time (2026-07-19): hiding the **locate FAB** meant adding
+  `!softkeyBarShown` to the enclosing block - and the parking hub menu + history sheet are hoisted
+  *inside that very block*, so gating it would have taken Options -> Park down exactly like Layers.
+  The gate went on the FAB alone. When the thing you want to hide shares a block with a hoisted
+  panel, **gate the control, never the block.**
+
+    **HARD RULE - NEVER TEST `screenHeightDp`/`screenWidthDp` TO ASK "IS THIS A SMALL SCREEN".**
+  `AdaptiveDensity.wrap` shrinks a narrow screen's density at `attachBaseContext` and then INFLATES
+  the reported dp size to match (that is the point - more dp of room), so after wrapping every small
+  device reports exactly `MIN_WIDTH_DP` (360) wide and a PROPORTIONALLY TALLER height. A Sonim x320 is
+  physically 427dp tall and reports **640dp**. Any `screenHeightDp < N` smallness test therefore reads
+  FALSE on the very phones it was written for, and fails SILENTLY - the layout just stays in its roomy
+  variant and nothing looks broken enough to notice. The nav banner's compact mode was dead this way
+  from the day AdaptiveDensity landed until 2026-07-19, on our primary target device. Use
+  **`AdaptiveDensity.applied`**, which is true exactly when the raw screen is narrower than 360dp.
+  Keep a height test only as an OR for a screen that is short but wide enough that AdaptiveDensity
+  left it alone. When you add any size-conditional layout, verify it on the device and confirm the
+  branch you intended is the branch that renders.
+
+    **HARD RULE - THE FOCUS RING HUGS THE CONTROL, NOT MATERIAL'S TOUCH TARGET.** Material applies
+  `minimumInteractiveComponentSize()` INSIDE buttons and chips, padding their layout to the 48dp
+  minimum touch target while the visible surface stays 40dp (button) or 32dp (chip). A `dpadHighlight`
+  on the control's own modifier sits OUTSIDE that padding, so it measures the inflated box and draws a
+  ring visibly too tall, floating clear of the control - reported as "the wrong shape" by an x320
+  tester, on chips AND on the Settings update buttons. Wrap it instead: `DpadRingBox(shape)` (or the
+  `VelaSwitch` pattern) rings a parent pinned to the control's REAL height; `hasFocus` propagates up
+  from the focused child, which keeps its full touch target by overflowing the shorter, non-clipping
+  box. And **pass the control's own shape** - the map category chips are `CircleShape` pills that were
+  being ringed with an 8dp rounded rect.
+
+    **HARD RULE - ONE FOCUS SIGNAL PER CONTROL.** `dpadHighlight(...).clickable(...)` draws Material's
+  grey focus state layer AND the orange ring on the same row ("having both by the switches is a little
+  strange" - tester 2026-07-19). Use `dpadClickable`, which drops the indication while input is
+  key-driven and keeps the normal press ripple for touch. Likewise, a menu toggle row is ONE focus
+  stop, so ring the **switch**, not the row (`dpadRingWhen` + a read-only `onCheckedChange = null`
+  switch, which also stops it being a second focus stop inside a row that is already one).
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.
