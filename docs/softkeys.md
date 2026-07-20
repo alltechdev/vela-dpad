@@ -73,19 +73,23 @@ stays source-identical for re-sync).
   | 2 | Choose-on-map (`pickOnMap != null`) | Cancel | Set start / stop |
   | 3 | Street View (`streetView != null \|\| streetViewLoading`) | Close | - |
   | 4 | Arrival (`arrived`) | - | Done |
-  | 5 | Turn-by-turn nav (`navigating`) | Options (Mute/Unmute · Steps · Search along route · Recenter · End) | Zoom mode |
-  | 6 | Place sheet (`placeSheetUp`) | Options (all secondary actions) | Directions |
-  | 7 | Turn list (`showSteps`) | Close | Start |
-  | 8 | Route preview (`routePreview`) | Steps | Start |
-  | 9 | Resume-nav prompt (`resumeNavLabel != null`) | Dismiss | Resume |
-  | 10 | Update offered (`updateInfo != null`) | Not now | Update |
-  | 11 | Bare map (`else`) | Options (Move map/Zoom · Recenter · Search this area* · Layers · Park · Settings) | Search |
+  | 5 | Faster route offered (`navigating && fasterRoute != null`) | No | Switch |
+  | 6 | Turn-by-turn nav (`navigating`) | Options (Mute/Unmute · Steps · Search along route · Recenter · End) | Zoom mode |
+  | 7 | Place sheet (`placeSheetUp`) | Options (all secondary actions) | Directions |
+  | 8 | Turn list (`showSteps`) | Close | Start |
+  | 9 | Route preview (`routePreview`) | Steps | Start |
+  | 10 | Resume-nav prompt (`resumeNavLabel != null`) | Dismiss | Resume |
+  | 11 | Update offered (`updateInfo != null`) | Not now | Update |
+  | 12 | Bare map (`else`) | Options (Move map/Zoom · Recenter · Search this area* · Layers · Park · Settings) | Search |
 
   \* "Search this area" appears only while `showSearchThisArea` is set, matching the on-screen button
-  it replaces. Rows 3, 4, 7, 9 and 10 were added in the round-2 pass (#76); before it, rows 3/4/9 did
+  it replaces. Rows 3, 4, 8, 10 and 11 were added in the round-2 pass (#76), and row 5 in #79; before it, rows 3/4/9 did
   not exist (Street View and arrival INHERITED the place-sheet / route-preview keys, which is what made
   the bar offer "Directions" over a panorama and "Start" at the place you had just arrived at), and
-  row 7's LEFT was `null` - a dead labelled key.
+  row 8's LEFT was `null` - a dead labelled key. Row 5 is a TRANSIENT that deliberately
+  outranks navigation: its two on-screen buttons sit in a Row, and LEFT/RIGHT are keys rather than
+  focus traversal, so a keypad driver could reach only one of them (#79). Options and Zoom return the
+  moment the offer is answered or expires.
 
   Settings draws OVER the still-composed map, so `VelaRoot` forces the bar off while it's up
   (`SuppressBarWhile`). Labels are LOCALIZED into all 14 locales (the new words - Options / Search /

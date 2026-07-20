@@ -112,6 +112,25 @@ class NavStringsTest {
         assertEquals("Biegen Sie ab auf Hauptstr", DeNavStrings.expandForSpeech("Biegen Sie ab auf Hauptstr"))
     }
 
+    @Test fun `title prefixes read as titles while the same token still reads as a road suffix`() {
+        // Issue #79: "St"/"Dr" were expanded unconditionally, so a road NAMED after a saint or a person
+        // came out "Street Louis Avenue" / "Drive Martin Luther King". Position after the preposition
+        // that introduces the road name is what separates the title from the suffix.
+        assertEquals("Turn left onto Saint Louis Avenue", EnNavStrings.expandForSpeech("Turn left onto St Louis Ave"))
+        assertEquals(
+            "Turn right onto Doctor Martin Luther King Junior Boulevard",
+            EnNavStrings.expandForSpeech("Turn right onto Dr Martin Luther King Jr Blvd"),
+        )
+        // The suffix reading must survive: not after a preposition, so still Street/Drive.
+        assertEquals("Turn right onto Cedar Crest Drive", EnNavStrings.expandForSpeech("Turn right onto Cedar Crest Dr"))
+        assertEquals("Turn onto Bay Street Ste 200", EnNavStrings.expandForSpeech("Turn onto Bay St Ste 200"))
+        // A directional after the suffix does not make it a title.
+        assertEquals("Turn right onto West Main Street", EnNavStrings.expandForSpeech("Turn right onto W Main St"))
+        // Prefixes that are never road types need no position test.
+        assertEquals("Continue onto Mount Vernon Road", EnNavStrings.expandForSpeech("Continue onto Mt Vernon Rd"))
+        assertEquals("Turn onto Fort Worth Highway", EnNavStrings.expandForSpeech("Turn onto Ft Worth Hwy"))
+    }
+
     @Test fun `a comma breaks the maneuver off the sign destination so espeak keeps take`() {
         // "take the ramp toward Woodland" mis-voweled "take" -> the comma isolates the verb clause.
         assertEquals("Take the ramp, toward Woodland", EnNavStrings.expandForSpeech("Take the ramp toward Woodland"))

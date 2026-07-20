@@ -55,6 +55,16 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
   frames) - the screenshot is the source of truth.
 - **No UI change lands on the word of a script.** If you have not looked at a screenshot of
   the affected surface behaving correctly, the change is not verified. Ship the frames.
+- **"The code for it already exists" is not a fix, and can hide the bug.** Issue #79 reported
+  that voice does not expand road abbreviations. `EN_SPEECH_WORDS` had expanded them since
+  2026-07-03, so the report looked stale. It was not: running the real function over real road
+  names showed it MIS-expanding - "St Louis Ave" came out **"Street Louis Avenue"** and
+  "Dr Martin Luther King Jr Blvd" came out "Drive Martin Luther King". A user hearing that
+  reports it exactly the way they did. **When a report contradicts the code, run the code over
+  real-world inputs before believing the code.** For anything table-driven (abbreviations,
+  romanization, unit formatting) that means a throwaway probe printing input => output for a
+  dozen realistic cases, including the ones where the same token means two different things.
+  Whatever the probe catches becomes a permanent test before the probe is deleted.
 
 ## Feature-phone display size (HARD RULE, NO EXCEPTIONS)
 

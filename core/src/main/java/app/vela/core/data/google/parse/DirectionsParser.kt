@@ -168,7 +168,10 @@ object DirectionsParser {
         val laneHint = lane?.groupValues?.get(1)?.trim()
         val instruction = (lane?.let { text.removeRange(it.range) } ?: text)
             .trim().replaceFirstChar { it.uppercase() }
-        return Maneuver(type, instruction.ifEmpty { "Continue" }, LatLng(0.0, 0.0), meters, 0.0, laneHint = laneHint)
+        return Maneuver(
+            type, instruction.ifEmpty { "Continue" }, LatLng(0.0, 0.0), meters, 0.0,
+            laneHint = laneHint, rawToken = token,
+        )
     }
 
     /** Map Google's keyless maneuver [token] (+ the child `<turn>` [side]/[severity]) to a
@@ -242,7 +245,90 @@ object DirectionsParser {
             val frac = if (i == lastIdx) 1.0 else (cum / stepTotal).coerceIn(0.0, 1.0)
             cum += m.distanceMeters
             m.copy(location = pointAlong(polyline, frac))
+        }.let { resolveRampSides(it, polyline) }
+    }
+
+    /** Ramp/exit families that carry a direction when the feed bothers to send one. A bare token from
+     * this set with no `<turn side=>` is a maneuver whose direction we are EXPECTED to show but were
+     * not told - the case [resolveRampSides] recovers from geometry. */
+    private val RAMP_TOKENS = setOf("ON_RAMP", "OFF_RAMP", "RAMP", "FORK", "KEEP")
+
+    /**
+     * Give direction-less ramps and exits their left/right from the ROUTE GEOMETRY.
+     *
+     * Issue #79, @SILB: "the symbol on every exit card is the same. It should indicate the direction of
+     * the exit." On live routes Google's keyless feed sends `maneuver='OFF_RAMP'` with **no** child
+     * `<turn side=>` and no direction word in the localized instruction ("Take the exit toward
+     * <hebrew road>"), so [mapType] correctly fell through to the generic MERGE arrow - every exit,
+     * left or right, drawn identically. Nothing in the response can fix that; the direction only
+     * exists in the shape of the road.
+     *
+     * So measure it: compare the heading INTO the maneuver with the heading OUT of it, sampled far
+     * enough along the polyline (~[RAMP_SAMPLE_M]) to skip the decoded-geometry jitter right at the
+     * point, and read the signed difference. Ramps are gentle - a motorway exit is often only 15-25
+     * degrees where a turn is 90 - so the threshold is low ([RAMP_MIN_DEG]); below it the maneuver
+     * genuinely goes straight ahead and keeps MERGE, which is the honest symbol for it.
+     *
+     * Only maneuvers whose [Maneuver.rawToken] is in [RAMP_TOKENS] AND that came out of [mapType]
+     * with no direction are touched, so a real MERGE token and any maneuver the feed DID label are
+     * left exactly as they were.
+     */
+    internal fun resolveRampSides(maneuvers: List<Maneuver>, polyline: List<LatLng>): List<Maneuver> {
+        if (polyline.size < 2) return maneuvers
+        return maneuvers.map { m ->
+            val undirected = m.type == ManeuverType.MERGE || m.type == ManeuverType.STRAIGHT
+            if (!undirected || m.rawToken?.uppercase() !in RAMP_TOKENS) return@map m
+            val delta = headingChange(polyline, m.location) ?: return@map m
+            when {
+                delta >= RAMP_MIN_DEG -> m.copy(type = ManeuverType.RAMP_RIGHT)
+                delta <= -RAMP_MIN_DEG -> m.copy(type = ManeuverType.RAMP_LEFT)
+                else -> m
+            }
         }
+    }
+
+    private const val RAMP_SAMPLE_M = 60.0
+    private const val RAMP_MIN_DEG = 12.0
+
+    /** Signed heading change at [at] along [poly], in degrees: positive right, negative left. Null when
+     * the point sits too close to either end of the route to sample both sides. */
+    private fun headingChange(poly: List<LatLng>, at: LatLng): Double? {
+        var best = 0
+        var bestD = Double.MAX_VALUE
+        poly.forEachIndexed { i, p -> val d = p.distanceTo(at); if (d < bestD) { bestD = d; best = i } }
+        val before = walk(poly, best, -RAMP_SAMPLE_M) ?: return null
+        val after = walk(poly, best, RAMP_SAMPLE_M) ?: return null
+        val inBearing = bearing(before, poly[best])
+        val outBearing = bearing(poly[best], after)
+        var d = outBearing - inBearing
+        while (d > 180) d -= 360
+        while (d < -180) d += 360
+        return d
+    }
+
+    /** The point [meters] along the polyline from index [from] (negative walks backwards), or null if
+     * the route ends first - too short a sample would read noise as a turn. */
+    private fun walk(poly: List<LatLng>, from: Int, meters: Double): LatLng? {
+        val step = if (meters < 0) -1 else 1
+        var acc = 0.0
+        var i = from
+        while (acc < kotlin.math.abs(meters)) {
+            val next = i + step
+            if (next < 0 || next > poly.lastIndex) return null
+            acc += poly[i].distanceTo(poly[next])
+            i = next
+        }
+        return poly[i]
+    }
+
+    private fun bearing(a: LatLng, b: LatLng): Double {
+        val lat1 = Math.toRadians(a.lat)
+        val lat2 = Math.toRadians(b.lat)
+        val dLng = Math.toRadians(b.lng - a.lng)
+        val y = kotlin.math.sin(dLng) * kotlin.math.cos(lat2)
+        val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) -
+            kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLng)
+        return (Math.toDegrees(kotlin.math.atan2(y, x)) + 360) % 360
     }
 
     private fun pointAlong(poly: List<LatLng>, frac: Double): LatLng {

@@ -782,6 +782,38 @@ class NavReplayTest {
  * plain turn/ramp fell through to UNKNOWN - generic arrow + wrong haptic. */
 class DirectionsManeuverTest {
 
+    /** Issue #79, @SILB: "the symbol on every exit card is the same." On live routes the feed sends a
+     *  bare `OFF_RAMP` - no `<turn side=>`, no direction word in the localized instruction - so there is
+     *  nothing in the RESPONSE to read. The direction is recovered from the polyline instead. */
+    @Test
+    fun `a direction-less exit takes its side from the route geometry`() {
+        // A due-north approach, then a leg peeling off to one side. ~0.0009 deg latitude is ~100 m, so
+        // both sides of the maneuver are longer than the 60 m sampling window.
+        fun leg(dLat: Double, dLng: Double) = LatLng(32.0 + dLat, 34.0 + dLng)
+        val approach = (0..12).map { leg(it * 0.0003, 0.0) }          // heading north
+        fun exitAt(dLng: Double) = approach + (1..12).map { leg(0.0036 + it * 0.0002, it * dLng) }
+        fun ramp(poly: List<LatLng>): ManeuverType {
+            val m = Maneuver(ManeuverType.MERGE, "Take the exit", poly[12], 100.0, 0.0, rawToken = "OFF_RAMP")
+            return DirectionsParser.resolveRampSides(listOf(m), poly).first().type
+        }
+        assertEquals(ManeuverType.RAMP_RIGHT, ramp(exitAt(0.0004)))   // peels off east of north
+        assertEquals(ManeuverType.RAMP_LEFT, ramp(exitAt(-0.0004)))   // peels off west of north
+        // Dead straight ahead: no direction to show, so the generic merge arrow is the honest symbol.
+        assertEquals(ManeuverType.MERGE, ramp(exitAt(0.0)))
+    }
+
+    @Test
+    fun `geometry never overrides a maneuver the feed already labelled or a real merge`() {
+        val approach = (0..12).map { LatLng(32.0 + it * 0.0003, 34.0) }
+        val poly = approach + (1..12).map { LatLng(32.0036 + it * 0.0002, 34.0 + it * 0.0004) }
+        // A MERGE token is a real merge even on curving geometry - only ramp/exit families are resolved.
+        val merge = Maneuver(ManeuverType.MERGE, "Merge", poly[12], 100.0, 0.0, rawToken = "MERGE")
+        assertEquals(ManeuverType.MERGE, DirectionsParser.resolveRampSides(listOf(merge), poly).first().type)
+        // An already-directed ramp keeps the side the feed gave it, whatever the geometry says.
+        val told = Maneuver(ManeuverType.RAMP_LEFT, "Exit left", poly[12], 100.0, 0.0, rawToken = "OFF_RAMP")
+        assertEquals(ManeuverType.RAMP_LEFT, DirectionsParser.resolveRampSides(listOf(told), poly).first().type)
+    }
+
     /** Exits: Google also sends the direction IN THE TOKEN ("OFF_RAMP_RIGHT") with no child
      *  `<turn side=>`. mapType read left/right ONLY from that child, so every such ramp fell to the
      *  lr() fallback - MERGE for ramps, STRAIGHT for forks/keeps - and EVERY EXIT CARD DREW THE SAME
