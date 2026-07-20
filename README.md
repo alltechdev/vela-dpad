@@ -16,20 +16,24 @@ A degoogled maps and navigation client for Android. Runs on GrapheneOS and other
 
 | Phone | Simulated size | Coverage (screenshots in [`tests/devices/`](tests/devices/)) |
 |---|---|---|
-| Kyocera e4810 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`kyocera-e4810/screenshots/full/`](tests/devices/kyocera-e4810/screenshots/full/)) |
-| Kyocera DuraXV | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`kyocera-duraxv/screenshots/full/`](tests/devices/kyocera-duraxv/screenshots/full/)) |
-| TCL Flip 2 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`tcl-flip-2/screenshots/full/`](tests/devices/tcl-flip-2/screenshots/full/)) |
-| Sonim XP3 (XP3800) | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`sonim-xp3/screenshots/full/`](tests/devices/sonim-xp3/screenshots/full/)) |
-| Sonim X320 (XP3 Plus 5G) | 480x854 @ 320 | **FULLY COVERED (20/20)** ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
-| Sonim X320 @ low density | 480x854 @ **225** | PARTIAL - declutter/Options/parking surfaces verified ([`sonim-x320/screenshots/full-dens225/`](tests/devices/sonim-x320/screenshots/full-dens225/)); full run pending |
-| Kyocera DuraXe e4830 | 240x320 @ **120** | PARTIAL - reported by a tester; Options→Layers verified at this density; full run pending |
+| Kyocera e4810 | 240x320 @ 160 | **FULLY COVERED (27/27)** ([`kyocera-e4810/screenshots/full/`](tests/devices/kyocera-e4810/screenshots/full/)) |
+| Kyocera DuraXV | 240x320 @ 160 | **FULLY COVERED (20/20)**, at the older 20-surface gate ([`kyocera-duraxv/screenshots/full/`](tests/devices/kyocera-duraxv/screenshots/full/)); re-run at 27 pending |
+| TCL Flip 2 | 240x320 @ 160 | **FULLY COVERED (20/20)**, at the older 20-surface gate ([`tcl-flip-2/screenshots/full/`](tests/devices/tcl-flip-2/screenshots/full/)); re-run at 27 pending |
+| Sonim XP3 (XP3800) | 240x320 @ 160 | **FULLY COVERED (20/20)**, at the older 20-surface gate ([`sonim-xp3/screenshots/full/`](tests/devices/sonim-xp3/screenshots/full/)); re-run at 27 pending |
+| Sonim X320 (XP3 Plus 5G) | 480x854 @ 320 | **FULLY COVERED (27/27)** ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
+| Sonim X320 @ low density | 480x854 @ **225** | **FULLY COVERED (27/27)** ([`sonim-x320-225/screenshots/full/`](tests/devices/sonim-x320-225/screenshots/full/)) |
+| Kyocera DuraXe e4830 | 240x320 @ **120** | **FULLY COVERED (27/27)** ([`kyocera-duraxe-e4830/screenshots/full/`](tests/devices/kyocera-duraxe-e4830/screenshots/full/)) |
 
-The 20 surfaces: first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay,
-results, place sheet (+ expanded), directions, route steps, Settings incl. the deep Voice-library /
-Offline / Saved-places sub-sections, voice search, and parking (saved spot, hub menu, parked-car
-sheet).
+The 27 surfaces: first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay,
+results, place sheet (+ expanded), Street View (+ its D-pad walk), directions, route steps, Settings
+incl. the deep Voice-library / Offline / Saved-places sub-sections, voice search, parking (saved
+spot, hub menu, parked-car sheet), and the soft-key surfaces (Options menu, Move-map and Zoom modes,
+the Layers panel, and the place Options menu).
 
-The five FULLY COVERED profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
+The restricted flavor is scored against 25 of those: it ships no Street View, so those two are marked
+n/a rather than counted as gaps.
+
+The FULLY COVERED profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
 surface at the device's geometry and prints **RESULT: FULLY COVERED (0 MISSED)** - the hard requirement
 for calling a device supported (see [`AGENTS.md`](AGENTS.md)). NOT yet in the gate: live turn-by-turn
 navigation cards and transit itineraries. **Real-hardware confirmation: none** - the geometry is
