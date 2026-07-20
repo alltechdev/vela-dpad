@@ -90,6 +90,12 @@ cover_one() {
     if [ "$reached" = 1 ]; then shot "$label"; covered=$((covered+1)); checklist="$checklist\n  COVERED  $label"
     else missed=$((missed+1)); checklist="$checklist\n  MISSED   $label"; fi
   }
+  # na <label> <why> - the surface DOES NOT EXIST in this build, so it is neither covered nor a gap.
+  # Without this, a flavor that legitimately drops a feature can never score FULLY COVERED: the
+  # restricted build has no Street View at all (its goldens have never contained a streetview frame),
+  # yet both restricted legs were reported "NOT fully covered - streetview MISSED". That is the
+  # harness scoring a build against a feature it does not ship.
+  na() { checklist="$checklist\n  n/a      $1  ($2)"; }
 
   # --- first-run (fresh install) -------------------------------------------------------------
   if phase firstrun; then i=0
@@ -139,6 +145,14 @@ cover_one() {
   # tap it, wait for the tile stitch + GL render, then D-pad look-around (OK engages, RIGHT pans).
   # NEEDS network (tile CDN) + a mock fix over a covered area; MISSED if the pill/render doesn't show.
   if phase streetview; then i=20
+  case "${VELA_PKG:-}" in
+    *restricted*)
+      # The restricted flavor ships no Street View (RESTRICTED_BUILD drops the pill and the screen),
+      # so there is nothing to reach - not a coverage gap. Skip, do not fail.
+      na "streetview" "not in the restricted build"
+      na "streetview-dpad" "not in the restricted build"
+      ;;
+    *)
   goto_map
   # long-press the map centre -> a reverse-geocoded pin sheet with Directions + Street View
   $ADB shell input swipe "$((SW/2))" "$((SH/3))" "$((SW/2))" "$((SH/3))" 800 >/dev/null 2>&1; sleep 3
@@ -152,6 +166,8 @@ cover_one() {
     key "$K_OK"; for _ in 1 2 3 4 5 6; do key "$K_RIGHT"; done; sleep 1; mark "streetview-dpad" 1
     key "$K_BACK" 1; key "$K_BACK" 1  # disengage, then close
   else mark "streetview" 0; mark "streetview-dpad" 0; fi
+      ;;
+  esac
   fi
 
   # --- directions + steps ---------------------------------------------------------------------
