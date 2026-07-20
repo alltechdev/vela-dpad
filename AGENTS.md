@@ -136,8 +136,14 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   change is correctly NOT applied there) and `DENS=<n>` (an ad-hoc density override).
     **HARD RULE - THE FULL VERIFICATION MATRIX, BEFORE EVERY FEATURE PR MERGES (added 2026-07-13
   after it was repeatedly forgotten - do not merge without ALL FOUR cells):**
-  1. **Both geometries** - 240x320@160 AND 480x854@320 (the rule above). The attached device's
-     native size is NOT a substitute.
+  1. **Every committed geometry** - DENSITY IS PART OF THE GEOMETRY. As of 2026-07-20 that is FOUR:
+     480x854 @320 and @225, 240x320 @160 and @120. The attached device's native size is NOT a
+     substitute. Cross that with both flavors and soft-keys on/off and the full product is 16 legs at
+     ~20 min each; TRIMMING IS ALLOWED BUT MUST BE REASONED AND STATED - flavor is a
+     feature-availability difference rather than a layout one, so restricted can run once per
+     screen-size class, and the touch layout does not vary with density beyond that. The round-2 pass
+     ran 9 legs on that basis and said so in the PR. What is NOT allowed is dropping a geometry from
+     the soft-keys-on legs: that is the axis the layout actually depends on.
   2. **D-pad walk-and-activate** - arrow TO each new interactive element and activate it with OK,
      confirming a visible focus ring and the state change. `audit_static.sh` passing is necessary
      but NOT sufficient - it proves the ring exists, not that the element is reachable/activatable.

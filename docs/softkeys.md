@@ -273,7 +273,15 @@ to fight for width forced "14 min" into an ellipsis.
   - D-pad gate met: end-to-end on a physical keypad+touch phone (M5, 480x640) - every contextual
     surface, the nav Options menu with Mute toggling to Unmute live, Start begins the drive,
     Choose-on-map sets the point, and a `VelaDialog` hides the bar while up.
-  - Full coverage matrix at 240x320 and 480x854, standard AND restricted (10/10, no touch regression).
+  - Full coverage matrix, re-run for the round-2 pass (2026-07-20) on the FOUR committed geometries:
+    480x854 @320 and @225, 240x320 @160 and @120. All four standard legs **27/27**; both restricted
+    legs **25/25** (Street View is n/a in that flavor). That graduated sonim-x320-225 and
+    kyocera-duraxe-e4830 from PARTIAL to FULLY COVERED.
+  - The soft-keys-OFF (touch) legs are NOT a clean pass and must not be quoted as one: they miss the
+    four first-run dialogs plus directions/route-steps, because those harness phases advance the UI
+    with D-pad OK, which correctly does nothing when nothing is focused in touch. The app itself was
+    verified by hand in touch (scroll reveals "Get started", tapping it advances). Harness gap, not an
+    app regression - see Gotchas 7.
 
 ## Rollout status
 
