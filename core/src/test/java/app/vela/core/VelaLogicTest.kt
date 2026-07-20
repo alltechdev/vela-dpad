@@ -802,6 +802,29 @@ class DirectionsManeuverTest {
         assertEquals(ManeuverType.MERGE, ramp(exitAt(0.0)))
     }
 
+    /** A direction-less KEEP is a keep-left/right and a FORK is a fork-left/right - resolving all three
+     *  families to a RAMP put a motorway slip-road arrow on "keep left". */
+    @Test
+    fun `geometry resolves each maneuver inside its own family`() {
+        val approach = (0..12).map { LatLng(32.0 + it * 0.0003, 34.0) }
+        fun poly(dLng: Double) = approach + (1..12).map { LatLng(32.0036 + it * 0.0002, 34.0 + it * dLng) }
+        fun resolve(token: String, dLng: Double): ManeuverType {
+            val p = poly(dLng)
+            val m = Maneuver(
+                if (token == "OFF_RAMP") ManeuverType.MERGE else ManeuverType.STRAIGHT,
+                "step", p[12], 100.0, 0.0, rawToken = token,
+            )
+            return DirectionsParser.resolveRampSides(listOf(m), p).first().type
+        }
+        assertEquals(ManeuverType.RAMP_RIGHT, resolve("OFF_RAMP", 0.0004))
+        assertEquals(ManeuverType.KEEP_LEFT, resolve("KEEP", -0.0004))
+        assertEquals(ManeuverType.KEEP_RIGHT, resolve("KEEP", 0.0004))
+        assertEquals(ManeuverType.FORK_LEFT, resolve("FORK", -0.0004))
+        assertEquals(ManeuverType.FORK_RIGHT, resolve("FORK", 0.0004))
+        // A token outside these families is never re-typed, whatever the geometry does.
+        assertEquals(ManeuverType.STRAIGHT, resolve("NAME_CHANGE", 0.0004))
+    }
+
     @Test
     fun `geometry never overrides a maneuver the feed already labelled or a real merge`() {
         val approach = (0..12).map { LatLng(32.0 + it * 0.0003, 34.0) }

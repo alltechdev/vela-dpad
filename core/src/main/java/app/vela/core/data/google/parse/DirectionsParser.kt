@@ -248,11 +248,6 @@ object DirectionsParser {
         }.let { resolveRampSides(it, polyline) }
     }
 
-    /** Ramp/exit families that carry a direction when the feed bothers to send one. A bare token from
-     * this set with no `<turn side=>` is a maneuver whose direction we are EXPECTED to show but were
-     * not told - the case [resolveRampSides] recovers from geometry. */
-    private val RAMP_TOKENS = setOf("ON_RAMP", "OFF_RAMP", "RAMP", "FORK", "KEEP")
-
     /**
      * Give direction-less ramps and exits their left/right from the ROUTE GEOMETRY.
      *
@@ -277,27 +272,46 @@ object DirectionsParser {
         if (polyline.size < 2) return maneuvers
         return maneuvers.map { m ->
             val undirected = m.type == ManeuverType.MERGE || m.type == ManeuverType.STRAIGHT
-            if (!undirected || m.rawToken?.uppercase() !in RAMP_TOKENS) return@map m
-            val delta = headingChange(polyline, m.location) ?: return@map m
+            if (!undirected) return@map m
+            // Resolve INSIDE the token's own family: a direction-less KEEP is a keep-left/right and a
+            // FORK is a fork-left/right, NOT a motorway ramp. Sharing one ramp result across all three
+            // drew a slip-road arrow on "keep left" - a different maneuver wearing the wrong symbol,
+            // which is the very complaint this pass exists to fix.
+            val (leftType, rightType) = when (m.rawToken?.uppercase()) {
+                "ON_RAMP", "OFF_RAMP", "RAMP" -> ManeuverType.RAMP_LEFT to ManeuverType.RAMP_RIGHT
+                "FORK" -> ManeuverType.FORK_LEFT to ManeuverType.FORK_RIGHT
+                "KEEP" -> ManeuverType.KEEP_LEFT to ManeuverType.KEEP_RIGHT
+                else -> return@map m
+            }
+            // Measure at two sampling distances and only believe an AGREEING pair. Maneuvers are placed
+            // by fraction-of-step-total, and per placeManeuvers the step metres and the decoded geometry
+            // can disagree a lot - a drifted point would otherwise be read off the wrong bend and drawn
+            // as a confident arrow pointing the wrong way, which is worse than the generic symbol it
+            // replaces. Disagreement (or a route too short to sample) keeps the honest fallback.
+            val near = headingChange(polyline, m.location, RAMP_SAMPLE_M) ?: return@map m
+            val far = headingChange(polyline, m.location, RAMP_SAMPLE_FAR_M) ?: return@map m
+            val agree = (near >= RAMP_MIN_DEG && far >= RAMP_MIN_DEG) ||
+                (near <= -RAMP_MIN_DEG && far <= -RAMP_MIN_DEG)
             when {
-                delta >= RAMP_MIN_DEG -> m.copy(type = ManeuverType.RAMP_RIGHT)
-                delta <= -RAMP_MIN_DEG -> m.copy(type = ManeuverType.RAMP_LEFT)
-                else -> m
+                !agree -> m
+                near > 0 -> m.copy(type = rightType)
+                else -> m.copy(type = leftType)
             }
         }
     }
 
     private const val RAMP_SAMPLE_M = 60.0
+    private const val RAMP_SAMPLE_FAR_M = 110.0
     private const val RAMP_MIN_DEG = 12.0
 
     /** Signed heading change at [at] along [poly], in degrees: positive right, negative left. Null when
      * the point sits too close to either end of the route to sample both sides. */
-    private fun headingChange(poly: List<LatLng>, at: LatLng): Double? {
+    private fun headingChange(poly: List<LatLng>, at: LatLng, sample: Double): Double? {
         var best = 0
         var bestD = Double.MAX_VALUE
         poly.forEachIndexed { i, p -> val d = p.distanceTo(at); if (d < bestD) { bestD = d; best = i } }
-        val before = walk(poly, best, -RAMP_SAMPLE_M) ?: return null
-        val after = walk(poly, best, RAMP_SAMPLE_M) ?: return null
+        val before = walk(poly, best, -sample) ?: return null
+        val after = walk(poly, best, sample) ?: return null
         val inBearing = bearing(before, poly[best])
         val outBearing = bearing(poly[best], after)
         var d = outBearing - inBearing
