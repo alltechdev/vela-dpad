@@ -73,7 +73,6 @@ import app.vela.ui.formatDistance
 import app.vela.ui.formatDuration
 import app.vela.ui.theme.isAppInDarkTheme
 // D-pad-only operation (docs/dpad.md) - one import block so upstream merges stay clean.
-import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -118,6 +117,10 @@ fun ManeuverBanner(
     onPreviewNext: () -> Unit = {},
     onPreviewPrev: () -> Unit = {},
     onExitPreview: () -> Unit = {},
+    // Activating the card opens the full step list, the way tapping the banner does in Google Maps.
+    // It used to be actionable ONLY while previewing (OK resumed live guidance), so during a normal
+    // drive pressing OK on the highlighted card did nothing at all (issue #79, @SILB).
+    onOpenSteps: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Swiping the banner left/right walks the upcoming steps (Google-style): the
@@ -179,8 +182,8 @@ fun ManeuverBanner(
             // D-pad step preview (docs/dpad.md): focus the banner, then LEFT/RIGHT walk the
             // upcoming steps (the key mirror of the swipe above); OK resumes live guidance
             // (via the clickable below while previewing). Placed BEFORE the clickable so key
-            // events bubbling up from its focus target reach this handler; the extra
-            // focusable() only exists when the clickable isn't there (one focus stop always).
+            // events bubbling up from its focus target reach this handler. The card is always
+            // clickable (below), so it is exactly ONE focus stop either way.
             .dpadHighlight(RoundedCornerShape(12.dp))
             .onKeyEvent { ev ->
                 val previewKey = ev.key == Key.DirectionLeft || ev.key == Key.DirectionRight
@@ -191,9 +194,9 @@ fun ManeuverBanner(
                     else -> { latestPrev(); true }
                 }
             }
-            .then(
-                if (previewing) Modifier.clickable(onClick = onExitPreview) else Modifier.focusable(),
-            ),
+            // Always clickable, so the card is exactly ONE focus stop either way: while previewing OK
+            // resumes live guidance, otherwise it opens the steps.
+            .clickable(onClick = if (previewing) onExitPreview else onOpenSteps),
         // Softer, more current shape than the stock card: big radius + a real shadow so the
         // banner floats over the map instead of sitting on it like a toolbar.
         shape = RoundedCornerShape(if (compact) 16.dp else 24.dp),

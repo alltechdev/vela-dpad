@@ -44,6 +44,25 @@ def has(regex, ln): return regex.search(code_of(ln)) is not None
 RING_REQUIRED = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable|dpadClickable)\s*[({]')
 CLICKISH = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable|dpadClickable)\s*[({]')
 FOCUSABLE = re.compile(r'\.focusable\s*\(')
+# Material BUTTON/CHIP COMPOSABLES. The ring rule above only ever matched interactive MODIFIERS
+# (.clickable/.toggleable/...), so a Material button - a composable, not a modifier - was invisible
+# to this auditor. That is how 39 of 41 Settings buttons ended up with no focus ring at all and
+# nothing failed (issue #79, @SILB: "some buttons in settings don't get orange outline").
+BUTTONISH = re.compile(r'\b(OutlinedButton|FilledTonalButton|ElevatedButton|TextButton|Button|'
+                       r'IconButton|FilledIconButton|FilledTonalIconButton|OutlinedIconButton|'
+                       r'FilterChip|AssistChip|ElevatedAssistChip|ElevatedFilterChip|SuggestionChip)\s*\(')
+# Anything that gives a control a visible focus ring or hands it a focus identity.
+RINGY = ('dpadHighlight(', 'DpadRingBox(', 'dpadAutoFocus(', 'dpadRowSibling(', 'dpadFocusKept(',
+         'dpadModeAutoFocus(', 'VelaSwitch(')
+
+def button_has_ring(lines, idx):
+    """A ring may sit on the button's own modifier, or on a DpadRingBox wrapping it a line or two
+    above. Look a little way either side rather than only forward."""
+    # A Material call can carry a long argument list with the modifier well below the opening line
+    # (the Settings back button's ring sits ~9 lines down), so look generously forward.
+    lo, hi = max(0, idx - 3), min(len(lines), idx + 16)
+    window = '\n'.join(code_of(l) for l in lines[lo:hi])
+    return any(tok in window for tok in RINGY)
 # Scan the Modifier chain backwards for a ring, stopping at a different focus target / declaration.
 def chain_has_ring(lines, idx):
     for j in range(idx, max(idx - 26, -1), -1):
@@ -102,6 +121,13 @@ RE_WEAK_AF  = re.compile(r'\brememberDpadAutoFocus\s*\(')
 RE_DLG_SAFE = re.compile(r'verticalScroll|LazyColumn|LazyVerticalGrid|HorizontalPager|VerticalPager|fillMaxSize|fillMaxHeight')
 # Files allowed to host a raw Dialog/Popup (the sanctioned auto-focus seams + full-screen viewers).
 RAW_OK = {"VelaMenu.kt", "VelaDialog.kt", "PlaceSheet.kt", "ReviewsPanel.kt"}
+# Buttons here sit inside a VelaDialog/VelaMenu, which auto-focuses its own dismiss and answers BACK,
+# so they do not each need a ring of their own.
+BUTTON_RING_EXEMPT = {"VelaDialog.kt", "VelaMenu.kt", "VoiceCaptureDialog.kt", "WelcomeScreen.kt"}
+# Files whose buttons have been swept for rings. A missing ring in one of these is a HARD FAILURE, so
+# the fix cannot regress; everywhere else it is surfaced as a CHECK until that file is swept too.
+# Move a filename in here the moment its sweep lands - the set is meant to grow until it is all of them.
+BUTTON_RING_SWEPT = {"SettingsScreen.kt"}
 scanned = 0
 
 for path in walk():
@@ -126,6 +152,16 @@ for path in walk():
                 if verbose: oknote.append(f"ring {name}:{n}")
             else:
                 viol.append(("MED", f"{name}:{n}", "clickable/toggleable/selectable with no .dpadHighlight (invisible focus)"))
+        # D2. Material button/chip composable with no ring anywhere near it. Material's own focus
+        # indication is NOT adequate here (teal-on-teal invisible switches, rings drawn around the
+        # 48dp touch target) - that is the whole reason dpadHighlight/DpadRingBox exist.
+        if has(BUTTONISH, ln) and not re.search(r'\bfun\s', code_of(ln)) and not button_has_ring(lines, i):
+            if base in BUTTON_RING_EXEMPT:
+                if verbose: oknote.append(f"btn-exempt {name}:{n}")
+            elif base in BUTTON_RING_SWEPT:
+                viol.append(("MED", f"{name}:{n}", "Material button/chip with no focus ring (dpadHighlight / DpadRingBox)"))
+            else:
+                check.append(("btnring", f"{name}:{n}", "Material button/chip with no focus ring - file not swept yet (issue #79); add it to BUTTON_RING_SWEPT once done and this becomes a hard failure"))
         # E. gesture modifier with no key alternative nearby
         if has(GESTURE, ln):
             if near_keypath(lines, i):

@@ -504,6 +504,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                         label = { Text(label) },
                         shape = androidx.compose.foundation.shape.CircleShape,
                         modifier = Modifier
+                            .dpadHighlight(androidx.compose.foundation.shape.CircleShape)
                             .focusRequester(chipFocus[i])
                             .onKeyEvent { ev ->
                                 if (ev.key == Key.DirectionRight || ev.key == Key.DirectionLeft) {
@@ -814,6 +815,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             var offlineAddrCount by remember { mutableStateOf(-1) }
             LaunchedEffect(Unit) { vm.offlineAddressCount { offlineAddrCount = it } }
             OutlinedButton(
+                modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
                 onClick = {
                     vm.downloadViewport()
                     onBack() // back to the map so the user sees the download progress
@@ -834,7 +836,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = { OfflineMaps.delete(r) { OfflineMaps.list(context) { regions = it } } }) {
+                        IconButton(modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape), onClick = { OfflineMaps.delete(r) { OfflineMaps.list(context) { regions = it } } }) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_offline_delete_area))
                         }
                     }
@@ -859,7 +861,9 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                                 vm.refreshOfflineDataForSavedAreas()
                                 onBack() // back to the map to watch the per-area progress
                             },
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier
+                                .dpadHighlight(androidx.compose.material3.ButtonDefaults.outlinedShape)
+                                .padding(top = 8.dp),
                         ) { Text(stringResource(R.string.settings_offline_addresses_update)) }
                     }
                 }
@@ -898,7 +902,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                         trailingIcon = {
                             if (routeFilter.isNotEmpty()) {
-                                IconButton(onClick = { routeFilter = "" }) {
+                                IconButton(modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape), onClick = { routeFilter = "" }) {
                                     Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.settings_clear_filter))
                                 }
                             }
@@ -1064,15 +1068,17 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                 )
             }
             if (state.diagnosticsEnabled) {
-                OutlinedButton(onClick = {
-                    val intent = vm.diagShareIntent()
-                    if (intent != null) runCatching { context.startActivity(intent) }
-                    else android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.settings_diag_nothing),
-                        android.widget.Toast.LENGTH_SHORT,
-                    ).show()
-                }) { Text(stringResource(R.string.settings_diag_export)) }
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
+                    OutlinedButton(onClick = {
+                        val intent = vm.diagShareIntent()
+                        if (intent != null) runCatching { context.startActivity(intent) }
+                        else android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.settings_diag_nothing),
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }) { Text(stringResource(R.string.settings_diag_export)) }
+                }
             }
 
             // Compatibility (TextureView) rendering - a hardware escape hatch (port of upstream
@@ -1137,7 +1143,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                             if (intent != null) runCatching { context.startActivity(intent) }
                             else android.widget.Toast.makeText(context, context.getString(R.string.settings_trip_read_error), android.widget.Toast.LENGTH_SHORT).show()
                         }) { Text(stringResource(R.string.settings_trip_share)) }
-                        IconButton(onClick = { vm.deleteTrip(t.id); trips = vm.recordedTrips() }) {
+                        IconButton(modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape), onClick = { vm.deleteTrip(t.id); trips = vm.recordedTrips() }) {
                             Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.settings_trip_delete))
                         }
                     }
@@ -1161,14 +1167,28 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             if (crashReports.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 Hint(stringResource(R.string.settings_crash_hint))
+                // Settings swallows bare LEFT/RIGHT (a no-target horizontal move would CLEAR focus),
+                // so a Row of buttons needs explicit sibling wiring or only the first is ever
+                // reachable - the same trap the update buttons had (issue #79, @SILB).
+                val crashFocus = remember { List(2) { FocusRequester() } }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = {
-                        app.vela.diag.CrashCatcher.shareIntent(context)?.let { runCatching { context.startActivity(it) } }
-                    }) { Text(stringResource(R.string.settings_crash_export)) }
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
+                        OutlinedButton(
+                            modifier = Modifier.dpadRowSibling(crashFocus, 0),
+                            onClick = {
+                                app.vela.diag.CrashCatcher.shareIntent(context)?.let { runCatching { context.startActivity(it) } }
+                            },
+                        ) { Text(stringResource(R.string.settings_crash_export)) }
+                    }
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = {
-                        app.vela.diag.CrashCatcher.clear(context); crashReports = emptyList()
-                    }) { Text(stringResource(R.string.settings_crash_discard)) }
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+                        TextButton(
+                            modifier = Modifier.dpadRowSibling(crashFocus, 1),
+                            onClick = {
+                                app.vela.diag.CrashCatcher.clear(context); crashReports = emptyList()
+                            },
+                        ) { Text(stringResource(R.string.settings_crash_discard)) }
+                    }
                 }
             }
             if (showDiagConsent) {
@@ -1191,6 +1211,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             Hint(stringResource(R.string.settings_support_hint))
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
+                modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
                 onClick = {
                     runCatching {
                         app.vela.ui.ExternalLinks.open(context, Onboarding.DONATE_URL)
@@ -1243,19 +1264,22 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                } ?: Row(Modifier.padding(vertical = 4.dp)) {
+                } ?: run {
+                val updFocus = remember { List(2) { FocusRequester() } }
+                Row(Modifier.padding(vertical = 4.dp)) {
                     // D-pad (issue #65): these were plain Material buttons with no visible focus ring,
                     // so a keypad user couldn't SEE the update button highlighted. dpadHighlight gives
                     // them the fork's focus ring, like the map UpdateCard already has. The ring shape
                     // MUST match each button's OWN shape - CircleShape drew a circle over a pill (tester
                     // report), so pass the matching ButtonDefaults shape per button type.
                     DpadRingBox(androidx.compose.material3.ButtonDefaults.shape) {
-                        Button(onClick = { vm.downloadUpdate() }) { Text(stringResource(R.string.update_install)) }
+                        Button(modifier = Modifier.dpadRowSibling(updFocus, 0), onClick = { vm.downloadUpdate() }) { Text(stringResource(R.string.update_install)) }
                     }
                     Spacer(Modifier.width(8.dp))
                     DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
-                        TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }) { Text(stringResource(R.string.update_later)) }
+                        TextButton(modifier = Modifier.dpadRowSibling(updFocus, 1), onClick = { vm.dismissUpdate(); updateStatus = null }) { Text(stringResource(R.string.update_later)) }
                     }
+                }
                 }
             } ?: DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
                 OutlinedButton(
@@ -1463,7 +1487,7 @@ private fun VoiceLibrary(vm: MapViewModel, state: MapUiState) {
                     )
                 }
                 if (query.isBlank() && group.size > limit) {
-                    TextButton(onClick = { langShowAll[lang] = !showAll }) {
+                    TextButton(modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.textShape), onClick = { langShowAll[lang] = !showAll }) {
                         Text(
                             if (showAll) stringResource(R.string.settings_voice_show_less)
                             else stringResource(R.string.settings_voice_show_more, group.size - limit),

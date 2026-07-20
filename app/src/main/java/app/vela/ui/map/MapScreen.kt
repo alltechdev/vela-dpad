@@ -618,6 +618,9 @@ fun MapScreen(
             state.arrived -> vm.finishNav()
             // In-nav search: BACK peels the results list / the chip row before it can end the
             // whole drive - ending nav because you browsed gas stations would be brutal.
+            // BACK out of move-map/zoom BEFORE it can end the drive: the disengage case above is
+            // gated !navigating, so a driver who engaged the map had no way back except stopping nav.
+            state.navigating && mapEngaged -> { mapEngaged = false; mapZoomMode = false }
             state.navigating && state.results.isNotEmpty() -> vm.clearSearch()
             state.navigating && navSearchOpen -> { navSearchOpen = false; focusManager.clearFocus() }
             state.navigating -> vm.stopNav()
@@ -638,9 +641,14 @@ fun MapScreen(
     // pannable (arrows) so the user can position the pin, so the map target stays active even
     // though directionsOpen is still true underneath (measured: without this, arrows only
     // moved focus to the cancel X and the pin couldn't be moved). OK then confirms the pick.
+    // NB `directionsOpen` and `selected` survive into the drive - launchNav never clears them - so
+    // they used to hide the target for the whole of navigation, and Options -> "Move map" then had
+    // NOTHING to focus: the arrows stayed on the banner and walked its step preview ("it moves the
+    // card"), while mapEngaged had already been set, leaving the mode stuck (issue #79, @SILB).
+    // While navigating only a surface that really owns focus hides the target.
     val mapTargetHidden = state.pickOnMap == null && (
-        searchOpen || state.selected != null || state.directionsOpen ||
-            state.showSteps || state.arrived ||
+        searchOpen || state.showSteps || state.arrived ||
+            (!state.navigating && (state.selected != null || state.directionsOpen)) ||
             (state.results.isNotEmpty() && !state.resultsCollapsed && state.selected == null)
         )
     // Reset engagement the moment a panel takes over (the target unmounts under it).
@@ -1100,6 +1108,7 @@ fun MapScreen(
                 onPreviewNext = { vm.previewStep((shownIdx + 1).coerceAtMost(mans?.lastIndex ?: liveStep)) },
                 onPreviewPrev = { if (shownIdx - 1 <= liveStep) vm.clearPreview() else vm.previewStep(shownIdx - 1) },
                 onExitPreview = vm::clearPreview,
+                onOpenSteps = vm::openSteps,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
