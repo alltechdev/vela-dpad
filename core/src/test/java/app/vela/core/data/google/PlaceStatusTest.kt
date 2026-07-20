@@ -7,18 +7,44 @@ import org.junit.Test
 /**
  * The open/closed boolean drives the status COLOUR (RatingStars.placeStatusColor paints
  * openNow==true green before it even looks at the text), so a false "open" literally paints a
- * closed place green - the field bug: a closed Starbucks rendered green ("the starbucks i am
+ * closed place green — the field bug: a closed Starbucks rendered green ("the starbucks i am
  * looking at is closed but it shows green"). Two dead mechanisms, both pinned here:
  *
  * 1. `startsWith("Open")` swallowed "Opens 5 AM" (a CLOSED place's bare status) → open.
  * 2. The numeric "status codes" pinned from a French capture (6/5/13) turned out NOT to be
- * open/closed codes at all - a live EN capture (2026-07-04) showed closed pharmacies carrying
- * 6 ("open") and an Open-24-hours business carrying 13/4 ("closed"). The code path is gone;
- * the DISPLAYED TEXT, matched per request language, is authoritative.
+ *    open/closed codes at all — a live EN capture (2026-07-04) showed closed pharmacies carrying
+ *    6 ("open") and an Open-24-hours business carrying 13/4 ("closed"). The code path is gone;
+ *    the DISPLAYED TEXT, matched per request language, is authoritative.
  *
- * Invariant: open can only come from an AFFIRMATIVE match - no match → null, never open.
+ * Invariant: open can only come from an AFFIRMATIVE match — no match → null, never open.
  */
 class PlaceStatusTest {
+
+    @Test fun `chinese - both scripts parse, closed words win first`() {
+        assertEquals(false, SearchParser.parseOpenNow("已打烊 ⋅ 明天09:00开始营业", "zh"))
+        assertEquals(false, SearchParser.parseOpenNow("已打烊 ⋅ 明天09:00開始營業", "zh"))
+        assertEquals(false, SearchParser.parseOpenNow("暂停营业", "zh"))
+        assertEquals(true, SearchParser.parseOpenNow("营业中 ⋅ 22:00打烊", "zh"))
+        assertEquals(true, SearchParser.parseOpenNow("營業中 ⋅ 營業至22:00", "zh"))
+    }
+
+    @Test fun `japanese - closed words win first`() {
+        assertEquals(false, SearchParser.parseOpenNow("営業時間外 ⋅ 営業開始: 9:00", "ja"))
+        assertEquals(false, SearchParser.parseOpenNow("臨時休業", "ja"))
+        assertEquals(true, SearchParser.parseOpenNow("営業中 ⋅ 営業終了: 22:00", "ja"))
+    }
+
+    @Test fun `hebrew - the-place prefix matches (field bug - every il status began with hamakom)`() {
+        // Live diag 2026-07-19: Google prefixes Hebrew statuses with "המקום" ("the place"), so
+        // bare "סגור"/"פתוח" never startsWith-matched and every Hebrew place showed no colour.
+        assertEquals(false, SearchParser.parseOpenNow("המקום סגור · ייפתח ביום יום א׳ בשעה 6:30", "he"))
+        assertEquals(false, SearchParser.parseOpenNow("המקום סגור", "iw"))
+        assertEquals(true, SearchParser.parseOpenNow("המקום פתוח · נסגר בשעה 22:00", "he"))
+        assertEquals(true, SearchParser.parseOpenNow("המקום פתוח", "iw"))
+        // Un-prefixed forms keep working (closed-first invariant intact).
+        assertEquals(false, SearchParser.parseOpenNow("סגור · ייפתח בשעה 8:00", "he"))
+        assertEquals(true, SearchParser.parseOpenNow("פתוח · נסגר בשעה 22:00", "he"))
+    }
 
     @Test fun `english - Opens-prefixed statuses are CLOSED, not swallowed by the Open prefix`() {
         assertEquals(false, SearchParser.parseOpenNow("Opens 5 AM", "en"))
@@ -45,8 +71,8 @@ class PlaceStatusTest {
     }
 
     /** Owner-set temporary closure → first-class flag (the place-sheet banner + hours suppression;
-     * the "Tee Sud" resilience ask - when the owner DOES tell Google, Vela must be loud about it).
-     * Multilingual CONTAINS matching: several languages put the closed word first. */
+     *  the temp-closure resilience ask — when the owner DOES tell Google, Vela must be loud about it).
+     *  Multilingual CONTAINS matching: several languages put the closed word first. */
     @Test fun `temporary closure is detected across languages, and only when present`() {
         assertEquals(true, SearchParser.isTemporarilyClosed("Temporarily closed"))
         assertEquals(true, SearchParser.isTemporarilyClosed(null, "Temporarily closed")) // any status slot
@@ -60,7 +86,7 @@ class PlaceStatusTest {
     }
 
     @Test fun `localized - closed-first ordering disarms every prefix-cousin collision`() {
-        // pt: "Fechado" (closed) is a PREFIX-EXTENSION of "Fecha" (closes → open) - closed wins.
+        // pt: "Fechado" (closed) is a PREFIX-EXTENSION of "Fecha" (closes → open) — closed wins.
         assertEquals(false, SearchParser.parseOpenNow("Fechado ⋅ Abre às 9:00", "pt"))
         assertEquals(true, SearchParser.parseOpenNow("Fecha às 19:00", "pt"))
         assertEquals(true, SearchParser.parseOpenNow("Aberto ⋅ Fecha às 19:00", "pt"))
@@ -68,7 +94,7 @@ class PlaceStatusTest {
         assertEquals(false, SearchParser.parseOpenNow("Opent om 09:00", "nl"))
         assertEquals(true, SearchParser.parseOpenNow("Open ⋅ Sluit om 19:00", "nl"))
         assertEquals(true, SearchParser.parseOpenNow("Geopend ⋅ Sluit om 19:00", "nl"))
-        // fr: "Ouvre à 07:00" (closed) must not be swallowed by "Ouvert" (open) - and the accent
+        // fr: "Ouvre à 07:00" (closed) must not be swallowed by "Ouvert" (open) — and the accent
         // keeps "Fermé" (closed) distinct from "Ferme à" (closes → open).
         assertEquals(false, SearchParser.parseOpenNow("Ouvre à 07:00", "fr"))
         assertEquals(false, SearchParser.parseOpenNow("Fermé ⋅ Ouvre à 07:00", "fr"))
@@ -91,6 +117,8 @@ class PlaceStatusTest {
         assertEquals(false, SearchParser.parseOpenNow("Stängt ⋅ Öppnar 09:00", "sv"))
         assertEquals(true, SearchParser.parseOpenNow("Відчинено ⋅ Зачиняється о 19:00", "uk"))
         assertEquals(false, SearchParser.parseOpenNow("Зачинено ⋅ Відчиниться о 09:00", "uk"))
+        assertEquals(true, SearchParser.parseOpenNow("פתוח ⋅ נסגר ב-19:00", "iw"))
+        assertEquals(false, SearchParser.parseOpenNow("סגור ⋅ נפתח ב-09:00", "iw"))
     }
 
     @Test fun `unknown language falls back to the english table, never to open`() {
@@ -98,31 +126,13 @@ class PlaceStatusTest {
         // reads via the English table, but non-Latin status text that table can't match returns null
         // rather than a guess. (zh/ja now HAVE tables, so they are no longer the untranslated case.)
         assertEquals(true, SearchParser.parseOpenNow("Open ⋅ Closes 7 PM", "th"))
-        assertEquals(null, SearchParser.parseOpenNow("เปิด", "th"))
-    }
-
-    @Test fun `chinese - both scripts parse, closed words win first`() {
-        assertEquals(false, SearchParser.parseOpenNow("已打烊 ⋅ 明天09:00开始营业", "zh"))
-        assertEquals(false, SearchParser.parseOpenNow("已打烊 ⋅ 明天09:00開始營業", "zh"))
-        assertEquals(false, SearchParser.parseOpenNow("暂停营业", "zh"))
-        assertEquals(true, SearchParser.parseOpenNow("营业中 ⋅ 22:00打烊", "zh"))
-        assertEquals(true, SearchParser.parseOpenNow("營業中 ⋅ 營業至22:00", "zh"))
-    }
-
-    @Test fun `japanese - closed words win first`() {
-        assertEquals(false, SearchParser.parseOpenNow("営業時間外 ⋅ 営業開始: 9:00", "ja"))
-        assertEquals(false, SearchParser.parseOpenNow("臨時休業", "ja"))
-        assertEquals(true, SearchParser.parseOpenNow("営業中 ⋅ 営業終了: 22:00", "ja"))
-    }
-
-    @Test fun `hebrew - closed words win first`() {
-        assertEquals(true, SearchParser.parseOpenNow("פתוח ⋅ נסגר ב-19:00", "iw"))
-        assertEquals(false, SearchParser.parseOpenNow("סגור ⋅ נפתח ב-09:00", "iw"))
+        assertEquals(null, SearchParser.parseOpenNow("営業中", "th"))
     }
 
     /** STATUS_LANGS gates GoogleMapsDataSource.localized()'s hl= rewrite: the scrape may only ask
-     * Google for status text in a language parseOpenNow can read, else openNow is always null and
-     * the UI can't colour open/closed. It MUST equal the shipped keyword-table languages (11). */
+     *  Google for status text in a language parseOpenNow can read, else openNow is always null and
+     *  the UI can't colour open/closed. It MUST equal the shipped keyword-table languages (Hebrew
+     *  is keyed under both "iw" and "he"). */
     @Test fun `STATUS_LANGS covers exactly the shipped status-table languages`() {
         val expected = setOf("en", "fr", "de", "es", "it", "pt", "nl", "ru", "pl", "sv", "uk", "zh", "ja", "iw", "he")
         assertEquals(expected, SearchParser.STATUS_LANGS)
