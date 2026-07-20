@@ -18,6 +18,8 @@ kyocera-duraxv|240x320|160
 tcl-flip-2|240x320|160
 sonim-xp3|240x320|160
 sonim-x320|480x854|320
+sonim-x320-225|480x854|225
+kyocera-duraxe-e4830|240x320|120
 "
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

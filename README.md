@@ -16,18 +16,24 @@ A degoogled maps and navigation client for Android. Runs on GrapheneOS and other
 
 | Phone | Simulated size | Coverage (screenshots in [`tests/devices/`](tests/devices/)) |
 |---|---|---|
-| Kyocera e4810 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`kyocera-e4810/screenshots/full/`](tests/devices/kyocera-e4810/screenshots/full/)) |
-| Kyocera DuraXV | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`kyocera-duraxv/screenshots/full/`](tests/devices/kyocera-duraxv/screenshots/full/)) |
-| TCL Flip 2 | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`tcl-flip-2/screenshots/full/`](tests/devices/tcl-flip-2/screenshots/full/)) |
-| Sonim XP3 (XP3800) | 240x320 @ 160 | **FULLY COVERED (20/20)** ([`sonim-xp3/screenshots/full/`](tests/devices/sonim-xp3/screenshots/full/)) |
-| Sonim X320 (XP3 Plus 5G) | 480x854 @ 320 | **FULLY COVERED (20/20)** ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
+| Kyocera e4810 | 240x320 @ 160 | **FULLY COVERED (27/27)** ([`kyocera-e4810/screenshots/full/`](tests/devices/kyocera-e4810/screenshots/full/)) |
+| Kyocera DuraXV | 240x320 @ 160 | **FULLY COVERED (20/20)**, at the older 20-surface gate ([`kyocera-duraxv/screenshots/full/`](tests/devices/kyocera-duraxv/screenshots/full/)); re-run at 27 pending |
+| TCL Flip 2 | 240x320 @ 160 | **FULLY COVERED (20/20)**, at the older 20-surface gate ([`tcl-flip-2/screenshots/full/`](tests/devices/tcl-flip-2/screenshots/full/)); re-run at 27 pending |
+| Sonim XP3 (XP3800) | 240x320 @ 160 | **FULLY COVERED (20/20)**, at the older 20-surface gate ([`sonim-xp3/screenshots/full/`](tests/devices/sonim-xp3/screenshots/full/)); re-run at 27 pending |
+| Sonim X320 (XP3 Plus 5G) | 480x854 @ 320 | **FULLY COVERED (27/27)** ([`sonim-x320/screenshots/full/`](tests/devices/sonim-x320/screenshots/full/)) |
+| Sonim X320 @ low density | 480x854 @ **225** | **FULLY COVERED (27/27)** ([`sonim-x320-225/screenshots/full/`](tests/devices/sonim-x320-225/screenshots/full/)) |
+| Kyocera DuraXe e4830 | 240x320 @ **120** | **FULLY COVERED (27/27)** ([`kyocera-duraxe-e4830/screenshots/full/`](tests/devices/kyocera-duraxe-e4830/screenshots/full/)) |
 
-The 20 surfaces: first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay,
-results, place sheet (+ expanded), directions, route steps, Settings incl. the deep Voice-library /
-Offline / Saved-places sub-sections, voice search, and parking (saved spot, hub menu, parked-car
-sheet).
+The 27 surfaces: first-run (Welcome + voice/offline/consent dialogs), bare map, search overlay,
+results, place sheet (+ expanded), Street View (+ its D-pad walk), directions, route steps, Settings
+incl. the deep Voice-library / Offline / Saved-places sub-sections, voice search, parking (saved
+spot, hub menu, parked-car sheet), and the soft-key surfaces (Options menu, Move-map and Zoom modes,
+the Layers panel, and the place Options menu).
 
-All five profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
+The restricted flavor is scored against 25 of those: it ships no Street View, so those two are marked
+n/a rather than counted as gaps.
+
+The FULLY COVERED profiles pass the full-coverage gate: `bash tests/devices/full_coverage.sh <device-id>` drives every
 surface at the device's geometry and prints **RESULT: FULLY COVERED (0 MISSED)** - the hard requirement
 for calling a device supported (see [`AGENTS.md`](AGENTS.md)). NOT yet in the gate: live turn-by-turn
 navigation cards and transit itineraries. **Real-hardware confirmation: none** - the geometry is
@@ -71,6 +77,20 @@ release, or grab an APK from
 |:-:|:-:|:-:|:-:|
 | <img src="docs/screenshots/06-transit.png" width="150"> | <img src="docs/screenshots/07-gallery.png" width="150"> | <img src="docs/screenshots/08-map-light.png" width="150"> | <img src="docs/screenshots/09-place-light.png" width="150"> |
 
+### On a keypad phone
+
+The same app on a phone with no touchscreen. The two hardware soft keys drive a
+contextual bar, and any on-screen button a key already covers is dropped, so the
+map keeps the screen. Everything hidden stays reachable from an Options menu.
+
+| Bare map | Options menu | Navigation | Nav options |
+|:-:|:-:|:-:|:-:|
+| <img src="docs/screenshots/keypad/01-bare-map.png" width="150"> | <img src="docs/screenshots/keypad/02-options-menu.png" width="150"> | <img src="docs/screenshots/keypad/03-navigation.png" width="150"> | <img src="docs/screenshots/keypad/04-nav-options.png" width="150"> |
+
+| Route preview | 240x320 screen |
+|:-:|:-:|
+| <img src="docs/screenshots/keypad/05-route-preview.png" width="150"> | <img src="docs/screenshots/keypad/06-nav-240x320.png" width="115"> |
+
 ## How it works
 
 What Vela does and the method behind each capability. The full feature list is in
@@ -111,7 +131,7 @@ planned work in [`ROADMAP.md`](docs/ROADMAP.md).
 
 ## Architecture
 
-Two Gradle modules (AGP 8.7.3, Kotlin 2.1, Compose, Hilt, R8):
+Three Gradle modules (AGP 8.7.3, Kotlin 2.1, Compose, Hilt, R8):
 
 - **`:core`** is the UI-agnostic extractor (NewPipeExtractor pattern): the model, the
   `MapDataSource` seam (a Mock source plus the Google scraper), OSRM + GraphHopper
@@ -119,6 +139,9 @@ Two Gradle modules (AGP 8.7.3, Kotlin 2.1, Compose, Hilt, R8):
 - **`:app`** is the Jetpack Compose (Material 3) UI: map, search, place sheet,
   directions, the navigation banner, settings, the hidden-WebView scrapers, and offline
   downloads.
+- **`:yapchik`** is a vendored, source-identical copy of the [Yapchik](https://github.com/theOnionsAreWatching/yapchik)
+  softkey engine (LGPL-3.0, zero deps): the hardware LEFT/RIGHT soft-key bar for keypad phones.
+  Kept as its own module so it stays cleanly replaceable/re-syncable. See [`docs/softkeys.md`](docs/softkeys.md).
 
 `MapDataSource` is the seam: Mock today, Google once calibrated, a future Overture/OSM
 or self-hosted source drops in the same way. Full module tree in [`AGENTS.md`](AGENTS.md).
@@ -160,6 +183,48 @@ Read [`CONTRIBUTING.md`](docs/CONTRIBUTING.md) first: it covers the hard rules (
 static Google keys, degoogled runtime, the `:core`/`:app` boundary, D-pad-first UI,
 docs-in-the-same-commit, translations for all 11 locales) and how to send a change.
 Security issues go through [`SECURITY.md`](docs/SECURITY.md), not a public issue.
+
+## Credits
+
+### Vela Maps, by PimpinPumpkin: the project this is built on
+
+This app is a fork of [**Vela Maps**](https://github.com/PimpinPumpkin/Vela) by **PimpinPumpkin**.
+Vela is *their* project. The degoogled maps client, its architecture, the keyless approach to Google
+data, the routing and offline stack, navigation, the place and transit surfaces, the overwhelming
+majority of what this app *is*, are all their work. This fork adds 5-key D-pad and feature-phone
+operability on top of it. **That delta is the fork; it is not the app.**
+
+The debt is ongoing, not historical:
+
+- **~211 commits** in this repo port work from upstream, and **34 features** in
+  [`docs/FEATURES.md`](docs/FEATURES.md) cite the upstream commit they came from. When upstream fixes
+  something this fork also has, the upstream fix is adopted rather than reinvented.
+- Vela **depends on upstream at runtime**: the routing-graph, map-overlay and place-pack release
+  assets, plus the signed calibration-config channel, are all served from
+  [PimpinPumpkin/Vela](https://github.com/PimpinPumpkin/Vela). Without upstream, this app does not
+  route, does not calibrate, and does not download offline data.
+
+If you are not on a keypad or D-pad phone, **use upstream**. This fork exists to serve devices their
+build isn't targeting, not to replace it. All credit and thanks to PimpinPumpkin.
+
+### Yapchik: the hardware soft-key engine
+
+The LEFT/RIGHT hardware soft-key bar that makes Vela drivable on a keypad phone is
+[**Yapchik**](https://github.com/theonionsarewatching/yapchik) by **theonionsarewatching**, vendored
+here as the [`:yapchik`](yapchik/) module.
+
+- **Copyright © 2026 theonionsarewatching**, <https://github.com/theonionsarewatching/yapchik>
+- **GNU Lesser General Public License v3.0**. See [`yapchik/LICENSE`](yapchik/LICENSE) and
+  [`yapchik/NOTICE`](yapchik/NOTICE). LGPL-3.0 inside Vela's GPL-3.0 is compatible.
+- Vendored **source-identical** and kept as its own Gradle module so it stays a cleanly replaceable
+  library that can be re-synced from upstream. Vela does not fork it or hand-edit its files.
+- Zero dependencies (framework-only), which is what makes it viable on these devices.
+- **On the license history:** Yapchik was originally PolyForm Noncommercial, which is GPL-incompatible
+  and would have made vendoring impossible. The author relicensed it to LGPL-3.0, and that relicense is
+  the only reason the soft-key bar can ship inside Vela at all, and the reason this stays
+  F-Droid-eligible. Thank you.
+
+Integration design + the contextual key map: [`docs/softkeys.md`](docs/softkeys.md).
 
 ## License
 

@@ -524,4 +524,11 @@
     <string name="street_view_move">Move here</string>
     <string name="street_view_dates">See other dates</string>
     <string name="street_view_fullscreen">Toggle full screen</string>
+    <string name="softkey_options">オプション</string>
+    <string name="softkey_search">検索</string>
+    <string name="softkey_recenter">中央に戻す</string>
+    <string name="softkey_mute">ミュート</string>
+    <string name="softkey_unmute">ミュート解除</string>
+    <string name="softkey_move_map">地図を移動</string>
+    <string name="softkey_stop_zoom">ズームを終了</string>
 </resources>

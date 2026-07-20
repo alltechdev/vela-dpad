@@ -50,6 +50,10 @@ fun VelaRoot(vm: MapViewModel = hiltViewModel()) {
         // returning from Settings rebuilt the map from scratch and it snapped back to the stale
         // center at the default zoom, losing the user's pan/zoom (a reported bug).
         MapScreen(vm = vm, onOpenSettings = { showSettings = true })
+        // The map stays composed under Settings, so its contextual soft keys would otherwise keep a
+        // Zoom bar on the Settings overlay. Force the bar off while Settings is up (keypad phones only;
+        // no-op on touch). Restores the map's context when Settings closes.
+        app.vela.ui.softkey.VelaSoftkeys.SuppressBarWhile(showSettings)
         if (showSettings) {
             SettingsScreen(
                 vm = vm,

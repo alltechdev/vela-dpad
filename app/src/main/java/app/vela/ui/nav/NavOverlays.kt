@@ -139,11 +139,17 @@ fun ManeuverBanner(
     // rememberUpdatedState keeps the captured refs pointing at the latest lambdas.
     val latestNext by rememberUpdatedState(onPreviewNext)
     val latestPrev by rememberUpdatedState(onPreviewPrev)
-    // COMPACT mode on feature-phone-short screens (issue #41 follow-up): the 54dp glyph +
-    // headline distance + 16dp paddings are the documented nav-card style for NORMAL phones, but on
-    // a ~320-640px-tall display that card still claims a big slice of the map. Under 500dp of height
-    // the glyph, distance type and paddings all step down; normal phones are untouched.
-    val compact = LocalConfiguration.current.screenHeightDp < 500
+    // COMPACT mode on feature-phone screens (issue #41 follow-up): the 54dp glyph + headline distance
+    // + 16dp paddings are the documented nav-card style for NORMAL phones, but on a feature-phone
+    // display that card still claims a big slice of the map. Compact steps the glyph, type and
+    // paddings down and puts the distance + route shields on ONE line; normal phones are untouched.
+    //
+    // NB the height test alone was DEAD on our main target. AdaptiveDensity shrinks a narrow screen's
+    // density and inflates the reported dp to match, so a Sonim x320 (physically 427dp tall) reports
+    // 640dp and never tripped `< 500`. AdaptiveDensity.applied is the honest "this is a small screen"
+    // signal - true exactly when the device is narrower than 360dp raw. Keep the height test too, for
+    // a short screen wide enough that AdaptiveDensity leaves it alone (landscape, a small tablet).
+    val compact = app.vela.ui.AdaptiveDensity.applied || LocalConfiguration.current.screenHeightDp < 500
     Card(
         modifier
             .fillMaxWidth()
@@ -190,11 +196,11 @@ fun ManeuverBanner(
             ),
         // Softer, more current shape than the stock card: big radius + a real shadow so the
         // banner floats over the map instead of sitting on it like a toolbar.
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(if (compact) 16.dp else 24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         colors = CardDefaults.cardColors(containerColor = container, contentColor = content),
     ) {
-        Column(Modifier.padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 8.dp else 16.dp)) {
+        Column(Modifier.padding(horizontal = if (compact) 12.dp else 18.dp, vertical = if (compact) 6.dp else 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val rerouting = offRoute && !previewing
                 // The refresh glyph SPINS while rerouting (upstream ff8cb3c4: nothing moved, so a
@@ -224,18 +230,44 @@ fun ManeuverBanner(
                 )
                 Spacer(Modifier.width(if (compact) 10.dp else 18.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        if (rerouting) stringResource(R.string.nav_rerouting) else formatDistance(distanceMeters),
-                        style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
+                    val distanceText =
+                        if (rerouting) stringResource(R.string.nav_rerouting) else formatDistance(distanceMeters)
                     val signs = if (rerouting) emptyList() else roadSigns(text, ref)
-                    if (signs.isNotEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(top = 2.dp, bottom = 1.dp),
-                        ) { signs.forEach { SignChip(it) } }
+                    if (compact) {
+                        // Short screens put the distance and the route shields on ONE line. Stacked,
+                        // they were two of the banner's four lines before the instruction even
+                        // started, and the shields are narrow - the distance never fills the row.
+                        // Nothing is dropped, the same glyphs just share a line.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                distanceText,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            if (signs.isNotEmpty()) {
+                                Spacer(Modifier.width(8.dp))
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.weight(1f),
+                                ) { signs.forEach { SignChip(it) } }
+                            }
+                        }
+                    } else {
+                        Text(
+                            distanceText,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        if (signs.isNotEmpty()) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(top = 2.dp, bottom = 1.dp),
+                            ) { signs.forEach { SignChip(it) } }
+                        }
                     }
                     // Headline = the SPOKEN form of the instruction (primary sign destination
                     // only), so the card and the voice can never disagree; the chips row above
@@ -302,10 +334,10 @@ fun ManeuverBanner(
             // was just as noisy). In step-preview (swiping ahead) always show, since you're inspecting a step.
             if (previewing || distanceMeters <= laneShowM) {
                 if (lanes.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
                     LaneDiagram(lanes, type)
                 } else laneHint?.let {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
                     LaneGuide(it, type)
                 }
             }
@@ -317,7 +349,7 @@ fun ManeuverBanner(
             if (nextText != null && nextType != null && isCompoundNext(nextDistanceMeters) &&
                 (previewing || distanceMeters <= laneShowM)
             ) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(if (compact) 5.dp else 8.dp))
                 val nextSigns = roadSigns(nextText, nextRef)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -665,6 +697,11 @@ fun NavControls(
     voiceMuted: Boolean = false,
     onToggleVoice: () -> Unit = {},
     trafficRatio: Double? = null,
+    // Keypad phones (soft-key bar shown) drop the Mute / Steps / End buttons: all three are already
+    // on the in-nav LEFT Options menu, and at speed there is nothing to tap anyway. The card keeps
+    // ONLY the ETA, which also lets the headline use the full width instead of being ellipsized by
+    // the button row it used to fight for space with. Touch/hybrid keep the buttons.
+    softkeys: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -686,6 +723,40 @@ fun NavControls(
             contentColor = SheetPalette.ink(dark),
         ),
     ) {
+        val tail = formatDistance(remainingDistanceMeters) +
+            " · " + formatArrivalClock(remainingSeconds) +
+            if (offRoute) " · " + stringResource(R.string.nav_rerouting) else ""
+        if (softkeys) {
+            // With the buttons gone there is width to spare, so the whole trip fits on ONE line and
+            // the bar gets thin: "2 min · 0.3 mi · 1:24 AM". Half the height of the stacked version,
+            // and every dp saved here is map on a 320dp-tall screen.
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // The duration takes its intrinsic width and is NEVER truncated (it is the number you
+                // glance at); the tail takes what is left and ellipsizes, so a long
+                // "1 hr 25 min · 45.3 mi · 11:47 PM" degrades from the right on a 240dp screen
+                // instead of clipping the headline.
+                Text(
+                    formatDuration(remainingSeconds),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = etaColor,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    " · " + tail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SheetPalette.dim(dark),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            return@Card
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -705,33 +776,33 @@ fun NavControls(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    formatDistance(remainingDistanceMeters) +
-                        " · " + formatArrivalClock(remainingSeconds) +
-                        if (offRoute) " · " + stringResource(R.string.nav_rerouting) else "",
+                    tail,
                     style = MaterialTheme.typography.bodyMedium,
                     color = SheetPalette.dim(dark),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            // Steps is icon-only so the row stays compact (the left ETA column can
-            // grow with a longer "X mi · 7:42 PM"); End keeps its label.
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Mute lives IN the bar (the fork's pre-along-route layout): three icon buttons +
-                // End never squeezed the ETA, and keeping it here leaves the map with a single
-                // search FAB instead of upstream's two-button stack (crowding feedback 2026-07-15).
-                FilledTonalIconButton(onClick = onToggleVoice) {
-                    Icon(
-                        if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                        contentDescription = if (voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
-                    )
-                }
-                FilledTonalIconButton(onClick = onSteps) {
-                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResource(R.string.nav_steps))
-                }
-                Button(onClick = onStop) {
-                    Text(stringResource(R.string.nav_end), maxLines = 1, softWrap = false)
+            if (!softkeys) {
+                Spacer(Modifier.width(8.dp))
+                // Steps is icon-only so the row stays compact (the left ETA column can
+                // grow with a longer "X mi · 7:42 PM"); End keeps its label.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Mute lives IN the bar (the fork's pre-along-route layout): three icon buttons +
+                    // End never squeezed the ETA, and keeping it here leaves the map with a single
+                    // search FAB instead of upstream's two-button stack (crowding feedback 2026-07-15).
+                    FilledTonalIconButton(onClick = onToggleVoice) {
+                        Icon(
+                            if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            contentDescription = if (voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
+                        )
+                    }
+                    FilledTonalIconButton(onClick = onSteps) {
+                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResource(R.string.nav_steps))
+                    }
+                    Button(onClick = onStop) {
+                        Text(stringResource(R.string.nav_end), maxLines = 1, softWrap = false)
+                    }
                 }
             }
         }

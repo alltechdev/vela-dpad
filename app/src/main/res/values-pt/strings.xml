@@ -504,4 +504,11 @@
     <string name="street_view_move">Move here</string>
     <string name="street_view_dates">See other dates</string>
     <string name="street_view_fullscreen">Toggle full screen</string>
+    <string name="softkey_options">Opções</string>
+    <string name="softkey_search">Pesquisar</string>
+    <string name="softkey_recenter">Recentrar</string>
+    <string name="softkey_mute">Silenciar</string>
+    <string name="softkey_unmute">Ativar som</string>
+    <string name="softkey_move_map">Mover mapa</string>
+    <string name="softkey_stop_zoom">Parar zoom</string>
 </resources>

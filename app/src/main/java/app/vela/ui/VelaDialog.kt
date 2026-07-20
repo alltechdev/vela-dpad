@@ -66,6 +66,9 @@ fun VelaDialog(
     dismissLowEmphasis: Boolean = false,
     text: @Composable () -> Unit,
 ) {
+    // Hide the hardware soft-key bar while this modal is up (keypad only) - its keys go to the dialog
+    // window, so a bar behind the scrim would be inert; answer with the dialog's own buttons + BACK.
+    app.vela.ui.softkey.VelaSoftkeys.SuppressBarForModal()
     Dialog(onDismissRequest = onDismissRequest, properties = DialogProperties()) {
         Surface(
             shape = RoundedCornerShape(28.dp),
@@ -154,9 +157,10 @@ private fun DialogButton(
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier
             .focusRequester(fr)
-            // The filled pill needs a CONTRASTING ring - the default primary ring vanishes on
-            // the primary fill (invisible focus on a keypad phone, device-found 2026-07-15).
-            .dpadHighlight(shape, ringColor = if (filled) MaterialTheme.colorScheme.onPrimary else null)
+            // App-wide orange focus ring (the dpadHighlight default) - orange contrasts on the
+            // primary/teal fill too, so the old onPrimary override for filled buttons is no longer
+            // needed. One ring colour everywhere, no exceptions (2026-07-19).
+            .dpadHighlight(shape)
             .then(if (filled) Modifier.background(MaterialTheme.colorScheme.primary, shape) else Modifier)
             // OK/Enter fires the action. The single focus target is the explicit .focusable()
             // below - the ONLY thing requestFocus lands on in a raw Dialog (gallery-proven); a

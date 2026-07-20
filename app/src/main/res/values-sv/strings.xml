@@ -504,4 +504,11 @@
     <string name="street_view_move">Move here</string>
     <string name="street_view_dates">See other dates</string>
     <string name="street_view_fullscreen">Toggle full screen</string>
+    <string name="softkey_options">Alternativ</string>
+    <string name="softkey_search">Sök</string>
+    <string name="softkey_recenter">Centrera</string>
+    <string name="softkey_mute">Ljud av</string>
+    <string name="softkey_unmute">Ljud på</string>
+    <string name="softkey_move_map">Flytta karta</string>
+    <string name="softkey_stop_zoom">Sluta zooma</string>
 </resources>

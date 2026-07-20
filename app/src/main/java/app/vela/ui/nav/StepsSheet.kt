@@ -84,6 +84,9 @@ fun StepsSheet(
     // routing can have only a street, an address, or nothing but the tapped coordinates).
     destName: String? = null,
     destAddress: String? = null,
+    // Keypad phones drop the close X: the LEFT soft key is bound to Close on this surface (and
+    // hardware BACK closes it too), so the button is a third door to the same room.
+    softkeys: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -106,7 +109,9 @@ fun StepsSheet(
                         color = if (hasLiveTraffic) SheetPalette.TrafficGreen else dim,
                     )
                 }
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steps_close_cd), tint = dim) }
+                if (!softkeys) {
+                    IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steps_close_cd), tint = dim) }
+                }
             }
             // D-pad-first (docs/dpad.md): land focus on the first step row when the sheet
             // opens, so it's the active surface (OK previews that step). No-op under touch.

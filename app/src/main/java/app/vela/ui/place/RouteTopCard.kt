@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.vela.R
 import app.vela.ui.dpadHighlight
+import app.vela.ui.dpadClickable
 
 // The map result pins' red (PoiIcons.RESULT_RED) - the destination pin on this card is the same
 // species as the pin the route ends at on the map, so the two must stay the same ink.
@@ -70,6 +71,9 @@ fun RouteTopCard(
     onAddStop: (() -> Unit)? = null,
     onSwap: () -> Unit,
     onClose: () -> Unit,
+    // Keypad phones drop the back arrow: hardware BACK already clears the route from this surface.
+    // Its 40dp also buys width for the endpoint rows, which is where the real content is.
+    softkeys: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val ink = MaterialTheme.colorScheme.onSurface
@@ -82,12 +86,14 @@ fun RouteTopCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, end = 2.dp, top = 6.dp, bottom = 6.dp)) {
-            IconButton(onClick = onClose, modifier = Modifier.size(40.dp).dpadHighlight(CircleShape)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.place_close_directions),
-                    tint = dim,
-                )
+            if (!softkeys) {
+                IconButton(onClick = onClose, modifier = Modifier.size(40.dp).dpadHighlight(CircleShape)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.place_close_directions),
+                        tint = dim,
+                    )
+                }
             }
             Column(Modifier.weight(1f)) {
                 EndpointRow(
@@ -216,7 +222,7 @@ private fun EndpointRow(
             .height(ENDPOINT_ROW)
             .then(
                 if (onClick != null) {
-                    Modifier.clip(RoundedCornerShape(10.dp)).dpadHighlight(RoundedCornerShape(10.dp)).clickable { onClick() }
+                    Modifier.clip(RoundedCornerShape(10.dp)).dpadHighlight(RoundedCornerShape(10.dp)).dpadClickable { onClick() }
                 } else Modifier,
             ),
     ) {

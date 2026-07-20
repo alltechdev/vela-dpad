@@ -24,6 +24,20 @@ object AdaptiveDensity {
     /** Ensure the app has at least this much logical width (dp). Tunable; verify visually per device. */
     const val MIN_WIDTH_DP = 360
 
+    /**
+     * True once [wrap] has actually shrunk a screen, i.e. THIS IS A FEATURE-PHONE-SIZED DISPLAY.
+     *
+     * Read this instead of comparing `screenHeightDp` when you want "is the screen small". The catch
+     * is that shrinking the density INFLATES the reported dp size (that is the whole point - more dp
+     * of room), so after wrapping, a Sonim x320 that is physically 427dp tall reports **640dp**. A
+     * `screenHeightDp < 500` test therefore reads FALSE on exactly the phones it was written for, and
+     * silently: the layout just stays in its roomy variant (the nav banner's compact mode was dead on
+     * the x320 this way, found 2026-07-19). Set once from `attachBaseContext`, before any UI exists.
+     */
+    @Volatile
+    var applied: Boolean = false
+        private set
+
     /** Wrap a base [Context] with a shrunk density iff the screen is narrower than [MIN_WIDTH_DP].
      * Reads only the incoming [Configuration] (runs from `attachBaseContext`, before any init). */
     fun wrap(base: Context): Context {
@@ -31,6 +45,7 @@ object AdaptiveDensity {
         val widthDp = cfg.screenWidthDp
         // Unknown (0) or already wide enough -> leave the default path byte-for-byte untouched.
         if (widthDp <= 0 || widthDp >= MIN_WIDTH_DP) return base
+        applied = true
         val scale = widthDp.toFloat() / MIN_WIDTH_DP            // < 1 : shrink dp -> more fits
         val out = Configuration(cfg).apply {
             densityDpi = (cfg.densityDpi * scale).roundToInt().coerceAtLeast(1)

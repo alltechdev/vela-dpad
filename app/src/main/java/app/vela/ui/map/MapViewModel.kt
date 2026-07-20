@@ -3493,6 +3493,7 @@ class MapViewModel @Inject constructor(
     // download uses this so the control can live in Settings, off the map.
     @Volatile
     private var viewport: DoubleArray? = null
+    private var viewportRefreshJob: Job? = null
 
     fun onViewport(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
         viewport = doubleArrayOf(south, west, north, east, zoom)
@@ -3501,19 +3502,28 @@ class MapViewModel @Inject constructor(
         // miss a pan due to a camera-reason race). Keep the "Search this area" center = the live
         // viewport center here so the search can never bias to a stale, pre-pan location.
         mapCenter = center
-        refreshBuildingOverlays(center) // stream the building overlay for whatever region is now in view
-        refreshAddressOverlays(center) // + house-number labels for that region
-        refreshMaxspeedOverlay(center) // + the posted-speed-limit overlay (read under the puck for the sign)
-        refreshTrafficControls(south, west, north, east, zoom) // + traffic lights / stop signs at high zoom
-        refreshTransitStops(south, west, north, east, zoom) // + canonical GTFS stop icons at street zoom
         lastFlockViewport = doubleArrayOf(south, west, north, east, zoom)
-        refreshFlock(south, west, north, east, zoom) // + ALPR/Flock cameras when the layer is on
-        refreshImageryYear(south, west, north, east) // + the capture year for the satellite attribution
-        // Half-diagonal of the visible box - used to hand the map only the POIs near the view (the
-        // rest can't render anyway), so an old budget phone isn't dragging 800 symbols through the
-        // collider every frame.
-        val viewRadius = center.distanceTo(LatLng(north, east))
-        maybeLoadAmbientPois(center, zoom, viewRadius)
+        // Debounce the refresh cascade below: onViewport fires on EVERY idle, so a rapid D-pad pan
+        // (each easeCamera step ends in an idle) ran ALL of these per step - and several rebuild a
+        // GeoJSON source / re-tessellate symbols on the MAIN thread, backing it up to 800-1350ms
+        // frames on a budget phone (SILB lag report, issue #76). Coalesce a burst of pans into ONE
+        // cascade once the view settles (~250ms). During nav the camera follows continuously (few
+        // clean idles), so run immediately there - a debounce could otherwise starve in-drive overlays.
+        viewportRefreshJob?.cancel()
+        viewportRefreshJob = viewModelScope.launch {
+            if (!_state.value.navigating) delay(250)
+            refreshBuildingOverlays(center) // stream the building overlay for whatever region is now in view
+            refreshAddressOverlays(center) // + house-number labels for that region
+            refreshMaxspeedOverlay(center) // + the posted-speed-limit overlay (read under the puck for the sign)
+            refreshTrafficControls(south, west, north, east, zoom) // + traffic lights / stop signs at high zoom
+            refreshTransitStops(south, west, north, east, zoom) // + canonical GTFS stop icons at street zoom
+            refreshFlock(south, west, north, east, zoom) // + ALPR/Flock cameras when the layer is on
+            refreshImageryYear(south, west, north, east) // + the capture year for the satellite attribution
+            // Half-diagonal of the visible box - hand the map only the POIs near the view (the rest
+            // can't render anyway), so an old budget phone isn't dragging 800 symbols through the collider.
+            val viewRadius = center.distanceTo(LatLng(north, east))
+            maybeLoadAmbientPois(center, zoom, viewRadius)
+        }
     }
 
     private var ambientJob: Job? = null

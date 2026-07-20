@@ -122,20 +122,38 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
 
     **HARD RULE - EVERY TARGET GEOMETRY, EVERY TIME, NOTHING LEFT TO CHANCE:** a feature (or phase)
   counts as verified ONLY when its phase has run green AND its frames have been eyeballed at EVERY
-  target geometry in the device matrix - today that is BOTH `240x320@160` AND `480x854@320`. One
-  size is NOT a proxy for the other. Run
-  `for id in kyocera-e4810 sonim-x320; do PHASES="<phase>" bash tests/devices/full_coverage.sh $id; done`
-  and look at both sets of frames before calling it done. A new geometry added to the matrix joins
-  this loop the same day.
+  target geometry in the device matrix. **DENSITY IS PART OF THE GEOMETRY, not a detail:** the same
+  pixel size at a different dpi is a DIFFERENT dp layout and a different test. Today the matrix is
+  `240x320@160`, `480x854@320`, plus the two profiles real users turned up on:
+  `240x320@120` (`kyocera-duraxe-e4830`, a tester's phone - ~320dp wide, not 240dp) and
+  `480x854@225` (`sonim-x320-225`, a reported low-density setup for the same panel). One size is NOT
+  a proxy for another, and one density is not a proxy for another. Run
+  `for id in kyocera-e4810 sonim-x320 kyocera-duraxe-e4830 sonim-x320-225; do PHASES="<phase>" bash tests/devices/full_coverage.sh $id; done`
+  and look at every set of frames before calling it done. A new geometry OR density added to the
+  matrix joins this loop the same day.
+    Two extra axes exist and are cheap to sweep, both writing to their own dirs so they can never
+  clobber the committed keypad goldens: `SOFTKEYS=off` (the TOUCH layout, proving a soft-key-gated
+  change is correctly NOT applied there) and `DENS=<n>` (an ad-hoc density override).
     **HARD RULE - THE FULL VERIFICATION MATRIX, BEFORE EVERY FEATURE PR MERGES (added 2026-07-13
   after it was repeatedly forgotten - do not merge without ALL FOUR cells):**
-  1. **Both geometries** - 240x320@160 AND 480x854@320 (the rule above). The attached device's
-     native size is NOT a substitute.
+  1. **Every committed geometry** - DENSITY IS PART OF THE GEOMETRY. As of 2026-07-20 that is FOUR:
+     480x854 @320 and @225, 240x320 @160 and @120. The attached device's native size is NOT a
+     substitute. Cross that with both flavors and soft-keys on/off and the full product is 16 legs at
+     ~20 min each; TRIMMING IS ALLOWED BUT MUST BE REASONED AND STATED - flavor is a
+     feature-availability difference rather than a layout one, so restricted can run once per
+     screen-size class, and the touch layout does not vary with density beyond that. The round-2 pass
+     ran 9 legs on that basis and said so in the PR. What is NOT allowed is dropping a geometry from
+     the soft-keys-on legs: that is the axis the layout actually depends on.
   2. **D-pad walk-and-activate** - arrow TO each new interactive element and activate it with OK,
      confirming a visible focus ring and the state change. `audit_static.sh` passing is necessary
      but NOT sufficient - it proves the ring exists, not that the element is reachable/activatable.
      (Check the UI/accessibility state for the effect, not the prefs file - SharedPreferences
      `apply()` writes disk lazily and races a file check into a false failure.)
+     **A MENU THAT DRAWS IS NOT A MENU THAT WORKS.** Capturing a popup proves it rendered, nothing
+     more. Every entry that opens something must be OPENED in the phase and the result asserted.
+     Device-proven the hard way: the bare-map Options menu screenshotted perfectly while its Layers
+     entry did nothing at all, and the `softkey` phase scored 8/8 through it for a whole release
+     (tester report, Kyocera DuraXe e4830). If a phase captures a menu, it must also activate it.
   3. **BOTH release variants** - standard AND restricted (`assembleRestrictedDebug`): the feature is
      present and working there, or correctly gated, AND the flavor's locks are still intact
      (no Place-pages section etc.).
@@ -547,6 +565,99 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 - `:core` is the UI-agnostic "extractor" (NewPipeExtractor pattern). `:app` is
   the Compose UI. Don't let MapLibre or Android UI types leak into `:core`
   (convert `LatLng` at the view boundary).
+- **`:yapchik` is a vendored third-party library** (source-identical copy of
+  github.com/theOnionsAreWatching/yapchik, LGPL-3.0, package `com.theonionsarewatching.yapchik`,
+  own LICENSE + NOTICE). The hardware LEFT/RIGHT soft-key bar for keypad phones. Kept as its own
+  module so it stays cleanly REPLACEABLE - re-sync from upstream by recopying, don't hand-edit its
+  files. It is NOT under detekt (Vela's dead-code gate would false-positive its public API). Vela's
+  integration lives in `app/ui/softkey/VelaSoftkeys.kt` (install + gate + the `Key`/`MapSoftkeys`
+  seam); `MapScreen` picks the two keys CONTEXTUALLY from a `when` (bare map = Options / Search, place
+  sheet = Options / Directions, choose-on-map = Cancel / Set, route preview = Steps / Start,
+  turn-by-turn = Options / Zoom-mode, search overlay = none). The bare-map Options menu has ONE
+  ADAPTIVE map-motion item that nests: Move map (idle) -> Zoom (once moving) -> Stop zoom (while
+  zooming); BACK peels one mode at a time (zoom -> move-map -> bare map), owned by the single map
+  BackHandler. Each Options popup is a feature-phone `VelaMenu(placement = BottomStart)` (bordered,
+  flush on the bar). The whole design is `docs/softkeys.md`. Key mechanisms to reuse, not reinvent:
+  **`SuppressBarWhile`** forces the bar off for a whole screen (Settings over the map);
+  **`SuppressBarForModal`** (a reactive `modalDepth` any `VelaDialog` bumps) hides it while a modal is
+  up - a `VelaMenu` is NOT a modal, so it keeps the bar; theme-following is a REBUILD but ONLY on an
+  actual theme flip (an unconditional rebuild churned the bar + flashed the system bar every screen
+  switch); `navGuardDp = 0` kills Yapchik's phantom nav-guard height (Vela's FRAMEWORK window theme
+  would otherwise double the bar's height on a device with no real nav bar). Labels are localized (all
+  14 locales). The `softkey` phase in `full_coverage.sh` (+ `K_SOFT_LEFT`/`K_SOFT_RIGHT` in
+  `tests/dpad/lib.sh`) captures the menus. **Softkeys gate on
+  `isDpadFirstDevice` (same detector as the Compose D-pad affordances) so they NEVER show on touch** -
+  keep any new binding on that gate, through `Softkeys.of(activity)` / `VelaSoftkeys`, not a fork of
+  the engine. When a soft key covers an action, DROP the redundant on-screen button on keypad (gated
+  on `VelaSoftkeys.isActive()`), the way the map's +/-, the place sheet's whole button row, and - tester
+  #76 - the bare-map **search bar** (the RIGHT soft key opens it), the **Layers** button and the **Park**
+  FAB are; Layers + Park move into the Options menu (now Move-map/Zoom / Recenter / Layers / Park /
+  Settings), Park's hub + history hoisted out of the hidden FAB, and with the search bar gone the
+  category chips ride up into its freed slot. The bare-map update card's actions ride the bar too
+  (Not now / Update). **Harness:** `full_coverage.sh` + `nav.sh` branch on `softkeys_shown()` (the
+  `vela_force_dpad` gate) - search/settings/voice/park enter via the soft keys under D-pad and via the
+  on-screen bar/gear/FAB otherwise (`open_search`, `park_action`, conditional `run_coffee`/
+  `open_settings`) - so a non-forced (touch) run is never broken.
+    **HARD RULE - WHEN YOU GATE A CONTROL OFF, HOIST WHAT IT OPENS OUT FIRST.** Compose composes a
+  tree: anything nested INSIDE a block you switch off is switched off with it, silently. Dropping an
+  on-screen button therefore kills any panel/menu/sheet declared inside that button's block, and the
+  menu entry that was supposed to replace it then writes state nobody reads - the feature becomes
+  UNREACHABLE while every screenshot still looks right. This has now bitten twice on the same
+  refactor: the **Park hub + history sheet** (caught pre-merge) and the **Layers panel** (shipped, and
+  found by a tester on a Kyocera DuraXe e4830 - no button, and an Options entry that did nothing).
+  Both are fixed by hoisting the panel to a sibling of the gated button, keeping its own `TopEnd`/
+  `BottomEnd` box so the touch dropdown still anchors where the button sits, and leaving it inert
+  while closed. **Before gating any on-screen control, grep what is declared inside its block.**
+  It came within one edit of a third time (2026-07-19): hiding the **locate FAB** meant adding
+  `!softkeyBarShown` to the enclosing block - and the parking hub menu + history sheet are hoisted
+  *inside that very block*, so gating it would have taken Options -> Park down exactly like Layers.
+  The gate went on the FAB alone. When the thing you want to hide shares a block with a hoisted
+  panel, **gate the control, never the block.**
+
+    **HARD RULE - NEVER TEST `screenHeightDp`/`screenWidthDp` TO ASK "IS THIS A SMALL SCREEN".**
+  `AdaptiveDensity.wrap` shrinks a narrow screen's density at `attachBaseContext` and then INFLATES
+  the reported dp size to match (that is the point - more dp of room), so after wrapping every small
+  device reports exactly `MIN_WIDTH_DP` (360) wide and a PROPORTIONALLY TALLER height. A Sonim x320 is
+  physically 427dp tall and reports **640dp**. Any `screenHeightDp < N` smallness test therefore reads
+  FALSE on the very phones it was written for, and fails SILENTLY - the layout just stays in its roomy
+  variant and nothing looks broken enough to notice. The nav banner's compact mode was dead this way
+  from the day AdaptiveDensity landed until 2026-07-19, on our primary target device. Use
+  **`AdaptiveDensity.applied`**, which is true exactly when the raw screen is narrower than 360dp.
+  Keep a height test only as an OR for a screen that is short but wide enough that AdaptiveDensity
+  left it alone. When you add any size-conditional layout, verify it on the device and confirm the
+  branch you intended is the branch that renders.
+
+    **HARD RULE - NEVER CONCLUDE "IT IS UNFOCUSED" FROM `focused()`.** `tests/dpad/lib.sh focused()`
+  reads uiautomator's `focused="true"`, and a Compose node can hold focus - with a plainly visible ring
+  - while it returns EMPTY (reproduced on main's search bar, 2026-07-20). Hours were lost to
+  conclusions drawn from it, and one wrong claim reached a PR description. **Screenshot the surface and
+  look for the ring.** The same caution applies to `audit_dynamic.sh`'s focus assertions, which are
+  built on it; its reachability checks (text matching) are sound.
+
+    **HARD RULE - A/B AGAINST `main`, NOT AGAINST A COMMIT INSIDE YOUR OWN BRANCH.** To answer "did we
+  introduce this?", build `origin/main` (or the branch point) - not the commit before today's work. A
+  baseline 40 commits deep in the same PR can only ever answer "did the LAST change break it", and
+  reporting that as "pre-existing" is wrong in the way that matters: it says *not ours*. Checking
+  whether the symbol even exists on main (`git show origin/main:<file> | grep`) is one command and
+  settles it before you say anything.
+
+    **HARD RULE - THE FOCUS RING HUGS THE CONTROL, NOT MATERIAL'S TOUCH TARGET.** Material applies
+  `minimumInteractiveComponentSize()` INSIDE buttons and chips, padding their layout to the 48dp
+  minimum touch target while the visible surface stays 40dp (button) or 32dp (chip). A `dpadHighlight`
+  on the control's own modifier sits OUTSIDE that padding, so it measures the inflated box and draws a
+  ring visibly too tall, floating clear of the control - reported as "the wrong shape" by an x320
+  tester, on chips AND on the Settings update buttons. Wrap it instead: `DpadRingBox(shape)` (or the
+  `VelaSwitch` pattern) rings a parent pinned to the control's REAL height; `hasFocus` propagates up
+  from the focused child, which keeps its full touch target by overflowing the shorter, non-clipping
+  box. And **pass the control's own shape** - the map category chips are `CircleShape` pills that were
+  being ringed with an 8dp rounded rect.
+
+    **HARD RULE - ONE FOCUS SIGNAL PER CONTROL.** `dpadHighlight(...).clickable(...)` draws Material's
+  grey focus state layer AND the orange ring on the same row ("having both by the switches is a little
+  strange" - tester 2026-07-19). Use `dpadClickable`, which drops the indication while input is
+  key-driven and keeps the normal press ripple for touch. Likewise, a menu toggle row is ONE focus
+  stop, so ring the **switch**, not the row (`dpadRingWhen` + a read-only `onCheckedChange = null`
+  switch, which also stops it being a second focus stop inside a row that is already one).
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.

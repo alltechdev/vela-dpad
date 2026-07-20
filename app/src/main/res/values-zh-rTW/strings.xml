@@ -524,4 +524,11 @@
     <string name="street_view_move">Move here</string>
     <string name="street_view_dates">See other dates</string>
     <string name="street_view_fullscreen">Toggle full screen</string>
+    <string name="softkey_options">選項</string>
+    <string name="softkey_search">搜尋</string>
+    <string name="softkey_recenter">置中</string>
+    <string name="softkey_mute">靜音</string>
+    <string name="softkey_unmute">取消靜音</string>
+    <string name="softkey_move_map">移動地圖</string>
+    <string name="softkey_stop_zoom">停止縮放</string>
 </resources>

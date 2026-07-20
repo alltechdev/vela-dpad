@@ -58,6 +58,23 @@
     <string name="settings_keep_screen_on_hint">Stops the display from dimming or sleeping while turn-by-turn is running, so the next turn is always visible without tapping to wake it. On by default; the screen sleeps normally again the moment you arrive or leave navigation.</string>
     <string name="settings_traffic_lights">Traffic-light guidance</string>
     <string name="settings_traffic_lights_hint">Adds Google-style landmark cues to spoken directions (\"pass the traffic light, then turn left\") using open OpenStreetMap signal data (keyless), fetched once when you start a drive. Only added when it helps (one or two lights right before a surface-street turn). Off by default; English only for now, and coverage follows how well signals are mapped in your area.</string>
+    <!-- Hardware softkeys: prototype, English-only for now (translatable=false, like the Flock strings). -->
+    <string name="settings_softkeys" translatable="false">Hardware softkeys</string>
+    <string name="settings_softkeys_hint" translatable="false">Use the phone\'s two soft keys (usually the top corners) to zoom the map, so you don\'t have to walk focus to the on-screen +/- buttons. Keypad phones only; a touchscreen ignores it. On by default where a keypad is detected.</string>
+    <string name="settings_softkeys_calibrate" translatable="false">Calibrate soft keys</string>
+    <string name="settings_softkeys_calibrate_hint" translatable="false">If the soft keys don\'t zoom, tap here and press your left then right soft key so Vela learns their codes.</string>
+    <string name="map_zoom_mode_hint" translatable="false">Zoom:  ◀ out   ·   in ▶      BACK to exit</string>
+    <string name="map_move_mode_hint" translatable="false">Move map:  ◀ ▲ ▼ ▶      BACK to exit</string>
+    <!-- Hardware soft-key labels. The symbol-heavy zoom ones stay English (translatable=false); the
+         plain words are localised. Directions/Layers/Settings reuse existing strings. -->
+    <string name="softkey_options">Options</string>
+    <string name="softkey_search">Search</string>
+    <string name="softkey_move_map">Move map</string>
+    <string name="softkey_stop_zoom">Stop zoom</string>
+    <string name="softkey_recenter">Recenter</string>
+    <string name="softkey_mute">Mute</string>
+    <string name="softkey_unmute">Unmute</string>
+    <string name="softkey_zoom_menu" translatable="false">Zoom (◀ − ▶ +)</string>
     <string name="map_voice_downloading">Downloading Vela voice · %1$d%%</string>
     <string name="map_voice_installing">Installing Vela voice…</string>
     <string name="map_region_downloading">Downloading %1$s routing · %2$d%%</string> <!-- format -->
