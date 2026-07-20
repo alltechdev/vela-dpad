@@ -22,6 +22,11 @@ data class Maneuver(
                                   // separate from [road] because a highway can have a name AND a ref
     val laneHint: String? = null, // e.g. "Use the right 2 lanes" (from Google's step markup)
     val lanes: List<Lane> = emptyList(), // per-lane turn guidance (from OSRM) for the Google-style diagram
+    // Google's raw maneuver token, kept only so the geometry pass can tell a ramp/exit whose DIRECTION
+    // the feed never supplied ("OFF_RAMP" with no <turn side=>) from a genuine straight-ahead merge:
+    // both land on MERGE, but only the former should be re-resolved to left/right from the polyline.
+    // Null for every other source (OSRM carries its own modifiers). See DirectionsParser.resolveRampSides.
+    val rawToken: String? = null,
 )
 
 /** One approach lane's turn guidance: the arrow directions it permits ([indications], OSRM's set -

@@ -44,6 +44,25 @@ def has(regex, ln): return regex.search(code_of(ln)) is not None
 RING_REQUIRED = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable|dpadClickable)\s*[({]')
 CLICKISH = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable|dpadClickable)\s*[({]')
 FOCUSABLE = re.compile(r'\.focusable\s*\(')
+# Material BUTTON/CHIP COMPOSABLES. The ring rule above only ever matched interactive MODIFIERS
+# (.clickable/.toggleable/...), so a Material button - a composable, not a modifier - was invisible
+# to this auditor. That is how 39 of 41 Settings buttons ended up with no focus ring at all and
+# nothing failed (issue #79, @SILB: "some buttons in settings don't get orange outline").
+BUTTONISH = re.compile(r'\b(OutlinedButton|FilledTonalButton|ElevatedButton|TextButton|Button|'
+                       r'IconButton|FilledIconButton|FilledTonalIconButton|OutlinedIconButton|'
+                       r'FilterChip|AssistChip|ElevatedAssistChip|ElevatedFilterChip|SuggestionChip)\s*\(')
+# Anything that gives a control a visible focus ring or hands it a focus identity.
+RINGY = ('dpadHighlight(', 'DpadRingBox(', 'dpadAutoFocus(', 'dpadRowSibling(', 'dpadFocusKept(',
+         'dpadModeAutoFocus(', 'VelaSwitch(')
+
+def button_has_ring(lines, idx):
+    """A ring may sit on the button's own modifier, or on a DpadRingBox wrapping it a line or two
+    above. Look a little way either side rather than only forward."""
+    # A Material call can carry a long argument list with the modifier well below the opening line
+    # (the Settings back button's ring sits ~9 lines down), so look generously forward.
+    lo, hi = max(0, idx - 3), min(len(lines), idx + 16)
+    window = '\n'.join(code_of(l) for l in lines[lo:hi])
+    return any(tok in window for tok in RINGY)
 # Scan the Modifier chain backwards for a ring, stopping at a different focus target / declaration.
 def chain_has_ring(lines, idx):
     for j in range(idx, max(idx - 26, -1), -1):
@@ -73,7 +92,11 @@ GESTURE = re.compile(r'(detectTapGestures|detectDragGestures|detectVerticalDragG
 # handler, a focus-target modifier, OR any Material control (IconButton/Button/Chip/onClick=…) that
 # is inherently focusable + OK-activatable (e.g. the results-sheet chevron mirrors its drag handle).
 KEYPATH = re.compile(r'(onKeyEvent|onPreviewKeyEvent|MapDpad|mapDpad|Key\.Direction|'
-                     r'\.clickable|\.combinedClickable|\.focusable|\.selectable|\.toggleable|'
+                     # dpadClickable IS a key path (it wraps clickable); it needs naming explicitly
+                     # because "\.clickable" does not match ".dpadClickable" - the dot sits before
+                     # "dpad". Converting a drag handle's clickable to dpadClickable therefore made
+                     # the auditor declare the handle D-pad-unreachable, which it plainly is not.
+                     r'\.clickable|\.dpadClickable|\.combinedClickable|\.focusable|\.selectable|\.toggleable|'
                      r'onClick\s*=|IconButton\s*\(|FilledTonalIconButton\s*\(|\bButton\s*\(|'
                      r'TextButton\s*\(|OutlinedButton\s*\(|FilterChip\s*\(|AssistChip\s*\(|Chip\s*\(|'
                      r'onKeyDown|dispatchKeyEvent|panByFraction|zoomStep|panBy\s*\()')
@@ -102,6 +125,14 @@ RE_WEAK_AF  = re.compile(r'\brememberDpadAutoFocus\s*\(')
 RE_DLG_SAFE = re.compile(r'verticalScroll|LazyColumn|LazyVerticalGrid|HorizontalPager|VerticalPager|fillMaxSize|fillMaxHeight')
 # Files allowed to host a raw Dialog/Popup (the sanctioned auto-focus seams + full-screen viewers).
 RAW_OK = {"VelaMenu.kt", "VelaDialog.kt", "PlaceSheet.kt", "ReviewsPanel.kt"}
+# Buttons here sit inside a VelaDialog/VelaMenu, which auto-focuses its own dismiss and answers BACK,
+# so they do not each need a ring of their own.
+BUTTON_RING_EXEMPT = {"VelaDialog.kt", "VelaMenu.kt", "VoiceCaptureDialog.kt", "WelcomeScreen.kt"}
+# Files whose buttons have been swept for rings. A missing ring in one of these is a HARD FAILURE, so
+# the fix cannot regress; everywhere else it is surfaced as a CHECK until that file is swept too.
+# Move a filename in here the moment its sweep lands - the set is meant to grow until it is all of them.
+BUTTON_RING_SWEPT = {"SettingsScreen.kt", "StopsEditor.kt", "NavOverlays.kt", "StepsSheet.kt", "SearchBar.kt", "PlaceSheet.kt",
+                     "MapScreen.kt"}
 scanned = 0
 
 for path in walk():
@@ -126,8 +157,34 @@ for path in walk():
                 if verbose: oknote.append(f"ring {name}:{n}")
             else:
                 viol.append(("MED", f"{name}:{n}", "clickable/toggleable/selectable with no .dpadHighlight (invisible focus)"))
-        # E. gesture modifier with no key alternative nearby
-        if has(GESTURE, ln):
+        # D2. Material button/chip composable with no ring anywhere near it. Material's own focus
+        # indication is NOT adequate here (teal-on-teal invisible switches, rings drawn around the
+        # 48dp touch target) - that is the whole reason dpadHighlight/DpadRingBox exist.
+        if has(BUTTONISH, ln) and not re.search(r'\bfun\s', code_of(ln)) and not button_has_ring(lines, i):
+            if base in BUTTON_RING_EXEMPT:
+                if verbose: oknote.append(f"btn-exempt {name}:{n}")
+            elif base in BUTTON_RING_SWEPT:
+                viol.append(("MED", f"{name}:{n}", "Material button/chip with no focus ring (dpadHighlight / DpadRingBox)"))
+            else:
+                check.append(("btnring", f"{name}:{n}", "Material button/chip with no focus ring - file not swept yet (issue #79); add it to BUTTON_RING_SWEPT once done and this becomes a hard failure"))
+        # D3. TWO focus signals on one control: a raw .clickable next to a dpadHighlight draws
+        # Material's grey focus state layer AND our orange ring at once ("having both by the switches
+        # is a little strange" - tester). dpadClickable drops the grey while input is key-driven and
+        # keeps the press ripple for touch. Found by hand TWICE (the round-2 sweep missed the pairs
+        # that sit >8 lines apart, and a later edit reintroduced one on the nav banner), hence a rule.
+        if "dpadHighlight(" in code_of(ln) and base != "DpadFocus.kt":
+            chain = "\n".join(code_of(l) for l in lines[i:min(len(lines), i + 20)])
+            # Both bracket forms: `.clickable(onClick = ...)` AND the trailing-lambda `.clickable { }`.
+            # The rule matched only the paren form, so every brace-form pairing was invisible to the
+            # gate - the issue #79 ring sweep turned up SEVEN of them across MapScreen, SearchBar,
+            # StopsEditor and StepsSheet, each drawing the grey layer under the orange ring.
+            m = re.search(r'(?<!dpad)\.clickable\s*[({]', chain)
+            if m and "dpadClickable" not in chain[:m.end() + 20]:
+                viol.append(("MED", f"{name}:{n}", "dpadHighlight + raw .clickable = grey focus layer AND the ring; use dpadClickable"))
+        # E. gesture modifier with no key alternative nearby. Skip IMPORT lines: the import of
+        # detectHorizontalDragGestures is not a gesture site, and it only ever passed because a
+        # neighbouring `import ...clickable` happened to sit inside the look-around window.
+        if has(GESTURE, ln) and not code_of(ln).strip().startswith("import "):
             if near_keypath(lines, i):
                 if verbose: oknote.append(f"gest {name}:{n}")
             else:

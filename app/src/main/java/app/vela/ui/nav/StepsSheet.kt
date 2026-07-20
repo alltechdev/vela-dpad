@@ -1,7 +1,6 @@
 package app.vela.ui.nav
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -59,7 +58,8 @@ import app.vela.ui.SheetPalette
 import app.vela.ui.formatDistance
 import app.vela.ui.formatDuration
 import app.vela.ui.theme.isAppInDarkTheme
-import app.vela.ui.dpadHighlight // D-pad-only operation (docs/dpad.md)
+import app.vela.ui.dpadClickable // D-pad-only operation (docs/dpad.md)
+import app.vela.ui.dpadHighlight
 import app.vela.ui.rememberDpadAutoFocus
 import androidx.compose.ui.focus.focusRequester
 
@@ -110,7 +110,9 @@ fun StepsSheet(
                     )
                 }
                 if (!softkeys) {
-                    IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steps_close_cd), tint = dim) }
+                    IconButton(onClick = onClose, modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape)) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.steps_close_cd), tint = dim)
+                    }
                 }
             }
             // D-pad-first (docs/dpad.md): land focus on the first step row when the sheet
@@ -129,7 +131,9 @@ fun StepsSheet(
                                 else Color.Transparent,
                             )
                             .dpadHighlight(RoundedCornerShape(6.dp))
-                            .clickable { onStep(i) }
+                            // dpadClickable, not clickable: a raw clickable on a chain that carries
+                            // the ring draws Material's grey focus layer too (docs/dpad.md).
+                            .dpadClickable { onStep(i) }
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

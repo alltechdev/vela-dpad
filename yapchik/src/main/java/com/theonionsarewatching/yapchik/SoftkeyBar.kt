@@ -29,6 +29,16 @@ class SoftkeyBar(context: Context) : LinearLayout(context) {
         layoutDirection = View.LAYOUT_DIRECTION_LTR
         setBackgroundColor(style.backgroundColor)
         isClickable = true // swallow stray touches so they don't hit views underneath
+        // ...but NEVER take D-pad focus. Since API 26 a clickable View with the default
+        // focusable="auto" resolves to FOCUSABLE, so `isClickable = true` above quietly made the
+        // whole bar a focus target: walking DOWN past the last control moved focus off the content
+        // and painted the framework's focus plate across the entire bar (tester, 2026-07-20). The
+        // bar is driven by the PHYSICAL soft keys and is not reachable or activatable by focus, so
+        // a focus stop on it is a dead end the user has to blindly walk back out of.
+        isFocusable = false
+        isFocusableInTouchMode = false
+        descendantFocusability = FOCUS_BLOCK_DESCENDANTS
+        defaultFocusHighlightEnabled = false
 
         // 1dp top hairline
         addView(

@@ -241,6 +241,18 @@ object EnNavStrings : NavStrings {
  * suffixes are case-insensitive; the directionals are uppercase (as they appear in road names) and come
  * LAST so they can't chew into a word an earlier rule expanded. */
 private val EN_SPEECH_WORDS: List<Pair<Regex, String>> = listOf(
+    // Title prefixes FIRST. "St"/"Dr" are both road-type suffixes (Main St, Cedar Crest Dr) and title
+    // prefixes (St Louis, Dr Martin Luther King Jr) - read as the suffix, "St Louis Ave" came out
+    // "Street Louis Avenue" (issue #79). Position disambiguates: right after the preposition that
+    // introduces the road name it is the title, anywhere else it is the suffix. Anchoring to the
+    // preposition (rather than "followed by a capital") keeps "Bay St Ste 200" reading as Street.
+    Regex("\\b(onto|on|toward|at|along) St\\.? (?=[A-Z])") to "$1 Saint ",
+    Regex("\\b(onto|on|toward|at|along) Dr\\.? (?=[A-Z])") to "$1 Doctor ",
+    // Never road types, so no position test is needed.
+    Regex("\\bMt\\.?\\b") to "Mount",
+    Regex("\\bFt\\.?\\b") to "Fort",
+    Regex("\\bJr\\b") to "Junior",
+    Regex("\\bSr\\b") to "Senior",
     Regex("\\bSt\\b", RegexOption.IGNORE_CASE) to "Street",
     Regex("\\bAve\\b", RegexOption.IGNORE_CASE) to "Avenue",
     Regex("\\bBlvd\\b", RegexOption.IGNORE_CASE) to "Boulevard",

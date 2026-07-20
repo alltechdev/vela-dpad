@@ -168,7 +168,10 @@ object DirectionsParser {
         val laneHint = lane?.groupValues?.get(1)?.trim()
         val instruction = (lane?.let { text.removeRange(it.range) } ?: text)
             .trim().replaceFirstChar { it.uppercase() }
-        return Maneuver(type, instruction.ifEmpty { "Continue" }, LatLng(0.0, 0.0), meters, 0.0, laneHint = laneHint)
+        return Maneuver(
+            type, instruction.ifEmpty { "Continue" }, LatLng(0.0, 0.0), meters, 0.0,
+            laneHint = laneHint, rawToken = token,
+        )
     }
 
     /** Map Google's keyless maneuver [token] (+ the child `<turn>` [side]/[severity]) to a
@@ -177,12 +180,17 @@ object DirectionsParser {
      * arrow and the wrong direction-coded haptic. Old explicit *_LEFT/_RIGHT tokens stay handled in
      * case the feed varies. */
     internal fun mapType(token: String?, side: String?, severity: String?): ManeuverType {
-        val left = side.equals("LEFT", ignoreCase = true)
-        val right = side.equals("RIGHT", ignoreCase = true)
+        // The direction can arrive EITHER as the child `<turn side=>` OR baked into the token itself
+        // ("OFF_RAMP_RIGHT"). Reading only the child meant every explicit-token ramp/fork/keep fell to
+        // the lr() fallback, so EVERY EXIT CARD DREW THE SAME SYMBOL whichever way the exit went
+        // (issue #79). Suffix-match the token too; the child still wins where both are present.
+        val tok = token?.uppercase()
+        val left = side.equals("LEFT", ignoreCase = true) || (side == null && tok?.endsWith("_LEFT") == true)
+        val right = side.equals("RIGHT", ignoreCase = true) || (side == null && tok?.endsWith("_RIGHT") == true)
         val slight = severity.equals("SLIGHT", ignoreCase = true)
         val sharp = severity.equals("SHARP", ignoreCase = true)
         fun lr(l: ManeuverType, r: ManeuverType, fallback: ManeuverType) = if (left) l else if (right) r else fallback
-        return when (token?.uppercase()) {
+        return when (tok) {
             "DEPART" -> ManeuverType.DEPART
             "DESTINATION", "ARRIVE" -> ManeuverType.ARRIVE
             "TURN_LEFT" -> ManeuverType.TURN_LEFT
@@ -237,7 +245,104 @@ object DirectionsParser {
             val frac = if (i == lastIdx) 1.0 else (cum / stepTotal).coerceIn(0.0, 1.0)
             cum += m.distanceMeters
             m.copy(location = pointAlong(polyline, frac))
+        }.let { resolveRampSides(it, polyline) }
+    }
+
+    /**
+     * Give direction-less ramps and exits their left/right from the ROUTE GEOMETRY.
+     *
+     * Issue #79, @SILB: "the symbol on every exit card is the same. It should indicate the direction of
+     * the exit." On live routes Google's keyless feed sends `maneuver='OFF_RAMP'` with **no** child
+     * `<turn side=>` and no direction word in the localized instruction ("Take the exit toward
+     * <hebrew road>"), so [mapType] correctly fell through to the generic MERGE arrow - every exit,
+     * left or right, drawn identically. Nothing in the response can fix that; the direction only
+     * exists in the shape of the road.
+     *
+     * So measure it: compare the heading INTO the maneuver with the heading OUT of it, sampled far
+     * enough along the polyline (~[RAMP_SAMPLE_M]) to skip the decoded-geometry jitter right at the
+     * point, and read the signed difference. Ramps are gentle - a motorway exit is often only 15-25
+     * degrees where a turn is 90 - so the threshold is low ([RAMP_MIN_DEG]); below it the maneuver
+     * genuinely goes straight ahead and keeps MERGE, which is the honest symbol for it.
+     *
+     * Only maneuvers whose [Maneuver.rawToken] is in [RAMP_TOKENS] AND that came out of [mapType]
+     * with no direction are touched, so a real MERGE token and any maneuver the feed DID label are
+     * left exactly as they were.
+     */
+    internal fun resolveRampSides(maneuvers: List<Maneuver>, polyline: List<LatLng>): List<Maneuver> {
+        if (polyline.size < 2) return maneuvers
+        return maneuvers.map { m ->
+            val undirected = m.type == ManeuverType.MERGE || m.type == ManeuverType.STRAIGHT
+            if (!undirected) return@map m
+            // Resolve INSIDE the token's own family: a direction-less KEEP is a keep-left/right and a
+            // FORK is a fork-left/right, NOT a motorway ramp. Sharing one ramp result across all three
+            // drew a slip-road arrow on "keep left" - a different maneuver wearing the wrong symbol,
+            // which is the very complaint this pass exists to fix.
+            val (leftType, rightType) = when (m.rawToken?.uppercase()) {
+                "ON_RAMP", "OFF_RAMP", "RAMP" -> ManeuverType.RAMP_LEFT to ManeuverType.RAMP_RIGHT
+                "FORK" -> ManeuverType.FORK_LEFT to ManeuverType.FORK_RIGHT
+                "KEEP" -> ManeuverType.KEEP_LEFT to ManeuverType.KEEP_RIGHT
+                else -> return@map m
+            }
+            // Measure at two sampling distances and only believe an AGREEING pair. Maneuvers are placed
+            // by fraction-of-step-total, and per placeManeuvers the step metres and the decoded geometry
+            // can disagree a lot - a drifted point would otherwise be read off the wrong bend and drawn
+            // as a confident arrow pointing the wrong way, which is worse than the generic symbol it
+            // replaces. Disagreement (or a route too short to sample) keeps the honest fallback.
+            val near = headingChange(polyline, m.location, RAMP_SAMPLE_M) ?: return@map m
+            val far = headingChange(polyline, m.location, RAMP_SAMPLE_FAR_M) ?: return@map m
+            val agree = (near >= RAMP_MIN_DEG && far >= RAMP_MIN_DEG) ||
+                (near <= -RAMP_MIN_DEG && far <= -RAMP_MIN_DEG)
+            when {
+                !agree -> m
+                near > 0 -> m.copy(type = rightType)
+                else -> m.copy(type = leftType)
+            }
         }
+    }
+
+    private const val RAMP_SAMPLE_M = 60.0
+    private const val RAMP_SAMPLE_FAR_M = 110.0
+    private const val RAMP_MIN_DEG = 12.0
+
+    /** Signed heading change at [at] along [poly], in degrees: positive right, negative left. Null when
+     * the point sits too close to either end of the route to sample both sides. */
+    private fun headingChange(poly: List<LatLng>, at: LatLng, sample: Double): Double? {
+        var best = 0
+        var bestD = Double.MAX_VALUE
+        poly.forEachIndexed { i, p -> val d = p.distanceTo(at); if (d < bestD) { bestD = d; best = i } }
+        val before = walk(poly, best, -sample) ?: return null
+        val after = walk(poly, best, sample) ?: return null
+        val inBearing = bearing(before, poly[best])
+        val outBearing = bearing(poly[best], after)
+        var d = outBearing - inBearing
+        while (d > 180) d -= 360
+        while (d < -180) d += 360
+        return d
+    }
+
+    /** The point [meters] along the polyline from index [from] (negative walks backwards), or null if
+     * the route ends first - too short a sample would read noise as a turn. */
+    private fun walk(poly: List<LatLng>, from: Int, meters: Double): LatLng? {
+        val step = if (meters < 0) -1 else 1
+        var acc = 0.0
+        var i = from
+        while (acc < kotlin.math.abs(meters)) {
+            val next = i + step
+            if (next < 0 || next > poly.lastIndex) return null
+            acc += poly[i].distanceTo(poly[next])
+            i = next
+        }
+        return poly[i]
+    }
+
+    private fun bearing(a: LatLng, b: LatLng): Double {
+        val lat1 = Math.toRadians(a.lat)
+        val lat2 = Math.toRadians(b.lat)
+        val dLng = Math.toRadians(b.lng - a.lng)
+        val y = kotlin.math.sin(dLng) * kotlin.math.cos(lat2)
+        val x = kotlin.math.cos(lat1) * kotlin.math.sin(lat2) -
+            kotlin.math.sin(lat1) * kotlin.math.cos(lat2) * kotlin.math.cos(dLng)
+        return (Math.toDegrees(kotlin.math.atan2(y, x)) + 360) % 360
     }
 
     private fun pointAlong(poly: List<LatLng>, frac: Double): LatLng {

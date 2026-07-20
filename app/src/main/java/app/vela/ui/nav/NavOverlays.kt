@@ -2,7 +2,6 @@ package app.vela.ui.nav
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -73,15 +72,18 @@ import app.vela.ui.formatDistance
 import app.vela.ui.formatDuration
 import app.vela.ui.theme.isAppInDarkTheme
 // D-pad-only operation (docs/dpad.md) - one import block so upstream merges stay clean.
-import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.focusRequester
+import app.vela.ui.DpadRingBox
 import app.vela.ui.dpadFieldEscape
 import app.vela.ui.dpadHighlight
+import app.vela.ui.dpadClickable
+import app.vela.ui.dpadRowSibling
+import androidx.compose.ui.focus.FocusRequester
 import app.vela.ui.rememberDpadAutoFocus
 
 /**
@@ -118,6 +120,10 @@ fun ManeuverBanner(
     onPreviewNext: () -> Unit = {},
     onPreviewPrev: () -> Unit = {},
     onExitPreview: () -> Unit = {},
+    // Activating the card opens the full step list, the way tapping the banner does in Google Maps.
+    // It used to be actionable ONLY while previewing (OK resumed live guidance), so during a normal
+    // drive pressing OK on the highlighted card did nothing at all (issue #79, @SILB).
+    onOpenSteps: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Swiping the banner left/right walks the upcoming steps (Google-style): the
@@ -179,8 +185,8 @@ fun ManeuverBanner(
             // D-pad step preview (docs/dpad.md): focus the banner, then LEFT/RIGHT walk the
             // upcoming steps (the key mirror of the swipe above); OK resumes live guidance
             // (via the clickable below while previewing). Placed BEFORE the clickable so key
-            // events bubbling up from its focus target reach this handler; the extra
-            // focusable() only exists when the clickable isn't there (one focus stop always).
+            // events bubbling up from its focus target reach this handler. The card is always
+            // clickable (below), so it is exactly ONE focus stop either way.
             .dpadHighlight(RoundedCornerShape(12.dp))
             .onKeyEvent { ev ->
                 val previewKey = ev.key == Key.DirectionLeft || ev.key == Key.DirectionRight
@@ -191,9 +197,9 @@ fun ManeuverBanner(
                     else -> { latestPrev(); true }
                 }
             }
-            .then(
-                if (previewing) Modifier.clickable(onClick = onExitPreview) else Modifier.focusable(),
-            ),
+            // Always clickable, so the card is exactly ONE focus stop either way: while previewing OK
+            // resumes live guidance, otherwise it opens the steps.
+            .dpadClickable(onClick = if (previewing) onExitPreview else onOpenSteps),
         // Softer, more current shape than the stock card: big radius + a real shadow so the
         // banner floats over the map instead of sitting on it like a toolbar.
         shape = RoundedCornerShape(if (compact) 16.dp else 24.dp),
@@ -787,21 +793,32 @@ fun NavControls(
                 Spacer(Modifier.width(8.dp))
                 // Steps is icon-only so the row stays compact (the left ETA column can
                 // grow with a longer "X mi · 7:42 PM"); End keeps its label.
+                // D-pad (issue #79): three controls in a ROW need explicit LEFT/RIGHT sibling
+                // wiring, or only the one focus happens to land on is ever reachable. Each ring
+                // is a DpadRingBox so it hugs the control's real 40dp draw size instead of the
+                // 48dp touch target Material inflates it to (docs/dpad.md).
+                val etaFocus = remember { List(3) { FocusRequester() } }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Mute lives IN the bar (the fork's pre-along-route layout): three icon buttons +
                     // End never squeezed the ETA, and keeping it here leaves the map with a single
                     // search FAB instead of upstream's two-button stack (crowding feedback 2026-07-15).
-                    FilledTonalIconButton(onClick = onToggleVoice) {
-                        Icon(
-                            if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                            contentDescription = if (voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
-                        )
+                    DpadRingBox(androidx.compose.foundation.shape.CircleShape) {
+                        FilledTonalIconButton(onClick = onToggleVoice, modifier = Modifier.dpadRowSibling(etaFocus, 0)) {
+                            Icon(
+                                if (voiceMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                contentDescription = if (voiceMuted) stringResource(R.string.nav_unmute_voice) else stringResource(R.string.nav_mute_voice),
+                            )
+                        }
                     }
-                    FilledTonalIconButton(onClick = onSteps) {
-                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResource(R.string.nav_steps))
+                    DpadRingBox(androidx.compose.foundation.shape.CircleShape) {
+                        FilledTonalIconButton(onClick = onSteps, modifier = Modifier.dpadRowSibling(etaFocus, 1)) {
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = stringResource(R.string.nav_steps))
+                        }
                     }
-                    Button(onClick = onStop) {
-                        Text(stringResource(R.string.nav_end), maxLines = 1, softWrap = false)
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.shape) {
+                        Button(onClick = onStop, modifier = Modifier.dpadRowSibling(etaFocus, 2)) {
+                            Text(stringResource(R.string.nav_end), maxLines = 1, softWrap = false)
+                        }
                     }
                 }
             }
@@ -861,8 +878,12 @@ fun ArrivalSummary(
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.nav_done))
+            // DpadRingBox: Material pads the button out to the 48dp touch target while DRAWING at
+            // 40dp, so a ring on the button's own modifier floats clear of it (docs/dpad.md, #79).
+            DpadRingBox(androidx.compose.material3.ButtonDefaults.shape, Modifier.fillMaxWidth()) {
+                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.nav_done))
+                }
             }
         }
     }

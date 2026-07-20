@@ -55,6 +55,28 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
   frames) - the screenshot is the source of truth.
 - **No UI change lands on the word of a script.** If you have not looked at a screenshot of
   the affected surface behaving correctly, the change is not verified. Ship the frames.
+- **Calibrate a pixel assertion against a frame you have LOOKED AT, or it will pass on nothing.**
+  `ring_walk.sh` asserts the focus ring is visible at every stop. Written with an "orange-ish"
+  threshold it counted Vela's own POI pins (227,116,0) as a ring and reported a clean walk across a
+  map where nothing was ringed at all - a green result measuring the wrong pixels. The ring is
+  exactly `0xFFFF6D00`; matching that colour made 11 of 12 map steps fail immediately and truthfully.
+  Sample the real colours out of a saved frame before trusting any colour test, and when a
+  screen-scraping check passes first try, suspect it.
+- **A "missing control" bug may be a FOCUS bug.** The same walk reported nine ringless controls on
+  the place sheet. Every one was really focus sitting in the soft-key bar, which had quietly become
+  focusable (`isClickable` implies focusable since API 26). Before adding anything to a control that
+  "has no ring", confirm the control is what actually holds focus - the frame shows it, a focus dump
+  often does not.
+- **"The code for it already exists" is not a fix, and can hide the bug.** Issue #79 reported
+  that voice does not expand road abbreviations. `EN_SPEECH_WORDS` had expanded them since
+  2026-07-03, so the report looked stale. It was not: running the real function over real road
+  names showed it MIS-expanding - "St Louis Ave" came out **"Street Louis Avenue"** and
+  "Dr Martin Luther King Jr Blvd" came out "Drive Martin Luther King". A user hearing that
+  reports it exactly the way they did. **When a report contradicts the code, run the code over
+  real-world inputs before believing the code.** For anything table-driven (abbreviations,
+  romanization, unit formatting) that means a throwaway probe printing input => output for a
+  dozen realistic cases, including the ones where the same token means two different things.
+  Whatever the probe catches becomes a permanent test before the probe is deleted.
 
 ## Feature-phone display size (HARD RULE, NO EXCEPTIONS)
 
@@ -465,6 +487,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     no `isSystemInDarkTheme`; fails on any real violation. Wire it into CI.
   - `audit_dynamic.sh` - EXHAUSTIVE on-device tour: every surface opens focused, focus is never lost
     across a full traversal, BACK exits. "Nothing escapes the auditor."
+  - `ring_walk.sh <pkg> <label> <steps> <outdir> [key]` - the half `audit_static.sh` CANNOT do: it
+    walks a surface on device and asserts the orange ring is actually VISIBLE at every focus stop
+    (the static rule only proves a ring modifier exists in the source). Saves a frame plus the
+    on-screen text for every miss, because some misses are correct - the map is a focus stop with no
+    ring by design, and the first frame after opening a screen can precede auto-focus. Drive the
+    surface first, then walk it; `ring_sweep.sh <pkg> <WxH> <dens> <outdir>` chains the common ones.
 - **Dead-code gate (three engines, all in CI, `main`).** ACCURACY IS THE CONTRACT: none may flag
   anything actually needed (a false positive is a bug; a false negative is tolerated).
   - `./gradlew :core:detekt :app:detekt` - parser-level dead code detekt finds and grep CANNOT:

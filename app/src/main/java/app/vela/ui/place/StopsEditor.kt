@@ -1,7 +1,6 @@
 package app.vela.ui.place
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +57,8 @@ import app.vela.R
 import app.vela.core.model.Place
 import app.vela.ui.SheetPalette
 // D-pad-first support (docs/dpad.md): auto-focus on open, focus rings, horizontal-swallow.
+import app.vela.ui.DpadRingBox
+import app.vela.ui.dpadClickable
 import app.vela.ui.dpadHighlight
 import app.vela.ui.dpadSwallowHorizontal
 import app.vela.ui.rememberDpadAutoFocus
@@ -124,7 +125,7 @@ fun StopsEditorSheet(
                     modifier = Modifier.weight(1f),
                 )
                 if (!softkeys) {
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.dpadHighlight(CircleShape)) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.mapscreen_cancel), tint = dim)
                     }
                 }
@@ -244,7 +245,9 @@ fun StopsEditorSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .dpadHighlight(RoundedCornerShape(8.dp))
-                    .clickable { onAddStop() }
+                    // dpadClickable, not clickable: a raw clickable next to the ring draws
+                    // Material's grey focus layer AND the orange ring (docs/dpad.md).
+                    .dpadClickable { onAddStop() }
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -254,8 +257,13 @@ fun StopsEditorSheet(
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(onClick = { onApply(order) }, modifier = Modifier.focusRequester(doneFocus)) {
-                    Text(stringResource(R.string.nav_done))
+                // DpadRingBox, not dpadHighlight: Material pads the button out to the 48dp touch
+                // target while DRAWING at 40dp, so a ring on the button's own modifier floats
+                // clear of it (docs/dpad.md; issue #79).
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.shape) {
+                    Button(onClick = { onApply(order) }, modifier = Modifier.focusRequester(doneFocus)) {
+                        Text(stringResource(R.string.nav_done))
+                    }
                 }
             }
         }

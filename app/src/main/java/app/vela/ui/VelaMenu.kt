@@ -6,7 +6,6 @@ package app.vela.ui
 // TOUCH it renders the ordinary anchored `DropdownMenu`, unchanged, so touch stays byte-identical.
 // Same call shape as DropdownMenu: `VelaMenu(expanded, onDismissRequest) { item("A") { .. }; item("B") { .. } }`.
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -150,7 +149,7 @@ fun VelaMenuScope.toggleItem(text: String, checked: Boolean, onToggle: (Boolean)
                 // Fork adaptation: hybrid touch+keypad phones can key-walk the anchored
                 // DropdownMenu too, so the touch row still needs a visible focus ring.
                 .dpadHighlight(RoundedCornerShape(8.dp))
-                .clickable { onToggle(!checked) }
+                .dpadClickable { onToggle(!checked) }
                 .padding(horizontal = 16.dp, vertical = 4.dp)
                 .fillMaxWidth(),
         ) {

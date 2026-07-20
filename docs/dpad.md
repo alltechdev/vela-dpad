@@ -99,6 +99,72 @@ ring you can't tell where you are - technically operable but practically unusabl
   row of "label + switch" is ONE focus stop, so ringing the row wraps the whole option; track the row's
   focus with `onFocusEvent` and hand it here to ring the switch instead (matching Settings).
 
+### What the static auditor can and cannot see (read before trusting a green run)
+
+`audit_static.sh` is pattern-based, so **it only catches what it has been taught**. Three gaps found
+the hard way (#79), all now rules:
+
+- **Material button/chip COMPOSABLES were invisible.** The ring rule matched interactive *modifiers*
+  (`.clickable`, `.toggleable`, ...); a `Button`/`IconButton`/`FilterChip` is a composable, not a
+  modifier, so none of them were ever checked. That is how **39 of 41 Settings buttons** shipped with
+  no focus ring while the gate stayed green, and a tester found it instead. The rule found **75**
+  ringless controls across 7 files.
+  It enforces **per file** via `BUTTON_RING_SWEPT`: a miss in a swept file is a hard failure and can
+  never regress, everywhere else it is a CHECK until that file's sweep lands. **Add your file to that
+  set the moment you sweep it** - the set is meant to grow until it is all of them.
+- **Two focus signals on one control.** `dpadHighlight` beside a raw `.clickable` draws Material's grey
+  focus layer AND the orange ring. Found by hand TWICE - the round-2 sweep missed pairs sitting more
+  than a few lines apart, and a later edit reintroduced one on the nav banner - so it is a rule now.
+  Use `dpadClickable`.
+- A latent bug the above exposed: the **gesture** rule was matching the `import` of
+  `detectHorizontalDragGestures`, and only ever passed because an `import ...clickable` happened to sit
+  inside its look-around window. Removing that import made a two-year-old false pass visible. Import
+  lines are skipped now.
+
+- **Only one bracket form was checked.** The double-signal rule matched `.clickable(` and not the
+  trailing-lambda `.clickable {`, so brace-form pairings were invisible to it. Widening the rule to
+  `[({]` immediately surfaced **12 more**, in PlaceSheet, RouteTopCard and VelaMenu, each drawing the
+  grey layer under the orange ring. Whenever a rule matches a call, match BOTH bracket forms.
+- **`dpadClickable` did not read as a key path.** `\.clickable` does not match `.dpadClickable` (the
+  dot sits before `dpad`), so converting a drag handle to the safe helper made the auditor declare the
+  handle D-pad-unreachable. Fixing one rule can break another; re-run the whole audit after a sweep.
+
+**The lesson generalises: a green auditor is evidence about the patterns it knows, nothing more.**
+
+### The rings the auditor can never check: `tests/dpad/ring_walk.sh`
+
+A ring modifier in the source does not prove a ring on the glass, so the sweep has a second half that
+walks a surface and asserts a ring is visible at every focus stop. Two things it taught:
+
+- **Match the ring's EXACT colour** (`0xFFFF6D00`). A loose "orange-ish" threshold counted Vela's own
+  POI pins (227,116,0) as a focus ring, and a walk across the MAP came back clean while nothing was
+  ringed at all. Calibrate a pixel assertion against a frame you have looked at.
+- **Not every miss is a bug, so every miss is triaged by eye.** The map itself is a focus stop with no
+  ring by design - it is a pan target and shows the teal "OK: move the map" bubble instead - and the
+  first frame after opening a screen can precede auto-focus landing. The walk saves the frame plus the
+  on-screen text next to each miss so the call is made from evidence.
+
+Its first real run found the soft-key bar taking focus (below), not a missing ring - the failure it
+was pointed at was not the failure it caught.
+When a tester reports a class of bug, ask first whether the auditor could even see it.
+
+### Photographing a focus ring on a long screen
+
+Verifying a ring means landing focus on the control and screenshotting it, which is harder than it
+sounds on a scrolling screen. `tests/devices/verify_ring.sh` does it; five approaches failed first,
+recorded so nobody repeats them:
+
+| approach | why it fails |
+| --- | --- |
+| walk DOWN a fixed number of times | the list scrolls under the focus, so the count never matches |
+| walk UP from the bottom | Settings deliberately routes UP from its top row to the Back button |
+| tap the control | a touch tap activates it and Compose does not retain focus afterwards |
+| match the uiautomator focus dump | Compose reports empty `text` for most nodes (see the warning below) |
+| take the first orange pixels on screen | always a row higher up, never the control you want |
+
+What works is a **stopping condition, not a budget**: keep walking until the target's text is on screen
+AND orange pixels are present, then capture. Lands around step 75-80 on every geometry.
+
 ### The MapLibre `MapView` steals D-pad keys - the load-bearing fix
 
 **Finding 0 (the reason "nothing happened"):** MapLibre's `MapView` calls `requestFocus()`
