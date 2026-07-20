@@ -180,6 +180,9 @@ data class MapUiState(
     val arrived: Boolean = false,
     val nav: NavState = NavState(),
     val maneuverText: String = "",
+    // Foreign road name -> its basemap Latin name, grown from map tiles as the drive proceeds; the
+    // banner/steps show the real romanized name where we have one. Empty otherwise.
+    val roadNameLatin: Map<String, String> = emptyMap(),
     val fasterRoute: Route? = null,
     val fasterSavingSeconds: Double = 0.0,
     val arrivedLabel: String = "",
@@ -2900,6 +2903,17 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /** VelaMapView reports romanized road names (local -> basemap Latin) as nav tiles load. Merge
+     *  into state (banner/steps consult it) and hand the full map to VoiceGuide so guidance SAYS
+     *  "Rehov Herzl" instead of ICU's consonant skeleton. Only grows during a drive; reset on end. */
+    fun onNavRoadLatin(map: Map<String, String>) {
+        if (map.isEmpty()) return
+        val merged = if (_state.value.roadNameLatin.isEmpty()) map else _state.value.roadNameLatin + map
+        if (merged.size == _state.value.roadNameLatin.size) return
+        voice.roadNameLatin = merged
+        _state.update { it.copy(roadNameLatin = merged) }
+    }
+
     fun stopNav() {
         // A replay OR a demo drive owns nav through the replay job - "End" (and the back gesture, which
         // also routes here) must end the REPLAY, not run live-nav teardown: stopReplay cancels replayJob
@@ -2913,6 +2927,7 @@ class MapViewModel @Inject constructor(
         tripStore.finishTrip() // close + persist the recorded trip (drops too-short ones)
         clearSpeedLimit() // clear the speed-limit badge for the next drive
         clearPersistedNav() // this drive is over → don't offer to resume it next launch
+        clearRoadLatin() // next drive re-resolves its own romanized road names
         _state.update { it.copy(showSteps = false, previewStepIndex = null, navCameraDetached = false, speedLimitKmh = null) }
     }
 
@@ -3175,6 +3190,12 @@ class MapViewModel @Inject constructor(
     fun finishNav() {
         stopNav()
         clearSelection()
+    }
+
+    /** Drop the drive's romanized-road dictionary so the next one re-resolves from its own tiles. */
+    private fun clearRoadLatin() {
+        voice.roadNameLatin = emptyMap()
+        if (_state.value.roadNameLatin.isNotEmpty()) _state.update { it.copy(roadNameLatin = emptyMap()) }
     }
 
     // --- nav resume across process death -----------------------------------------------------------
