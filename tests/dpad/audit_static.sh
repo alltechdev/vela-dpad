@@ -92,7 +92,11 @@ GESTURE = re.compile(r'(detectTapGestures|detectDragGestures|detectVerticalDragG
 # handler, a focus-target modifier, OR any Material control (IconButton/Button/Chip/onClick=…) that
 # is inherently focusable + OK-activatable (e.g. the results-sheet chevron mirrors its drag handle).
 KEYPATH = re.compile(r'(onKeyEvent|onPreviewKeyEvent|MapDpad|mapDpad|Key\.Direction|'
-                     r'\.clickable|\.combinedClickable|\.focusable|\.selectable|\.toggleable|'
+                     # dpadClickable IS a key path (it wraps clickable); it needs naming explicitly
+                     # because "\.clickable" does not match ".dpadClickable" - the dot sits before
+                     # "dpad". Converting a drag handle's clickable to dpadClickable therefore made
+                     # the auditor declare the handle D-pad-unreachable, which it plainly is not.
+                     r'\.clickable|\.dpadClickable|\.combinedClickable|\.focusable|\.selectable|\.toggleable|'
                      r'onClick\s*=|IconButton\s*\(|FilledTonalIconButton\s*\(|\bButton\s*\(|'
                      r'TextButton\s*\(|OutlinedButton\s*\(|FilterChip\s*\(|AssistChip\s*\(|Chip\s*\(|'
                      r'onKeyDown|dispatchKeyEvent|panByFraction|zoomStep|panBy\s*\()')
@@ -127,7 +131,8 @@ BUTTON_RING_EXEMPT = {"VelaDialog.kt", "VelaMenu.kt", "VoiceCaptureDialog.kt", "
 # Files whose buttons have been swept for rings. A missing ring in one of these is a HARD FAILURE, so
 # the fix cannot regress; everywhere else it is surfaced as a CHECK until that file is swept too.
 # Move a filename in here the moment its sweep lands - the set is meant to grow until it is all of them.
-BUTTON_RING_SWEPT = {"SettingsScreen.kt"}
+BUTTON_RING_SWEPT = {"SettingsScreen.kt", "StopsEditor.kt", "NavOverlays.kt", "StepsSheet.kt", "SearchBar.kt", "PlaceSheet.kt",
+                     "MapScreen.kt"}
 scanned = 0
 
 for path in walk():
@@ -169,7 +174,11 @@ for path in walk():
         # that sit >8 lines apart, and a later edit reintroduced one on the nav banner), hence a rule.
         if "dpadHighlight(" in code_of(ln) and base != "DpadFocus.kt":
             chain = "\n".join(code_of(l) for l in lines[i:min(len(lines), i + 20)])
-            m = re.search(r'(?<!dpad)\.clickable\s*\(', chain)
+            # Both bracket forms: `.clickable(onClick = ...)` AND the trailing-lambda `.clickable { }`.
+            # The rule matched only the paren form, so every brace-form pairing was invisible to the
+            # gate - the issue #79 ring sweep turned up SEVEN of them across MapScreen, SearchBar,
+            # StopsEditor and StepsSheet, each drawing the grey layer under the orange ring.
+            m = re.search(r'(?<!dpad)\.clickable\s*[({]', chain)
             if m and "dpadClickable" not in chain[:m.end() + 20]:
                 viol.append(("MED", f"{name}:{n}", "dpadHighlight + raw .clickable = grey focus layer AND the ring; use dpadClickable"))
         # E. gesture modifier with no key alternative nearby. Skip IMPORT lines: the import of

@@ -2,7 +2,6 @@ package app.vela.ui.place
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,7 +130,7 @@ fun RouteTopCard(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .dpadHighlight(RoundedCornerShape(8.dp))
-                                .clickable { onEditStops() },
+                                .dpadClickable { onEditStops() },
                         ) {
                             Spacer(Modifier.width(GLYPH_RAIL + 8.dp))
                             Text(
@@ -169,7 +168,7 @@ fun RouteTopCard(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .dpadHighlight(RoundedCornerShape(8.dp))
-                            .clickable { onAddStop() }
+                            .dpadClickable { onAddStop() }
                             .padding(vertical = 4.dp),
                     ) {
                         Box(Modifier.width(GLYPH_RAIL), contentAlignment = Alignment.Center) {

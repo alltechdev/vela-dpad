@@ -121,7 +121,31 @@ the hard way (#79), all now rules:
   inside its look-around window. Removing that import made a two-year-old false pass visible. Import
   lines are skipped now.
 
+- **Only one bracket form was checked.** The double-signal rule matched `.clickable(` and not the
+  trailing-lambda `.clickable {`, so brace-form pairings were invisible to it. Widening the rule to
+  `[({]` immediately surfaced **12 more**, in PlaceSheet, RouteTopCard and VelaMenu, each drawing the
+  grey layer under the orange ring. Whenever a rule matches a call, match BOTH bracket forms.
+- **`dpadClickable` did not read as a key path.** `\.clickable` does not match `.dpadClickable` (the
+  dot sits before `dpad`), so converting a drag handle to the safe helper made the auditor declare the
+  handle D-pad-unreachable. Fixing one rule can break another; re-run the whole audit after a sweep.
+
 **The lesson generalises: a green auditor is evidence about the patterns it knows, nothing more.**
+
+### The rings the auditor can never check: `tests/dpad/ring_walk.sh`
+
+A ring modifier in the source does not prove a ring on the glass, so the sweep has a second half that
+walks a surface and asserts a ring is visible at every focus stop. Two things it taught:
+
+- **Match the ring's EXACT colour** (`0xFFFF6D00`). A loose "orange-ish" threshold counted Vela's own
+  POI pins (227,116,0) as a focus ring, and a walk across the MAP came back clean while nothing was
+  ringed at all. Calibrate a pixel assertion against a frame you have looked at.
+- **Not every miss is a bug, so every miss is triaged by eye.** The map itself is a focus stop with no
+  ring by design - it is a pan target and shows the teal "OK: move the map" bubble instead - and the
+  first frame after opening a screen can precede auto-focus landing. The walk saves the frame plus the
+  on-screen text next to each miss so the call is made from evidence.
+
+Its first real run found the soft-key bar taking focus (below), not a missing ring - the failure it
+was pointed at was not the failure it caught.
 When a tester reports a class of bug, ask first whether the auditor could even see it.
 
 ### Photographing a focus ring on a long screen

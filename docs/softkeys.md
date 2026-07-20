@@ -226,6 +226,17 @@ to fight for width forced "14 min" into an ellipsis.
 
 ## Gotchas (hard-won; read before touching this)
 
+0. **THE BAR MUST NEVER TAKE D-PAD FOCUS.** `SoftkeyBar` sets `isClickable = true` so stray touches do
+   not fall through to the views underneath - and since API 26 a clickable View with the default
+   `focusable="auto"` resolves to FOCUSABLE. The bar was therefore a focus target: walking DOWN past
+   the last control moved focus off the content and painted the framework's focus plate across the
+   whole bar (tester, 2026-07-20). It is a dead end - the bar is operated by the PHYSICAL soft keys,
+   so OK does nothing there and the user has to blindly walk back up. It also masqueraded as the
+   thing being hunted: `ring_walk.sh` reported nine "controls with no ring" on the place sheet, and
+   every one was really focus sitting in the bar. Fixed in `SoftkeyBar.init` with `isFocusable=false`
+   + `FOCUS_BLOCK_DESCENDANTS` + `defaultFocusHighlightEnabled=false`. **If you add a view to the bar,
+   it inherits the block - do not re-enable focus on it.**
+
 1. **PROGRAMMATIC FOCUS DOES NOT LAND WHILE THE BAR IS ACTIVE.** Unresolved as of 2026-07-20; tracked as **issue #77**, which carries the full instrumentation record and the five disproven hypotheses. A
    `FocusRequester.requestFocus()` issued on open returns WITHOUT THROWING and never takes; the first
    real KEY PRESS then places focus normally. With `Yapchik.mode = OFF` the same code focuses fine.

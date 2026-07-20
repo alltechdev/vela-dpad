@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 // D-pad-only operation (docs/dpad.md) - one import block so upstream merges stay clean.
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape as DpadRoundedCornerShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +45,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import app.vela.ui.dpadClickable
 import app.vela.ui.dpadHighlight
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -135,7 +135,7 @@ fun SearchBar(
             // A back arrow while the full-screen search page is open, else the
             // search glyph.
             if (onBack != null) {
-                IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onBack, modifier = Modifier.size(40.dp).dpadHighlight(androidx.compose.foundation.shape.CircleShape)) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = stringResource(R.string.search_close_cd),
@@ -161,7 +161,9 @@ fun SearchBar(
                         if (dpadMode) {
                             Modifier
                                 .dpadHighlight(DpadRoundedCornerShape(20.dp))
-                                .clickable { fieldArmed = true }
+                                // dpadClickable, not clickable: a raw clickable here drew
+                                // Material's grey focus layer under the ring (docs/dpad.md).
+                                .dpadClickable { fieldArmed = true }
                                 // Inset the text INSIDE the focus ring - with none, the first
                                 // letter started at the Box edge and the 2dp ring stroke drew
                                 // straight through it (keypad phones see this on every search).
@@ -257,7 +259,7 @@ fun SearchBar(
                 )
             }
             if (query.isNotEmpty()) {
-                IconButton(onClick = onClear, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onClear, modifier = Modifier.size(40.dp).dpadHighlight(androidx.compose.foundation.shape.CircleShape)) {
                     Icon(
                         Icons.Default.Close,
                         contentDescription = stringResource(R.string.search_clear_cd),
@@ -284,9 +286,10 @@ fun SearchBar(
             }
             // Voice search mic: only with the field empty (the clear "X" owns the typing state,
             // Google-style) and only when something can service it (onMic != null). Sits just before
-            // the settings gear. A Material IconButton, so its built-in focus indication is enough.
+            // the settings gear. It carries the D-pad ring like the bar's other icon buttons
+            // (Material's own focus indication is too faint to see - docs/dpad.md, issue #79).
             if (onMic != null && query.isEmpty()) {
-                IconButton(onClick = onMic, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onMic, modifier = Modifier.size(40.dp).dpadHighlight(androidx.compose.foundation.shape.CircleShape)) {
                     Icon(
                         Icons.Default.Mic,
                         contentDescription = stringResource(R.string.search_voice_cd),
@@ -300,7 +303,7 @@ fun SearchBar(
                 // drew as an ellipse and looked like it was spinning off-axis (user report).
                 CircularProgressIndicator(Modifier.padding(end = 10.dp).size(22.dp), strokeWidth = 2.dp)
             } else if (!softkeys) {
-                IconButton(onClick = onOpenSettings) {
+                IconButton(onClick = onOpenSettings, modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape)) {
                     Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.search_settings_cd))
                 }
             }

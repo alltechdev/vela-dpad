@@ -15,7 +15,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -137,6 +136,8 @@ import androidx.compose.ui.input.key.type
 import app.vela.ui.dpadHighlight
 import app.vela.ui.dpadClickable
 import app.vela.ui.dpadFieldEscape
+import app.vela.ui.DpadRingBox // focus ring that hugs a Material button/chip (docs/dpad.md, issue #79)
+import app.vela.ui.dpadRowSibling // LEFT/RIGHT across a row of buttons/chips (docs/dpad.md)
 import app.vela.ui.rememberDpadAutoFocus // D-pad-first initial focus (docs/dpad.md)
 import app.vela.ui.VelaMenu // D-pad-first menu (docs/dpad.md)
 import app.vela.ui.item
@@ -399,7 +400,7 @@ fun PlaceSheet(
                     // same one-detent-grow logic as a tap. clickable replaces the tap-only
                     // detector (same behaviour under touch); the drag detector below is untouched.
                     .dpadHighlight(RoundedCornerShape(3.dp))
-                    .clickable {
+                    .dpadClickable {
                         // Grows one detent: minimized→peek, peek→expanded, expanded→peek.
                         if (minimizedState.value) minimizedState.value = false
                         else expandedState.value = !expandedState.value
@@ -491,16 +492,24 @@ fun PlaceSheet(
                 // photos with categories, mirroring its gallery tabs. "All" clears the filter.
                 val photoCats = remember(place.photoCategories) { place.photoCategories.filterNotNull().distinct() }
                 if (photoCats.isNotEmpty()) {
+                    // D-pad focus rings + LEFT/RIGHT across the row (docs/dpad.md, issue #79). The
+                    // requester list is keyed on the chip COUNT so lastIndex always matches what is
+                    // composed (requesting an uncomposed sibling would throw).
+                    val photoChipFocus = remember(photoCats.size) { List(photoCats.size + 1) { FocusRequester() } }
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        (listOf<String?>(null) + photoCats).forEach { cat ->
-                            FilterChip(
-                                selected = photoCat == cat,
-                                onClick = { photoCat = cat },
-                                label = { Text(cat ?: stringResource(R.string.place_photo_category_all)) },
-                            )
+                        (listOf<String?>(null) + photoCats).forEachIndexed { pi, cat ->
+                            DpadRingBox(CircleShape, height = androidx.compose.material3.FilterChipDefaults.Height) {
+                                FilterChip(
+                                    selected = photoCat == cat,
+                                    onClick = { photoCat = cat },
+                                    label = { Text(cat ?: stringResource(R.string.place_photo_category_all)) },
+                                    shape = CircleShape,
+                                    modifier = Modifier.dpadRowSibling(photoChipFocus, pi),
+                                )
+                            }
                         }
                     }
                 }
@@ -523,7 +532,7 @@ fun PlaceSheet(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(dim.copy(alpha = 0.2f))
                                 .dpadHighlight(RoundedCornerShape(12.dp))
-                                .clickable { galleryStart = i },
+                                .dpadClickable { galleryStart = i },
                         )
                     }
                     // The full gallery scrapes in the background a beat after the sheet opens -
@@ -537,6 +546,9 @@ fun PlaceSheet(
                     }
                 }
             }
+            // D-pad LEFT/RIGHT across the header action icons (docs/dpad.md, issue #79). All four
+            // share the `!softkeysActive` condition, so they are composed (or absent) together.
+            val headerFocus = remember { List(4) { FocusRequester() } }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isParking) {
                     Icon(
@@ -563,7 +575,7 @@ fun PlaceSheet(
                 // hidden - they move into the LEFT "Options" soft-key menu below, so the header is just
                 // the name and we reclaim the whole action row.
                 if (!softkeysActive) {
-                    IconButton(onClick = onToggleSave, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onToggleSave, modifier = Modifier.size(40.dp).dpadHighlight(CircleShape).dpadRowSibling(headerFocus, 0)) {
                         Icon(
                             if (isSaved) Icons.Default.Star else Icons.Default.StarBorder,
                             contentDescription = if (isSaved) stringResource(R.string.place_saved) else stringResource(R.string.place_save),
@@ -571,7 +583,7 @@ fun PlaceSheet(
                             modifier = Modifier.size(20.dp),
                         )
                     }
-                    ShareIconButton(place, dim)
+                    ShareIconButton(place, dim, Modifier.dpadRowSibling(headerFocus, 1))
                 }
                 // Overflow. Under touch it's the ⋮ button (Set Home / Work). On keypad the SAME menu is
                 // opened by the LEFT "Options" soft key (optionsMenuOpen) and holds every action the
@@ -580,7 +592,7 @@ fun PlaceSheet(
                 var headerMenu by remember { mutableStateOf(false) }
                 Box {
                     if (!softkeysActive) {
-                        IconButton(onClick = { headerMenu = true }, modifier = Modifier.size(40.dp)) {
+                        IconButton(onClick = { headerMenu = true }, modifier = Modifier.size(40.dp).dpadHighlight(CircleShape).dpadRowSibling(headerFocus, 2)) {
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.place_more_options), tint = dim, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -636,7 +648,7 @@ fun PlaceSheet(
                     }
                 }
                 if (!softkeysActive) {
-                    IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onClose, modifier = Modifier.size(40.dp).dpadHighlight(CircleShape).dpadRowSibling(headerFocus, 3)) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close), tint = dim, modifier = Modifier.size(20.dp))
                     }
                 }
@@ -694,7 +706,7 @@ fun PlaceSheet(
                     Icon(Icons.Default.MyLocation, contentDescription = null, tint = dim, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(coords, style = MaterialTheme.typography.bodyLarge, color = ink, modifier = Modifier.weight(1f))
-                    IconButton(onClick = {
+                    IconButton(modifier = Modifier.dpadHighlight(CircleShape), onClick = {
                         val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         cb.setPrimaryClip(ClipData.newPlainText("coordinates", coords))
                         Toast.makeText(context, context.getString(R.string.place_coordinates_copied), Toast.LENGTH_SHORT).show()
@@ -830,7 +842,7 @@ fun PlaceSheet(
                     Icon(Icons.Default.Place, contentDescription = null, tint = dim, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(addr, style = MaterialTheme.typography.bodyMedium, color = ink, modifier = Modifier.weight(1f))
-                    IconButton(onClick = {
+                    IconButton(modifier = Modifier.dpadHighlight(CircleShape), onClick = {
                         val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         cb.setPrimaryClip(ClipData.newPlainText("address", addr))
                         Toast.makeText(context, context.getString(R.string.place_address_copied), Toast.LENGTH_SHORT).show()
@@ -901,7 +913,7 @@ fun PlaceSheet(
                         .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.13f))
                         .dpadHighlight(RoundedCornerShape(12.dp))
-                        .clickable {
+                        .dpadClickable {
                             place.actionUrl?.let { app.vela.ui.ExternalLinks.open(context, it) }
                         }
                         .padding(vertical = 12.dp),
@@ -1004,7 +1016,7 @@ fun PlaceSheet(
                             Modifier.width(150.dp).clip(RoundedCornerShape(12.dp))
                                 .background(dim.copy(alpha = 0.10f))
                                 .dpadHighlight(RoundedCornerShape(12.dp))
-                                .clickable { onOpenSimilar(s) }
+                                .dpadClickable { onOpenSimilar(s) }
                                 .padding(12.dp),
                         ) {
                             Text(s.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1085,7 +1097,7 @@ fun DirectionsPanel(
                         }
                     }
                     .dpadHighlight(RoundedCornerShape(3.dp)) // D-pad: OK toggles (docs/dpad.md)
-                    .clickable { collapsed.value = !collapsed.value }
+                    .dpadClickable { collapsed.value = !collapsed.value }
                     .padding(vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -1109,6 +1121,7 @@ fun DirectionsPanel(
             // directions panel opens, so it's the active surface (else focus stays on the
             // search bar behind it). No-op under touch.
             val dirAutoFocus = rememberDpadAutoFocus()
+            val modeChipFocus = remember { List(4) { FocusRequester() } }
             // Scrollable so all four mode pills keep full size on a narrow screen - without this the
             // 4th (Bike) overflowed the row and got clipped to the edge as an icon-only stub.
             Row(
@@ -1120,16 +1133,23 @@ fun DirectionsPanel(
                     Triple(TravelMode.TRANSIT, stringResource(R.string.place_mode_transit), Icons.Default.DirectionsBus),
                     Triple(TravelMode.WALK, stringResource(R.string.place_mode_walk), Icons.AutoMirrored.Filled.DirectionsWalk),
                     Triple(TravelMode.BICYCLE, stringResource(R.string.place_mode_bike), Icons.AutoMirrored.Filled.DirectionsBike),
-                ).forEach { (mode, label, icon) ->
+                ).forEachIndexed { mi, (mode, label, icon) ->
                     // Google-style mode pills: stadium shape + a mode glyph, not bare squarish chips.
-                    FilterChip(
-                        selected = currentMode == mode,
-                        onClick = { onModeSelected(mode) },
-                        label = { Text(label) },
-                        modifier = if (mode == TravelMode.DRIVE) Modifier.focusRequester(dirAutoFocus) else Modifier,
-                        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                    )
+                    // D-pad focus ring + LEFT/RIGHT across the row (docs/dpad.md, issue #79).
+                    DpadRingBox(
+                        androidx.compose.foundation.shape.CircleShape,
+                        height = androidx.compose.material3.FilterChipDefaults.Height,
+                    ) {
+                        FilterChip(
+                            selected = currentMode == mode,
+                            onClick = { onModeSelected(mode) },
+                            label = { Text(label) },
+                            modifier = (if (mode == TravelMode.DRIVE) Modifier.focusRequester(dirAutoFocus) else Modifier)
+                                .dpadRowSibling(modeChipFocus, mi),
+                            leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                        )
+                    }
                 }
             }
             // ONE depart/arrive time chooser, right under the mode chips - it applies to ALL modes
@@ -1166,15 +1186,22 @@ fun DirectionsPanel(
                     }
                     if (!skActive) {
                         Spacer(Modifier.height(14.dp))
+                        // D-pad focus rings + LEFT/RIGHT across the pair (docs/dpad.md, issue #79).
+                        // Keyed on whether Steps is present so lastIndex matches what's composed.
+                        val startFocus = remember(onSteps != null) { List(if (onSteps != null) 2 else 1) { FocusRequester() } }
                         Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = onStartNav, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                Text(stringResource(R.string.place_start))
+                            DpadRingBox(androidx.compose.material3.ButtonDefaults.shape, Modifier.weight(1f)) {
+                                Button(onClick = onStartNav, modifier = Modifier.fillMaxWidth().dpadRowSibling(startFocus, 0)) {
+                                    Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                                    Text(stringResource(R.string.place_start))
+                                }
                             }
                             onSteps?.let {
-                                OutlinedButton(onClick = it) {
-                                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                    Text(stringResource(R.string.place_steps))
+                                DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
+                                    OutlinedButton(onClick = it, modifier = Modifier.dpadRowSibling(startFocus, 1)) {
+                                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                                        Text(stringResource(R.string.place_steps))
+                                    }
                                 }
                             }
                         }
@@ -1182,6 +1209,7 @@ fun DirectionsPanel(
                     Spacer(Modifier.height(14.dp))
                     Text(stringResource(R.string.place_search_along_route), style = MaterialTheme.typography.labelMedium, color = dim)
                     Spacer(Modifier.height(6.dp))
+                    val alongRouteFocus = remember { List(4) { FocusRequester() } }
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()).padding(end = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1192,22 +1220,29 @@ fun DirectionsPanel(
                             Triple(R.string.cat_food, "Food", Icons.Default.Restaurant),
                             Triple(R.string.cat_coffee, "Coffee", Icons.Default.LocalCafe),
                             Triple(R.string.cat_groceries, "Groceries", Icons.Default.LocalGroceryStore),
-                        ).forEach { (labelRes, query, icon) ->
-                            FilterChip(
-                                selected = false,
-                                onClick = { onSearchAlongRoute(query) },
-                                label = { Text(stringResource(labelRes)) },
-                                leadingIcon = {
-                                    Icon(
-                                        icon,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = ink,
-                                    )
-                                },
-                                // Stadium pill, matching the map category chips + the mode chips above.
-                                shape = androidx.compose.foundation.shape.CircleShape,
-                            )
+                        ).forEachIndexed { ci, (labelRes, query, icon) ->
+                            // D-pad focus ring + LEFT/RIGHT across the row (docs/dpad.md, issue #79).
+                            DpadRingBox(
+                                androidx.compose.foundation.shape.CircleShape,
+                                height = androidx.compose.material3.FilterChipDefaults.Height,
+                            ) {
+                                FilterChip(
+                                    selected = false,
+                                    onClick = { onSearchAlongRoute(query) },
+                                    label = { Text(stringResource(labelRes)) },
+                                    modifier = Modifier.dpadRowSibling(alongRouteFocus, ci),
+                                    leadingIcon = {
+                                        Icon(
+                                            icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = ink,
+                                        )
+                                    },
+                                    // Stadium pill, matching the map category chips + the mode chips above.
+                                    shape = androidx.compose.foundation.shape.CircleShape,
+                                )
+                            }
                         }
                     }
                 }
@@ -1217,12 +1252,12 @@ fun DirectionsPanel(
             // Minimised: keep a Start button reachable without expanding (soft-keys already have
             // Start on the RIGHT key, so the minimised bar is empty chrome there).
             if (collapsed.value && !skActive) {
-                Button(
-                    onClick = onStartNav,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, end = 12.dp),
-                ) {
-                    Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                    Text(stringResource(R.string.place_start))
+                // D-pad focus ring (docs/dpad.md, issue #79).
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.shape, Modifier.fillMaxWidth().padding(top = 8.dp, end = 12.dp)) {
+                    Button(onClick = onStartNav, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                        Text(stringResource(R.string.place_start))
+                    }
                 }
             }
         }
@@ -1273,16 +1308,35 @@ private fun DepartTimeChooser(
         ) {
             // Stadium pills, matching every other Vela chip (CLAUDE.md chip style).
             val pill = androidx.compose.foundation.shape.CircleShape
-            FilterChip(selected = mode == 0, onClick = { mode = 0; emit() }, label = { Text(stringResource(R.string.place_leave_now)) }, shape = pill)
-            FilterChip(selected = mode == 1, onClick = { mode = 1; emit() }, label = { Text(stringResource(R.string.place_depart_at)) }, shape = pill)
-            FilterChip(selected = mode == 2, onClick = { mode = 2; emit() }, label = { Text(stringResource(R.string.place_arrive_by)) }, shape = pill)
-            if (isTransit) FilterChip(selected = mode == 3, onClick = { mode = 3; emit() }, label = { Text(stringResource(R.string.place_last_available)) }, shape = pill)
+            // D-pad focus rings + LEFT/RIGHT across the chips (docs/dpad.md, issue #79). The list is
+            // keyed on isTransit so lastIndex matches the chips actually composed - requesting an
+            // uncomposed sibling would throw.
+            val chipH = androidx.compose.material3.FilterChipDefaults.Height
+            val timeChipFocus = remember(isTransit) { List(if (isTransit) 4 else 3) { FocusRequester() } }
+            DpadRingBox(pill, height = chipH) {
+                FilterChip(selected = mode == 0, onClick = { mode = 0; emit() }, label = { Text(stringResource(R.string.place_leave_now)) }, shape = pill, modifier = Modifier.dpadRowSibling(timeChipFocus, 0))
+            }
+            DpadRingBox(pill, height = chipH) {
+                FilterChip(selected = mode == 1, onClick = { mode = 1; emit() }, label = { Text(stringResource(R.string.place_depart_at)) }, shape = pill, modifier = Modifier.dpadRowSibling(timeChipFocus, 1))
+            }
+            DpadRingBox(pill, height = chipH) {
+                FilterChip(selected = mode == 2, onClick = { mode = 2; emit() }, label = { Text(stringResource(R.string.place_arrive_by)) }, shape = pill, modifier = Modifier.dpadRowSibling(timeChipFocus, 2))
+            }
+            if (isTransit) DpadRingBox(pill, height = chipH) {
+                FilterChip(selected = mode == 3, onClick = { mode = 3; emit() }, label = { Text(stringResource(R.string.place_last_available)) }, shape = pill, modifier = Modifier.dpadRowSibling(timeChipFocus, 3))
+            }
         }
         // Time + date pickers for depart/arrive (Google-style: a time field AND a date field).
         if (mode == 1 || mode == 2) {
+            // D-pad focus rings + LEFT/RIGHT across the pair (docs/dpad.md, issue #79).
+            val pickerFocus = remember { List(2) { FocusRequester() } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { openTime() }) { Text(time.format(fmt)) }
-                OutlinedButton(onClick = { openDate() }) { Text(date.format(dateFmt)) }
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
+                    OutlinedButton(onClick = { openTime() }, modifier = Modifier.dpadRowSibling(pickerFocus, 0)) { Text(time.format(fmt)) }
+                }
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
+                    OutlinedButton(onClick = { openDate() }, modifier = Modifier.dpadRowSibling(pickerFocus, 1)) { Text(date.format(dateFmt)) }
+                }
             }
         }
 
@@ -1485,7 +1539,7 @@ fun TransitNavSheet(
                     else "${nav.stepIndex + 1} / ${itin.steps.size}",
                     style = MaterialTheme.typography.titleMedium, color = dim, modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onEnd) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close_directions), tint = dim) }
+                IconButton(onClick = onEnd, modifier = Modifier.dpadHighlight(CircleShape)) { Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close_directions), tint = dim) }
             }
             Spacer(Modifier.height(8.dp))
             // Current leg, large.
@@ -1508,12 +1562,25 @@ fun TransitNavSheet(
                 ) { remaining.forEach { TransitStepRow(it, ink, dim) } }
             }
             Spacer(Modifier.weight(1f))
+            // D-pad focus rings + LEFT/RIGHT across the pair (docs/dpad.md, issue #79).
+            val transitNavFocus = remember { List(2) { FocusRequester() } }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onBack, enabled = nav.stepIndex > 0, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_back))
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape, Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = onBack,
+                        enabled = nav.stepIndex > 0,
+                        modifier = Modifier.fillMaxWidth().dpadRowSibling(transitNavFocus, 0),
+                    ) {
+                        Text(stringResource(R.string.settings_back))
+                    }
                 }
-                Button(onClick = onNext, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.transit_nav_next))
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.shape, Modifier.weight(1f)) {
+                    Button(
+                        onClick = onNext,
+                        modifier = Modifier.fillMaxWidth().dpadRowSibling(transitNavFocus, 1),
+                    ) {
+                        Text(stringResource(R.string.transit_nav_next))
+                    }
                 }
             }
         }
@@ -1611,9 +1678,12 @@ private fun TransitRow(t: TransitItinerary, nowSec: Long, ink: Color, dim: Color
             HorizontalDivider(color = dim.copy(alpha = 0.25f))
             // Step-by-step guidance (Moovit-style) for this itinerary.
             if (t.steps.isNotEmpty()) {
-                Button(onClick = { onStartTransit(t) }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp).size(18.dp))
-                    Text(stringResource(R.string.place_start))
+                // D-pad focus ring (docs/dpad.md, issue #79).
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.shape, Modifier.fillMaxWidth()) {
+                    Button(onClick = { onStartTransit(t) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp).size(18.dp))
+                        Text(stringResource(R.string.place_start))
+                    }
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1843,7 +1913,7 @@ private fun DepartureLineRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .dpadHighlight(RoundedCornerShape(10.dp))
-            .clickable { onTapRoute(line) }
+            .dpadClickable { onTapRoute(line) }
             .padding(vertical = 10.dp, horizontal = 2.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -1926,7 +1996,7 @@ private fun DepartureLineRow(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .dpadHighlight(RoundedCornerShape(6.dp))
-                                .clickable { showAll = true }
+                                .dpadClickable { showAll = true }
                                 .padding(vertical = 4.dp, horizontal = 2.dp),
                         )
                     }
@@ -2294,7 +2364,8 @@ private fun PhotoGallery(urls: List<String>, dates: List<String?>, start: Int, o
                 )
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp),
+                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp)
+                        .dpadHighlight(CircleShape),
                 ) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.place_close), tint = Color.White)
                 }
@@ -2358,7 +2429,7 @@ private fun PanelControls(
         Spacer(Modifier.width(6.dp))
         var sortOpen by remember { mutableStateOf(false) }
         Box {
-            IconButton(onClick = { sortOpen = true }) {
+            IconButton(onClick = { sortOpen = true }, modifier = Modifier.dpadHighlight(CircleShape)) {
                 Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.place_sort_reviews), tint = dim)
             }
             VelaMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
@@ -2374,11 +2445,16 @@ private fun PanelControls(
     ) {
         items(chips.size) { i ->
             val c = chips[i]
-            FilterChip(
-                selected = selected == c.label,
-                onClick = { onChip(c.label) },
-                label = { Text(if (c.count != null) "${c.label}  ${c.count}" else c.label) },
-            )
+            // D-pad focus ring (docs/dpad.md, issue #79). A LazyRow recycles its items, so these
+            // chips get no dpadRowSibling wiring - Compose's own spatial LEFT/RIGHT walks them.
+            DpadRingBox(CircleShape, height = androidx.compose.material3.FilterChipDefaults.Height) {
+                FilterChip(
+                    selected = selected == c.label,
+                    onClick = { onChip(c.label) },
+                    label = { Text(if (c.count != null) "${c.label}  ${c.count}" else c.label) },
+                    shape = CircleShape,
+                )
+            }
         }
     }
 }
@@ -2527,7 +2603,7 @@ private fun FullScreenReviews(featureId: String, place: Place, ink: Color, dim: 
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 ) {
-                    IconButton(onClick = onClose, modifier = Modifier.focusRequester(reviewsBackFocus)) {
+                    IconButton(onClick = onClose, modifier = Modifier.focusRequester(reviewsBackFocus).dpadHighlight(CircleShape)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.place_back), tint = ink)
                     }
                     Column(Modifier.weight(1f)) {
@@ -2586,10 +2662,14 @@ private fun ReviewsTab(
         // Entry to the full-screen live Google reviews - all of them, plus Google's own SORT and
         // server-side search. The label says so.
         onReadAll?.let { open ->
-            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(place.reviewCount?.let { stringResource(R.string.place_all_n_reviews, it) } ?: stringResource(R.string.place_all_reviews))
+            // D-pad focus ring (docs/dpad.md, issue #79): DpadRingBox hugs the button's real 40dp
+            // height instead of the 48dp touch target Material pads it out to.
+            DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape, Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(place.reviewCount?.let { stringResource(R.string.place_all_n_reviews, it) } ?: stringResource(R.string.place_all_reviews))
+                }
             }
         }
         // Featured-review quote is only a TEASER while the real reviews are still streaming in -
@@ -2760,7 +2840,7 @@ private fun ReviewRow(review: Review, ink: Color, dim: Color, onPhotoTap: (List<
                             .clip(RoundedCornerShape(10.dp))
                             .background(dim.copy(alpha = 0.12f))
                             .dpadHighlight(RoundedCornerShape(10.dp))
-                            .clickable { onPhotoTap(review.photos, i, caption) },
+                            .dpadClickable { onPhotoTap(review.photos, i, caption) },
                     )
                 }
             }
@@ -2846,7 +2926,7 @@ private fun ActionPill(icon: ImageVector, label: String, emphasized: Boolean = f
 /** Share action: opens a small menu - a Google Maps link, a keyless geo: pin
  * (opens in any maps app, incl. Vela), raw coordinates, or just the address. */
 @Composable
-private fun ShareIconButton(place: Place, tint: Color) {
+private fun ShareIconButton(place: Place, tint: Color, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var open by remember { mutableStateOf(false) }
     val lat = place.location.lat
@@ -2890,7 +2970,9 @@ private fun ShareIconButton(place: Place, tint: Color) {
     }
 
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(40.dp)) {
+        // D-pad focus ring (docs/dpad.md, issue #79). IconButton is already round + 48dp, so the
+        // ring goes straight on its own chain - no DpadRingBox wrapper.
+        IconButton(onClick = { open = true }, modifier = modifier.size(40.dp).dpadHighlight(CircleShape)) {
             Icon(Icons.Default.Share, contentDescription = stringResource(R.string.place_share), tint = tint, modifier = Modifier.size(20.dp))
         }
         VelaMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -3054,7 +3136,7 @@ private fun HoursSection(hours: List<String>, ink: Color, dim: Color) {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
                 .dpadHighlight(RoundedCornerShape(8.dp))
-                .clickable { expanded = !expanded }
+                .dpadClickable { expanded = !expanded }
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -14,7 +14,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import android.widget.Toast
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -166,6 +165,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import app.vela.ui.dpadHighlight
 import app.vela.ui.dpadClickable
+import app.vela.ui.DpadRingBox // rings a button/chip's REAL height, not its 48dp target (docs/dpad.md)
+import app.vela.ui.dpadRowSibling // LEFT/RIGHT across a row of buttons/chips (docs/dpad.md)
 import app.vela.ui.dpadModeAutoFocus // reactive auto-focus for the bare-map cards (docs/dpad.md)
 import app.vela.ui.toggleItem
 import app.vela.ui.rememberDpadAutoFocus // D-pad-first initial focus (docs/dpad.md)
@@ -178,6 +179,11 @@ import app.vela.ui.item
 // worked) is active; POI markers + colours are applied at runtime. Flip to true
 // for MapTiler Streets (needs the MAPTILER_KEY secret). Both paths stay wired.
 private const val USE_MAPTILER = false
+
+// A Material chip DRAWS at 32dp while its layout is padded out to the 48dp minimum touch target, so
+// a DpadRingBox around one must be pinned to this - the DpadRingBox default (ButtonDefaults.MinHeight,
+// 40dp) would float the ring clear of the pill, the same bug the box exists to fix (issue #79).
+private val FilterChipHeight = 32.dp
 
 @Composable
 fun MapScreen(
@@ -1400,15 +1406,16 @@ fun MapScreen(
         // Hidden under soft-keys (it is a map-Options item there): it sat in the bottom band, which is
         // exactly where the soft-key bar draws, and on a keypad you reach this after "Move map".
         if (!state.navigating && state.showSearchThisArea && state.selected == null && !searchOpen && !resultsShown && !softkeyBarShown) {
-            ElevatedButton(
-                onClick = vm::searchThisArea,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp + chromeLift),
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                Text(stringResource(R.string.mapscreen_search_this_area))
+            // Alignment/insets move to the ring box so the ring hugs the 40dp button itself.
+            val ringMod = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp + chromeLift)
+            DpadRingBox(androidx.compose.material3.ButtonDefaults.elevatedShape, ringMod) {
+                ElevatedButton(onClick = vm::searchThisArea) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                    Text(stringResource(R.string.mapscreen_search_this_area))
+                }
             }
         }
 
@@ -1439,10 +1446,23 @@ fun MapScreen(
                     // RIGHT are soft keys and NOT focus traversal, so a keypad user could only ever
                     // reach one of them. The soft keys carry both actions instead.
                     if (!softkeyBarShown) {
+                        // No soft keys here, so LEFT/RIGHT must traverse the pair explicitly or the
+                        // D-pad user reaches only one of them (issue #79). See dpadRowSibling.
+                        val resumeFocus = remember { List(2) { FocusRequester() } }
                         Row(Modifier.align(Alignment.End).padding(top = 8.dp)) {
-                            TextButton(onClick = vm::dismissResume) { Text(stringResource(R.string.mapscreen_dismiss)) }
+                            DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+                                TextButton(
+                                    modifier = Modifier.dpadRowSibling(resumeFocus, 0),
+                                    onClick = vm::dismissResume,
+                                ) { Text(stringResource(R.string.mapscreen_dismiss)) }
+                            }
                             Spacer(Modifier.width(8.dp))
-                            Button(onClick = vm::resumeNav) { Text(stringResource(R.string.mapscreen_resume)) }
+                            DpadRingBox(androidx.compose.material3.ButtonDefaults.shape) {
+                                Button(
+                                    modifier = Modifier.dpadRowSibling(resumeFocus, 1),
+                                    onClick = vm::resumeNav,
+                                ) { Text(stringResource(R.string.mapscreen_resume)) }
+                            }
                         }
                     }
                 }
@@ -1743,15 +1763,16 @@ fun MapScreen(
         // (Settings → Simulate driving) is meant to look like real nav - its own "End" button stops
         // it (stopNav cancels the demo), so don't show the replay pill over the nav chrome.
         if (state.replaying && !state.demoDriving) {
-            ElevatedButton(
-                onClick = vm::stopReplay,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp),
-            ) {
-                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                Text(stringResource(R.string.mapscreen_stop_replay))
+            // Alignment/insets move to the ring box so the ring hugs the 40dp button itself.
+            val ringMod = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+            DpadRingBox(androidx.compose.material3.ButtonDefaults.elevatedShape, ringMod) {
+                ElevatedButton(onClick = vm::stopReplay) {
+                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                    Text(stringResource(R.string.mapscreen_stop_replay))
+                }
             }
         }
 
@@ -1890,7 +1911,10 @@ fun MapScreen(
                         shadowElevation = 3.dp,
                         modifier = Modifier.size(42.dp),
                     ) {
-                        IconButton(onClick = { layersOpen = true }) {
+                        IconButton(
+                            modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                            onClick = { layersOpen = true },
+                        ) {
                             Icon(
                                 Icons.Default.Layers,
                                 contentDescription = stringResource(R.string.map_layers),
@@ -2306,14 +2330,20 @@ private fun SearchResults(
                         color = SheetPalette.dim(dark),
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { if (collapsed) onExpand() else onExpandedChange(!expanded) }) {
+                    IconButton(
+                        modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                        onClick = { if (collapsed) onExpand() else onExpandedChange(!expanded) },
+                    ) {
                         Icon(
                             if (!collapsed && expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                             contentDescription = if (!collapsed && expanded) stringResource(R.string.mapscreen_shrink_list) else stringResource(R.string.mapscreen_expand_list),
                             tint = SheetPalette.dim(dark),
                         )
                     }
-                    IconButton(onClick = onClose) {
+                    IconButton(
+                        modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                        onClick = onClose,
+                    ) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = stringResource(R.string.mapscreen_close_results),
@@ -2345,54 +2375,71 @@ private fun SearchResults(
                         .padding(start = 16.dp, end = 8.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ElevatedFilterChip(
-                        selected = openOnly,
-                        onClick = { openOnly = !openOnly },
-                        label = { Text(stringResource(R.string.mapscreen_filter_open_now)) },
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        colors = chipColors,
-                        border = null,
-                        leadingIcon = if (openOnly) {
-                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                        } else null,
-                    )
-                    ElevatedFilterChip(
-                        selected = topRated,
-                        onClick = { topRated = !topRated },
-                        label = { Text(stringResource(R.string.mapscreen_filter_top_rated)) },
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        colors = chipColors,
-                        border = null,
-                        leadingIcon = if (topRated) {
-                            { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                        } else null,
-                    )
+                    // Each chip is ringed by a DpadRingBox pinned to the chip's REAL 32dp height:
+                    // Material inflates a chip's layout to the 48dp touch target while drawing at
+                    // 32dp, so a dpadHighlight on the chip itself floats clear of the pill (#79).
+                    // The 4 chips also drive their own LEFT/RIGHT so all four stay reachable.
+                    val filterChipFocus = remember { List(4) { FocusRequester() } }
+                    DpadRingBox(androidx.compose.foundation.shape.CircleShape, height = FilterChipHeight) {
+                        ElevatedFilterChip(
+                            selected = openOnly,
+                            onClick = { openOnly = !openOnly },
+                            label = { Text(stringResource(R.string.mapscreen_filter_open_now)) },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            modifier = Modifier.dpadRowSibling(filterChipFocus, 0),
+                            colors = chipColors,
+                            border = null,
+                            leadingIcon = if (openOnly) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                        )
+                    }
+                    DpadRingBox(androidx.compose.foundation.shape.CircleShape, height = FilterChipHeight) {
+                        ElevatedFilterChip(
+                            selected = topRated,
+                            onClick = { topRated = !topRated },
+                            label = { Text(stringResource(R.string.mapscreen_filter_top_rated)) },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            modifier = Modifier.dpadRowSibling(filterChipFocus, 1),
+                            colors = chipColors,
+                            border = null,
+                            leadingIcon = if (topRated) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                        )
+                    }
                     // Price: tap to cycle off → ≤$ → ≤$$ → ≤$$$ → ≤$$$$ → off.
-                    ElevatedFilterChip(
-                        selected = priceMax > 0,
-                        onClick = { priceMax = (priceMax + 1) % 5 },
-                        label = { Text(if (priceMax == 0) stringResource(R.string.mapscreen_filter_price) else "≤ " + "$".repeat(priceMax)) },
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        colors = chipColors,
-                        border = null,
-                    )
+                    DpadRingBox(androidx.compose.foundation.shape.CircleShape, height = FilterChipHeight) {
+                        ElevatedFilterChip(
+                            selected = priceMax > 0,
+                            onClick = { priceMax = (priceMax + 1) % 5 },
+                            label = { Text(if (priceMax == 0) stringResource(R.string.mapscreen_filter_price) else "≤ " + "$".repeat(priceMax)) },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            modifier = Modifier.dpadRowSibling(filterChipFocus, 2),
+                            colors = chipColors,
+                            border = null,
+                        )
+                    }
                     // Sort: tap to cycle relevance (Google's order) → rating → distance.
-                    ElevatedFilterChip(
-                        selected = sortMode > 0,
-                        onClick = { sortMode = (sortMode + 1) % 3 },
-                        label = {
-                            Text(
-                                when (sortMode) {
-                                    1 -> stringResource(R.string.mapscreen_sort_rating)
-                                    2 -> stringResource(R.string.mapscreen_sort_distance)
-                                    else -> stringResource(R.string.mapscreen_sort)
-                                },
-                            )
-                        },
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        colors = chipColors,
-                        border = null,
-                    )
+                    DpadRingBox(androidx.compose.foundation.shape.CircleShape, height = FilterChipHeight) {
+                        ElevatedFilterChip(
+                            selected = sortMode > 0,
+                            onClick = { sortMode = (sortMode + 1) % 3 },
+                            label = {
+                                Text(
+                                    when (sortMode) {
+                                        1 -> stringResource(R.string.mapscreen_sort_rating)
+                                        2 -> stringResource(R.string.mapscreen_sort_distance)
+                                        else -> stringResource(R.string.mapscreen_sort)
+                                    },
+                                )
+                            },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            modifier = Modifier.dpadRowSibling(filterChipFocus, 3),
+                            colors = chipColors,
+                            border = null,
+                        )
+                    }
                 }
                 } // if (!collapsed) - chips
             }
@@ -2404,7 +2451,9 @@ private fun SearchResults(
                     Modifier
                         .fillMaxWidth()
                         .dpadHighlight(RoundedCornerShape(6.dp))
-                        .clickable { onPick(place) }
+                        // dpadClickable: a raw clickable would add Material's grey focus layer
+                        // underneath the orange ring - two focus signals on one row.
+                        .dpadClickable { onPick(place) }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     // Bigger, more legible rows (the address/category line read too
@@ -2576,7 +2625,10 @@ private fun ChooseOnMapOverlay(
                     modifier = Modifier.weight(1f),
                 )
                 if (!softkeys) {
-                    IconButton(onClick = onCancel) {
+                    IconButton(
+                        modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                        onClick = onCancel,
+                    ) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.mapscreen_cancel))
                     }
                 }
@@ -2593,20 +2645,21 @@ private fun ChooseOnMapOverlay(
                 .offset(y = (-22).dp),
         )
         if (!softkeys) {
-            Button(
-                onClick = onConfirm,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp),
-            ) {
-                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                Text(
-                    stringResource(
-                        if (target == MapPick.ORIGIN) R.string.mapscreen_choose_set_start
-                        else R.string.mapscreen_choose_set_stop,
-                    ),
-                )
+            // Alignment/insets move to the ring box so the ring hugs the 40dp button itself.
+            val ringMod = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+            DpadRingBox(androidx.compose.material3.ButtonDefaults.shape, ringMod) {
+                Button(onClick = onConfirm) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                    Text(
+                        stringResource(
+                            if (target == MapPick.ORIGIN) R.string.mapscreen_choose_set_start
+                            else R.string.mapscreen_choose_set_stop,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -2727,8 +2780,11 @@ private fun SearchEntryContent(
                 )
                 Divider()
             }
-            TextButton(onClick = onClearRecents, modifier = Modifier.padding(start = 8.dp)) {
-                Text(stringResource(R.string.mapscreen_clear_recent_searches))
+            // The start padding moves to the ring box so the ring hugs the button, not the inset.
+            DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape, Modifier.padding(start = 8.dp)) {
+                TextButton(onClick = onClearRecents) {
+                    Text(stringResource(R.string.mapscreen_clear_recent_searches))
+                }
             }
         }
         if (saved.isEmpty() && recents.isEmpty() && recentPlaces.isEmpty()) {
@@ -2762,7 +2818,8 @@ private fun ShortcutRow(
         Modifier
             .fillMaxWidth()
             .dpadHighlight(RoundedCornerShape(6.dp))
-            .clickable { if (place != null) onPick(kind) else onAssign(kind) }
+            // dpadClickable: a raw clickable would add Material's grey focus layer to the ring.
+            .dpadClickable { if (place != null) onPick(kind) else onAssign(kind) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2785,7 +2842,10 @@ private fun ShortcutRow(
         if (place != null) {
             var menu by remember { mutableStateOf(false) }
             Box {
-                IconButton(onClick = { menu = true }) {
+                IconButton(
+                    modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                    onClick = { menu = true },
+                ) {
                     Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.mapscreen_edit_shortcut, label))
                 }
                 VelaMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -2809,7 +2869,8 @@ private fun SavedRow(
         Modifier
             .fillMaxWidth()
             .dpadHighlight(RoundedCornerShape(6.dp))
-            .clickable { onPick(place) }
+            // dpadClickable: a raw clickable would add Material's grey focus layer to the ring.
+            .dpadClickable { onPick(place) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2818,7 +2879,10 @@ private fun SavedRow(
         Text(place.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         var menu by remember { mutableStateOf(false) }
         Box {
-            IconButton(onClick = { menu = true }) {
+            IconButton(
+                modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                onClick = { menu = true },
+            ) {
                 Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.mapscreen_saved_place_options))
             }
             VelaMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -2854,7 +2918,9 @@ private fun AssignBanner(kind: ShortcutKind, onCancel: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = onCancel) { Text(stringResource(R.string.mapscreen_cancel)) }
+        DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.mapscreen_cancel)) }
+        }
     }
 }
 
@@ -2878,7 +2944,9 @@ private fun PickStopBanner(onCancel: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = onCancel) { Text(stringResource(R.string.mapscreen_cancel)) }
+        DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.mapscreen_cancel)) }
+        }
     }
 }
 
@@ -3061,9 +3129,22 @@ private fun UpdateCard(
                 )
             } else if (!softkeys) {
                 // Touch + hybrid; the soft-key bar drives Not now / Update when it's shown (see param note).
+                // Two buttons in a Row: wire LEFT/RIGHT explicitly (issue #79) so a D-pad user
+                // without the soft-key bar can reach BOTH, not just the one DOWN lands on.
+                val updateFocus = remember { List(2) { FocusRequester() } }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.update_later)) }
-                    TextButton(onClick = onUpdate) { Text(stringResource(R.string.update_install)) }
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+                        TextButton(
+                            modifier = Modifier.dpadRowSibling(updateFocus, 0),
+                            onClick = onDismiss,
+                        ) { Text(stringResource(R.string.update_later)) }
+                    }
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+                        TextButton(
+                            modifier = Modifier.dpadRowSibling(updateFocus, 1),
+                            onClick = onUpdate,
+                        ) { Text(stringResource(R.string.update_install)) }
+                    }
                 }
             }
         }
@@ -3147,8 +3228,21 @@ private fun FasterRouteCard(
             // Dropped under soft-keys: both actions ARE the two keys there (issue #79). Keeping them
             // would leave a keypad driver able to focus only one of the pair.
             if (!softkeys) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.mapscreen_no)) }
-                Button(onClick = onSwitch) { Text(stringResource(R.string.mapscreen_switch)) }
+                // Two buttons in a Row: wire LEFT/RIGHT explicitly or a D-pad user (no soft-key bar)
+                // can only ever reach whichever one DOWN happens to land on. See dpadRowSibling.
+                val fasterFocus = remember { List(2) { FocusRequester() } }
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+                    TextButton(
+                        modifier = Modifier.dpadRowSibling(fasterFocus, 0),
+                        onClick = onDismiss,
+                    ) { Text(stringResource(R.string.mapscreen_no)) }
+                }
+                DpadRingBox(androidx.compose.material3.ButtonDefaults.shape) {
+                    Button(
+                        modifier = Modifier.dpadRowSibling(fasterFocus, 1),
+                        onClick = onSwitch,
+                    ) { Text(stringResource(R.string.mapscreen_switch)) }
+                }
             }
         }
     }
@@ -3282,7 +3376,9 @@ private fun ParkingHistorySheet(
                             Modifier
                                 .fillMaxWidth()
                                 .dpadHighlight(RoundedCornerShape(8.dp))
-                                .clickable { onRestore(entry) }
+                                // dpadClickable, not clickable: a raw clickable here would draw
+                                // Material's grey focus layer UNDER the orange ring (two signals).
+                                .dpadClickable { onRestore(entry) }
                                 .padding(horizontal = 20.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -3318,7 +3414,10 @@ private fun ParkingHistorySheet(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             } else {
-                                IconButton(onClick = { onDelete(entry) }) {
+                                IconButton(
+                                    modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                                    onClick = { onDelete(entry) },
+                                ) {
                                     Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.parking_history_delete), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
