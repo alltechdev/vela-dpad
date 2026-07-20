@@ -2879,6 +2879,7 @@ class MapViewModel @Inject constructor(
     private fun launchNav(route: app.vela.core.model.Route) {
         val dest = destination ?: route.polyline.lastOrNull() ?: return
         startLocation() // make sure live fixes are flowing - they drive the nav loop
+        seedOfflineRoadNames() // real romanized names with NO signal; tile harvest merges on top
         // Stops are stored in travel order (swapDirections reverses the list itself) → per-stop arrival
         // cues + reroute-through-remaining.
         val s = _state.value
@@ -2906,6 +2907,16 @@ class MapViewModel @Inject constructor(
     /** VelaMapView reports romanized road names (local -> basemap Latin) as nav tiles load. Merge
      *  into state (banner/steps consult it) and hand the full map to VoiceGuide so guidance SAYS
      *  "Rehov Herzl" instead of ICU's consonant skeleton. Only grows during a drive; reset on end. */
+    /** Seed the romanized-road dictionary from any installed OFFLINE region's names sidecar, so a
+     *  drive with NO SIGNAL still says and shows the real street name rather than an ICU skeleton.
+     *  The online tile harvest ([onNavRoadLatin]) merges on top of this as tiles load. Fire-and-forget
+     *  off the main thread; a missing or unreadable sidecar just leaves the map empty. */
+    fun seedOfflineRoadNames() = viewModelScope.launch {
+        val offline = runCatching { routingGraphStore.roadNames() }.getOrDefault(emptyMap())
+        if (offline.isEmpty()) return@launch
+        onNavRoadLatin(offline)
+    }
+
     fun onNavRoadLatin(map: Map<String, String>) {
         if (map.isEmpty()) return
         val merged = if (_state.value.roadNameLatin.isEmpty()) map else _state.value.roadNameLatin + map
