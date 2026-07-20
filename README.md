@@ -168,6 +168,27 @@ Security issues go through [`SECURITY.md`](docs/SECURITY.md), not a public issue
 
 ## Credits
 
+### Vela Maps, by PimpinPumpkin — the project this is built on
+
+This app is a fork of [**Vela Maps**](https://github.com/PimpinPumpkin/Vela) by **PimpinPumpkin**.
+Vela is *their* project. The degoogled maps client, its architecture, the keyless approach to Google
+data, the routing and offline stack, navigation, the place and transit surfaces — the overwhelming
+majority of what this app *is* — is their work. This fork adds 5-key D-pad and feature-phone
+operability on top of it. **That delta is the fork; it is not the app.**
+
+The debt is ongoing, not historical:
+
+- **~211 commits** in this repo port work from upstream, and **34 features** in
+  [`docs/FEATURES.md`](docs/FEATURES.md) cite the upstream commit they came from. When upstream fixes
+  something this fork also has, the upstream fix is adopted rather than reinvented.
+- Vela **depends on upstream at runtime**: the routing-graph, map-overlay and place-pack release
+  assets, plus the signed calibration-config channel, are all served from
+  [PimpinPumpkin/Vela](https://github.com/PimpinPumpkin/Vela). Without upstream, this app does not
+  route, does not calibrate, and does not download offline data.
+
+If you are not on a keypad or D-pad phone, **use upstream** — this fork exists to serve devices their
+build isn't targeting, not to replace it. All credit and thanks to PimpinPumpkin.
+
 ### Yapchik — the hardware soft-key engine
 
 The LEFT/RIGHT hardware soft-key bar that makes Vela drivable on a keypad phone is
