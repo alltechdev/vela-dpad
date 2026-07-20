@@ -168,12 +168,12 @@ Security issues go through [`SECURITY.md`](docs/SECURITY.md), not a public issue
 
 ## Credits
 
-### Vela Maps, by PimpinPumpkin — the project this is built on
+### Vela Maps, by PimpinPumpkin: the project this is built on
 
 This app is a fork of [**Vela Maps**](https://github.com/PimpinPumpkin/Vela) by **PimpinPumpkin**.
 Vela is *their* project. The degoogled maps client, its architecture, the keyless approach to Google
-data, the routing and offline stack, navigation, the place and transit surfaces — the overwhelming
-majority of what this app *is* — is their work. This fork adds 5-key D-pad and feature-phone
+data, the routing and offline stack, navigation, the place and transit surfaces, the overwhelming
+majority of what this app *is*, are all their work. This fork adds 5-key D-pad and feature-phone
 operability on top of it. **That delta is the fork; it is not the app.**
 
 The debt is ongoing, not historical:
@@ -186,23 +186,23 @@ The debt is ongoing, not historical:
   [PimpinPumpkin/Vela](https://github.com/PimpinPumpkin/Vela). Without upstream, this app does not
   route, does not calibrate, and does not download offline data.
 
-If you are not on a keypad or D-pad phone, **use upstream** — this fork exists to serve devices their
+If you are not on a keypad or D-pad phone, **use upstream**. This fork exists to serve devices their
 build isn't targeting, not to replace it. All credit and thanks to PimpinPumpkin.
 
-### Yapchik — the hardware soft-key engine
+### Yapchik: the hardware soft-key engine
 
 The LEFT/RIGHT hardware soft-key bar that makes Vela drivable on a keypad phone is
 [**Yapchik**](https://github.com/theonionsarewatching/yapchik) by **theonionsarewatching**, vendored
 here as the [`:yapchik`](yapchik/) module.
 
-- **Copyright © 2026 theonionsarewatching** — <https://github.com/theonionsarewatching/yapchik>
-- **GNU Lesser General Public License v3.0** — see [`yapchik/LICENSE`](yapchik/LICENSE) and
+- **Copyright © 2026 theonionsarewatching**, <https://github.com/theonionsarewatching/yapchik>
+- **GNU Lesser General Public License v3.0**. See [`yapchik/LICENSE`](yapchik/LICENSE) and
   [`yapchik/NOTICE`](yapchik/NOTICE). LGPL-3.0 inside Vela's GPL-3.0 is compatible.
 - Vendored **source-identical** and kept as its own Gradle module so it stays a cleanly replaceable
-  library that can be re-synced from upstream — Vela does not fork it or hand-edit its files.
+  library that can be re-synced from upstream. Vela does not fork it or hand-edit its files.
 - Zero dependencies (framework-only), which is what makes it viable on these devices.
 - **On the license history:** Yapchik was originally PolyForm Noncommercial, which is GPL-incompatible
-  and would have made vendoring impossible. The author relicensed it to LGPL-3.0 — that relicense is
+  and would have made vendoring impossible. The author relicensed it to LGPL-3.0, and that relicense is
   the only reason the soft-key bar can ship inside Vela at all, and the reason this stays
   F-Droid-eligible. Thank you.
 

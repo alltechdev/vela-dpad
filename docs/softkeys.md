@@ -66,7 +66,7 @@ stays source-identical for re-sync).
 
   | Surface | LEFT | RIGHT |
   |---|---|---|
-  | Bare map | Options (Move map · Recenter · Layers · Settings) | Search |
+  | Bare map | Options (Move map/Zoom · Recenter · Layers · Park · Settings) | Search |
   | Place sheet | Options (all secondary actions) | Directions |
   | Choose-on-map | Cancel | Set start / stop |
   | Route preview | Steps | Start |
@@ -91,8 +91,8 @@ stays source-identical for re-sync).
     profile CHOOSER (a navigable single-choice list) is ever surfaced, give it a Vela-native
     `VelaDialog`/`VelaMenu` instead - a bare `AlertDialog` list can't auto-focus under D-pad.
 - **The bare map (first screen) has its own Options menu + a Search key.** LEFT = Options, RIGHT =
-  Search. The Options menu (bottom-left bordered VelaMenu) holds Recenter / Layers / Settings plus ONE
-  adaptive map-motion item that reflects the mode you're in (tester's model - you never see the mode
+  Search. The Options menu (bottom-left bordered VelaMenu) holds Recenter / Layers / Park / Settings
+  plus ONE adaptive map-motion item that reflects the mode you're in (tester's model - you never see the mode
   you're already in):
   - Bare map -> **Move map**: engages + focuses the map so the D-pad PANS it, with a top hint.
   - Moving (engaged) -> **Zoom**: enters a mode where the D-pad LEFT/RIGHT zoom out/in, own hint.
@@ -133,6 +133,31 @@ Shared-file edits are minimal and anchored: one `VelaSoftkeys.init` line in `Vel
 `SuppressBarForModal()` call in `VelaDialog`; an `armFieldSignal` param on `SearchBar`; and one public
 `isDpadFirstDevice(context)` accessor in `DpadFocus.kt` (non-composable view of the private
 `detectDpadFirst`). Companion #65 tuning: the D-pad map pan step in `MapScreen` (`0.22 -> 0.11`).
+
+### Bare-map declutter (tester @SILB, #76)
+
+On a keypad phone the bare map also sheds the on-screen **search bar**, the **Layers** button and the
+**Park** FAB, the same way the zoom buttons already moved:
+
+- **RIGHT soft key opens Search.** The collapsed bar is gone; the overlay it opens still carries the
+  mic and the Settings gear, so nothing is lost, it just moves behind a key.
+- **Layers and Park join the bare-map Options menu.** Park keeps its full hub there (Save parking
+  spot with no spot; Parked car -> Find my car / Move / Earlier / Clear once set).
+- **The category chips ride up** flush under the status bar to reclaim the search bar's slot
+  (top overlay padding drops 12dp -> 4dp while decluttered).
+- The bare-map **update card** drives from the bar too: LEFT = Not now, RIGHT = Update.
+
+All of it gates on `VelaSoftkeys.isActive()` (the bar actually being shown), NOT on D-pad mode, so a
+hybrid touch+D-pad phone with no bar keeps every on-screen control.
+
+**The trap this refactor sets, twice:** dropping an on-screen button also drops anything declared
+INSIDE that button's block. The Park hub + history sheet lived inside the Park FAB, and the Layers
+panel lived inside the Layers button. Gate the button off and the panel is never composed, so the
+Options entry meant to replace it sets state nobody reads and the feature goes UNREACHABLE while the
+screenshots still look correct. The Layers case shipped and was found by a tester on a Kyocera DuraXe
+e4830. Both panels are now siblings of their (gated) buttons, each in its own `TopEnd`/`BottomEnd`
+box so the touch dropdown still anchors correctly. Before gating a control, grep what its block
+contains.
 
 ## Testing done
 
