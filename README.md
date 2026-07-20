@@ -73,6 +73,20 @@ release, or grab an APK from
 |:-:|:-:|:-:|:-:|
 | <img src="docs/screenshots/06-transit.png" width="150"> | <img src="docs/screenshots/07-gallery.png" width="150"> | <img src="docs/screenshots/08-map-light.png" width="150"> | <img src="docs/screenshots/09-place-light.png" width="150"> |
 
+### On a keypad phone
+
+The same app on a phone with no touchscreen. The two hardware soft keys drive a
+contextual bar, and any on-screen button a key already covers is dropped, so the
+map keeps the screen. Everything hidden stays reachable from an Options menu.
+
+| Bare map | Options menu | Navigation | Nav options |
+|:-:|:-:|:-:|:-:|
+| <img src="docs/screenshots/keypad/01-bare-map.png" width="150"> | <img src="docs/screenshots/keypad/02-options-menu.png" width="150"> | <img src="docs/screenshots/keypad/03-navigation.png" width="150"> | <img src="docs/screenshots/keypad/04-nav-options.png" width="150"> |
+
+| Route preview | 240x320 screen |
+|:-:|:-:|
+| <img src="docs/screenshots/keypad/05-route-preview.png" width="150"> | <img src="docs/screenshots/keypad/06-nav-240x320.png" width="115"> |
+
 ## How it works
 
 What Vela does and the method behind each capability. The full feature list is in
