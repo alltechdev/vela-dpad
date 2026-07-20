@@ -178,7 +178,10 @@ class NavSession @Inject constructor(
             destinationAddress = destinationAddress,
             tripDistanceMeters = route.distanceMeters,
         )
-        voice.speak(app.vela.core.i18n.NavStringsRegistry.current().startNav(first))
+        // speakOpener (not speak): briefly hold the opener until the first road's real romanized
+        // name has loaded from the map tiles, so a foreign street is not read as an ICU skeleton at
+        // T=0 while the nav-zoom tiles are still loading. Falls through after a short cap, never mute.
+        voice.speakOpener(app.vela.core.i18n.NavStringsRegistry.current().startNav(first))
         diag.record(
             "nav",
             "start → ${destinationLabel.ifBlank { "destination" }} " +
