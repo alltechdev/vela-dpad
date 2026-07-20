@@ -14,8 +14,37 @@
 # usage: ring_walk.sh <pkg> <label> <steps> <outdir> [key]
 #   key defaults to DOWN (20); pass 22 to sweep a row with RIGHT.
 # The caller is expected to have already driven the app to the surface under test.
+#
+# `ring_walk.sh --selftest` proves the DETECTOR still works, against two committed frames: one where
+# a control is ringed, and one with no ring but plenty of orange POI pins on the map. That second
+# frame is the negative control - it is the exact frame a loose "orange-ish" threshold called a pass,
+# which is how a walk over an entirely unringed map came back clean. Run the self-test after touching
+# the colour match; a checker that cannot fail is worse than no checker.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
+
+if [ "${1:-}" = "--selftest" ]; then
+  fixtures=tests/dpad/fixtures
+  python3 - "$fixtures" <<'PY'
+import sys
+from PIL import Image
+fx = sys.argv[1]
+def ring(p): return p[0] >= 248 and 100 <= p[1] <= 120 and p[2] <= 14
+def count(path):
+    im = Image.open(path).convert('RGB'); W, H = im.size
+    return sum(1 for y in range(0, H, 2) for x in range(0, W, 2) if ring(im.getpixel((x, y))))
+present = count(f"{fx}/ring-present.png")
+absent = count(f"{fx}/ring-absent-orange-pins.png")
+print(f"ring-present frame:            {present} ring px (must be >= 20)")
+print(f"ring-absent (orange pins) frame:{absent:5d} ring px (must be < 20)")
+ok = present >= 20 and absent < 20
+print("SELFTEST PASS" if ok else "SELFTEST FAIL - the detector no longer distinguishes a focus "
+      "ring from Vela's orange map pins; fix the colour match before trusting any walk")
+sys.exit(0 if ok else 1)
+PY
+  exit $?
+fi
+
 PKG="$1"; LABEL="$2"; STEPS="$3"; OUT="$4"; KEY="${5:-20}"
 mkdir -p "$OUT"
 

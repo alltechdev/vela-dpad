@@ -78,6 +78,43 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
   dozen realistic cases, including the ones where the same token means two different things.
   Whatever the probe catches becomes a permanent test before the probe is deleted.
 
+## Prove the check CAN fail (HARD RULE, NO EXCEPTIONS)
+
+The section above says look at the pixels. This one is about a different and worse failure: a check
+that **cannot fail**, and therefore proves nothing while reporting success. Every wrong "it's fixed"
+in the #79 round came from one of these, and each looked green.
+
+- **Run the check against the BROKEN state first. No negative control, no claim.** Before trusting a
+  new script, harness or assertion, run it where the bug is still present - the previous build, a
+  reverted file, a deliberately wrong input - and confirm it FAILS. `ring_walk.sh` reported a clean
+  walk across a map where nothing was ringed, because it matched "orange-ish" and Vela's own POI pins
+  are orange. One baseline run against the unswept build turned that into 11 failures out of 12 and
+  exposed the bug in the checker within a minute. **A check first exercised on the fixed state is
+  indistinguishable from a check that always passes.** If you cannot make it fail on purpose, you do
+  not yet know what it measures.
+- **Test against CAPTURED input, not imagined input.** A unit test written from your belief about the
+  data can only confirm that belief. The first exit-direction fix read `OFF_RAMP_RIGHT` tokens and had
+  a green test; a live capture showed the feed sends a bare `OFF_RAMP` with no side, so the fix was
+  aimed at a shape that never arrives and the test was green about nothing. For anything parsing a
+  remote feed: capture a REAL response (log it off the device), assert against that, and say in the
+  commit which capture and when. Google's keyless payloads drift - a fixture with a date beats
+  confident prose.
+- **Re-read the diff you just called finished, before anyone asks.** Both defects in the geometry pass
+  - ramps and forks sharing an icon family, and a single sample that could point confidently the wrong
+  way - were plainly visible in code already declared done and gate-green. They were found by a reread
+  prompted by "PERFECT?", which means they were findable without it. **Declaring done is the trigger
+  for the reread, not the end of the work.**
+- **Doctrine is not measurement.** docs/dpad.md says buttons and chips need `DpadRingBox`; that
+  justified converting 12 more sites. Measuring on device first showed a bare `dpadHighlight` on a 40dp
+  button renders identically (ring 52px, slack 13/9/32/31 either way) - the wrapper matters at 32dp,
+  not 40dp. Twelve edits and twelve chances to break layout, avoided by one measurement. When a rule
+  tells you to change working code, measure the thing the rule is about before you change it.
+- **Prefer a gate to a promise.** Written rules did not stop these: "verify visually, NO EXCEPTIONS"
+  was already in this file while a wrong-pixel check was shipping. What actually held the line was
+  mechanical - `BUTTON_RING_SWEPT` making a missing ring a build failure, and the auditor rule that
+  turned a hand-found bug into something that cannot regress. When you fix a class of bug, spend the
+  extra few minutes teaching a gate to catch it; prose in this file is the weakest form of the fix.
+
 ## Feature-phone display size (HARD RULE, NO EXCEPTIONS)
 
 D-pad-first means feature-phone-first, and feature phones are SMALL. "Works with a D-pad" must hold
@@ -493,6 +530,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     on-screen text for every miss, because some misses are correct - the map is a focus stop with no
     ring by design, and the first frame after opening a screen can precede auto-focus. Drive the
     surface first, then walk it; `ring_sweep.sh <pkg> <WxH> <dens> <outdir>` chains the common ones.
+  - `ring_walk.sh --selftest` - the negative control, frozen. Runs the ring detector over two
+    committed frames in `tests/dpad/fixtures/`: one with a ringed control, and one with NO ring but a
+    map full of orange POI pins. The second is the frame that a loose "orange-ish" threshold scored as
+    a pass, which is how a walk over a completely unringed map came back clean. Needs no device, takes
+    a second. **Run it after touching the colour match, and wire it into CI** - it is the one check
+    that fails when the checker itself breaks.
 - **Dead-code gate (three engines, all in CI, `main`).** ACCURACY IS THE CONTRACT: none may flag
   anything actually needed (a false positive is a bug; a false negative is tolerated).
   - `./gradlew :core:detekt :app:detekt` - parser-level dead code detekt finds and grep CANNOT:
