@@ -1337,7 +1337,7 @@ private fun RouteOption(r: Route, selected: Boolean, fastestEtaSeconds: Double, 
             .clip(RoundedCornerShape(12.dp))
             .background(bg)
             .dpadHighlight(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .dpadClickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2042,7 +2042,7 @@ private fun RouteStopRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .dpadHighlight(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick),
+            .dpadClickable(onClick = onClick),
     ) {
         Row(
             Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(start = 6.dp, end = 14.dp),
@@ -2833,7 +2833,7 @@ private fun ActionPill(icon: ImageVector, label: String, emphasized: Boolean = f
             .clip(RoundedCornerShape(20.dp))
             .background(bg)
             .dpadHighlight(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
+            .dpadClickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

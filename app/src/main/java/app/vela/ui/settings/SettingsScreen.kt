@@ -4,7 +4,6 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -433,7 +432,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                         modifier = Modifier
                             .fillMaxWidth()
                             .dpadHighlight(DpadShape(6.dp))
-                            .clickable(enabled = activity != null) { activity?.let { app.vela.ui.softkey.VelaSoftkeys.calibrate(it) } }
+                            .dpadClickable(enabled = activity != null) { activity?.let { app.vela.ui.softkey.VelaSoftkeys.calibrate(it) } }
                             .padding(vertical = 8.dp),
                     )
                     Hint(stringResource(R.string.settings_softkeys_calibrate_hint))
@@ -1441,7 +1440,7 @@ private fun VoiceLibrary(vm: MapViewModel, state: MapUiState) {
                 Modifier
                     .fillMaxWidth()
                     .dpadHighlight(RoundedCornerShape(8.dp))
-                    .clickable(enabled = query.isBlank()) { langExpanded[lang] = !expanded }
+                    .dpadClickable(enabled = query.isBlank()) { langExpanded[lang] = !expanded }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

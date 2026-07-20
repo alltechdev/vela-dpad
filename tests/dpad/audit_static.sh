@@ -162,8 +162,20 @@ for path in walk():
                 viol.append(("MED", f"{name}:{n}", "Material button/chip with no focus ring (dpadHighlight / DpadRingBox)"))
             else:
                 check.append(("btnring", f"{name}:{n}", "Material button/chip with no focus ring - file not swept yet (issue #79); add it to BUTTON_RING_SWEPT once done and this becomes a hard failure"))
-        # E. gesture modifier with no key alternative nearby
-        if has(GESTURE, ln):
+        # D3. TWO focus signals on one control: a raw .clickable next to a dpadHighlight draws
+        # Material's grey focus state layer AND our orange ring at once ("having both by the switches
+        # is a little strange" - tester). dpadClickable drops the grey while input is key-driven and
+        # keeps the press ripple for touch. Found by hand TWICE (the round-2 sweep missed the pairs
+        # that sit >8 lines apart, and a later edit reintroduced one on the nav banner), hence a rule.
+        if "dpadHighlight(" in code_of(ln) and base != "DpadFocus.kt":
+            chain = "\n".join(code_of(l) for l in lines[i:min(len(lines), i + 20)])
+            m = re.search(r'(?<!dpad)\.clickable\s*\(', chain)
+            if m and "dpadClickable" not in chain[:m.end() + 20]:
+                viol.append(("MED", f"{name}:{n}", "dpadHighlight + raw .clickable = grey focus layer AND the ring; use dpadClickable"))
+        # E. gesture modifier with no key alternative nearby. Skip IMPORT lines: the import of
+        # detectHorizontalDragGestures is not a gesture site, and it only ever passed because a
+        # neighbouring `import ...clickable` happened to sit inside the look-around window.
+        if has(GESTURE, ln) and not code_of(ln).strip().startswith("import "):
             if near_keypath(lines, i):
                 if verbose: oknote.append(f"gest {name}:{n}")
             else:

@@ -2,7 +2,6 @@ package app.vela.ui.nav
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -81,6 +80,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.focusRequester
 import app.vela.ui.dpadFieldEscape
 import app.vela.ui.dpadHighlight
+import app.vela.ui.dpadClickable
 import app.vela.ui.rememberDpadAutoFocus
 
 /**
@@ -196,7 +196,7 @@ fun ManeuverBanner(
             }
             // Always clickable, so the card is exactly ONE focus stop either way: while previewing OK
             // resumes live guidance, otherwise it opens the steps.
-            .clickable(onClick = if (previewing) onExitPreview else onOpenSteps),
+            .dpadClickable(onClick = if (previewing) onExitPreview else onOpenSteps),
         // Softer, more current shape than the stock card: big radius + a real shadow so the
         // banner floats over the map instead of sitting on it like a toolbar.
         shape = RoundedCornerShape(if (compact) 16.dp else 24.dp),
