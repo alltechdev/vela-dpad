@@ -26,11 +26,11 @@ Privacy-first, F-Droid, GPLv3; every new data flow is opt-in and documented in
   resume-nav prompt). See [`docs/softkeys.md`](softkeys.md), whose Gotchas section is worth reading
   before touching any of it.
   Remaining, and NOT all hardware-blocked:
-  - **OPEN BUG (software):** while the bar is active, PROGRAMMATIC focus never lands, so surfaces that
+  - **OPEN BUG (software, issue #77):** while the bar is active, PROGRAMMATIC focus never lands, so surfaces that
     auto-focus on open (the search overlay, Settings) start with nothing highlighted and cost one
     keypress. Key-driven focus is fine, and `Yapchik.mode = OFF` avoids it. Five hypotheses are already
     disproven on device - read Gotcha 1 in docs/softkeys.md before attempting a sixth.
-  - **Harness gap:** the soft-keys-off (touch) legs cannot drive first-run or directions, so they give
+  - **Harness gap (issue #78):** the soft-keys-off (touch) legs cannot drive first-run or directions, so they give
     no verdict for those surfaces. The app is fine there; the phases drive with D-pad OK.
   - **Hardware-blocked:** known-device keycode profiles need real Sonim/Kyocera dumps (the shipped
     calibration flow covers unknown keys) - where the parked softkey-vendor-guides work would land.

@@ -222,7 +222,7 @@ to fight for width forced "14 min" into an ellipsis.
 
 ## Gotchas (hard-won; read before touching this)
 
-1. **PROGRAMMATIC FOCUS DOES NOT LAND WHILE THE BAR IS ACTIVE.** Unresolved as of 2026-07-20. A
+1. **PROGRAMMATIC FOCUS DOES NOT LAND WHILE THE BAR IS ACTIVE.** Unresolved as of 2026-07-20; tracked as **issue #77**, which carries the full instrumentation record and the five disproven hypotheses. A
    `FocusRequester.requestFocus()` issued on open returns WITHOUT THROWING and never takes; the first
    real KEY PRESS then places focus normally. With `Yapchik.mode = OFF` the same code focuses fine.
    Consequence: any surface relying on auto-focus-on-open (the search overlay, Settings) opens with
@@ -258,7 +258,7 @@ to fight for width forced "14 min" into an ellipsis.
 6. **The restricted flavor ships no Street View.** `full_coverage.sh` marks those two surfaces `n/a`
    for restricted rather than MISSED; without that, the restricted legs can never score FULLY COVERED.
 
-7. **The harness's touch (`SOFTKEYS=off`) legs cannot drive first-run or directions.** Both phases
+7. **The harness's touch (`SOFTKEYS=off`) legs cannot drive first-run or directions** (issue #78). Both phases
    advance the UI with D-pad OK, which correctly does nothing when nothing is focused in touch. The app
    is fine there (verified by hand); the legs simply give no verdict for those surfaces.
 
