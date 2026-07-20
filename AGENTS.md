@@ -621,6 +621,20 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   left it alone. When you add any size-conditional layout, verify it on the device and confirm the
   branch you intended is the branch that renders.
 
+    **HARD RULE - NEVER CONCLUDE "IT IS UNFOCUSED" FROM `focused()`.** `tests/dpad/lib.sh focused()`
+  reads uiautomator's `focused="true"`, and a Compose node can hold focus - with a plainly visible ring
+  - while it returns EMPTY (reproduced on main's search bar, 2026-07-20). Hours were lost to
+  conclusions drawn from it, and one wrong claim reached a PR description. **Screenshot the surface and
+  look for the ring.** The same caution applies to `audit_dynamic.sh`'s focus assertions, which are
+  built on it; its reachability checks (text matching) are sound.
+
+    **HARD RULE - A/B AGAINST `main`, NOT AGAINST A COMMIT INSIDE YOUR OWN BRANCH.** To answer "did we
+  introduce this?", build `origin/main` (or the branch point) - not the commit before today's work. A
+  baseline 40 commits deep in the same PR can only ever answer "did the LAST change break it", and
+  reporting that as "pre-existing" is wrong in the way that matters: it says *not ours*. Checking
+  whether the symbol even exists on main (`git show origin/main:<file> | grep`) is one command and
+  settles it before you say anything.
+
     **HARD RULE - THE FOCUS RING HUGS THE CONTROL, NOT MATERIAL'S TOUCH TARGET.** Material applies
   `minimumInteractiveComponentSize()` INSIDE buttons and chips, padding their layout to the 48dp
   minimum touch target while the visible surface stays 40dp (button) or 32dp (chip). A `dpadHighlight`

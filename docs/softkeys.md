@@ -64,15 +64,28 @@ stays source-identical for re-sync).
 - **Contextual per surface.** `MapScreen` picks the two keys from state (the `when` at the top of the
   composable):
 
-  | Surface | LEFT | RIGHT |
-  |---|---|---|
-  | Bare map | Options (Move map/Zoom · Recenter · Layers · Park · Settings) | Search |
-  | Place sheet | Options (all secondary actions) | Directions |
-  | Choose-on-map | Cancel | Set start / stop |
-  | Route preview | Steps | Start |
-  | Turn list | - | Start |
-  | Turn-by-turn nav | Options (Mute/Unmute · Steps · Recenter · End) | Zoom mode |
-  | Search overlay | - (no bar) | - |
+  Listed in the `when`'s own PRECEDENCE ORDER - the first matching branch wins, which is why e.g.
+  `arrived` has to sit above `navigating` and `routePreview`.
+
+  | # | Surface (condition) | LEFT | RIGHT |
+  |---|---|---|---|
+  | 1 | Search overlay (`searchOpen`) | - | - (binds nothing, so NO bar) |
+  | 2 | Choose-on-map (`pickOnMap != null`) | Cancel | Set start / stop |
+  | 3 | Street View (`streetView != null \|\| streetViewLoading`) | Close | - |
+  | 4 | Arrival (`arrived`) | - | Done |
+  | 5 | Turn-by-turn nav (`navigating`) | Options (Mute/Unmute · Steps · Search along route · Recenter · End) | Zoom mode |
+  | 6 | Place sheet (`placeSheetUp`) | Options (all secondary actions) | Directions |
+  | 7 | Turn list (`showSteps`) | Close | Start |
+  | 8 | Route preview (`routePreview`) | Steps | Start |
+  | 9 | Resume-nav prompt (`resumeNavLabel != null`) | Dismiss | Resume |
+  | 10 | Update offered (`updateInfo != null`) | Not now | Update |
+  | 11 | Bare map (`else`) | Options (Move map/Zoom · Recenter · Search this area* · Layers · Park · Settings) | Search |
+
+  \* "Search this area" appears only while `showSearchThisArea` is set, matching the on-screen button
+  it replaces. Rows 3, 4, 7, 9 and 10 were added in the round-2 pass (#76); before it, rows 3/4/9 did
+  not exist (Street View and arrival INHERITED the place-sheet / route-preview keys, which is what made
+  the bar offer "Directions" over a panorama and "Start" at the place you had just arrived at), and
+  row 7's LEFT was `null` - a dead labelled key.
 
   Settings draws OVER the still-composed map, so `VelaRoot` forces the bar off while it's up
   (`SuppressBarWhile`). Labels are LOCALIZED into all 14 locales (the new words - Options / Search /
@@ -206,6 +219,48 @@ to fight for width forced "14 min" into an ellipsis.
   wrapped the whole option while Settings hugged the switch pill. The row now tracks focus and hands
   it to a ring around the switch, which is also read-only there (`onCheckedChange = null`) so it is
   not a second focus stop inside a row that is already one.
+
+## Gotchas (hard-won; read before touching this)
+
+1. **PROGRAMMATIC FOCUS DOES NOT LAND WHILE THE BAR IS ACTIVE.** Unresolved as of 2026-07-20. A
+   `FocusRequester.requestFocus()` issued on open returns WITHOUT THROWING and never takes; the first
+   real KEY PRESS then places focus normally. With `Yapchik.mode = OFF` the same code focuses fine.
+   Consequence: any surface relying on auto-focus-on-open (the search overlay, Settings) opens with
+   nothing highlighted, costing one keypress. Surfaces whose focus arrives via a keypress (the bare
+   map) are unaffected. **Do not "fix" this by retrying harder** - measured, `requestFocus` is called
+   40 times over 2.6s and never lands. Five hypotheses have been disproven on device: single-shot
+   requestFocus; the `VelaMenu` raw-Dialog dismissal race (fails identically with no dialog involved);
+   re-arming the effect on bar-state change; the ComposeView losing ANDROID VIEW focus (real - with the
+   bar up `rootView.findFocus()` is NONE - but restoring it does NOT restore Compose focus); and the
+   bar TEARDOWN being the trigger (binding a key so the bar stays up does not help). Prime remaining
+   suspect: `Yapchik.install` wrapping the Activity `Window.Callback`, leaving Compose's focus owner
+   uninitialised until a real key event. **Corollary: do NOT add a bar to the Welcome screen** - it
+   auto-focuses "Get started" correctly today precisely because it has no bar.
+
+2. **`tests/dpad/lib.sh focused()` DOES NOT RELIABLY REPORT COMPOSE FOCUS.** It reads uiautomator's
+   `focused="true"`, and Compose nodes can hold focus - with a visible ring - while it returns empty
+   (reproduced on main's search bar). Several hours were lost to conclusions drawn from it. **Confirm
+   focus VISUALLY from a screenshot.** The dynamic auditor's focus assertions inherit this weakness;
+   its reachability checks (matching on text) are unaffected.
+
+3. **A `VelaMenu` does NOT suppress the bar.** It is a raw `Dialog`, not a `VelaDialog`, so
+   `modalDepth` never moves and the map's bar stays live behind the parking hub / layers panel /
+   Options popups. Deliberate, but it means the hardware keys still drive the surface UNDERNEATH.
+
+4. **`placeSheetUp` stays true when the sheet is merely not composed.** Street View sits over it, so
+   before row 3 existed the bar showed the place sheet's keys and RIGHT started routing from behind
+   the panorama. If you add a full-screen surface over the sheet, give it its own branch.
+
+5. **`arrived` is set with `navigating` already false.** Without its own branch it falls through to
+   `routePreview`. `clearRoute()` does not clear `arrived` either, so BACK could not dismiss the card
+   until that case was added to the BackHandler.
+
+6. **The restricted flavor ships no Street View.** `full_coverage.sh` marks those two surfaces `n/a`
+   for restricted rather than MISSED; without that, the restricted legs can never score FULLY COVERED.
+
+7. **The harness's touch (`SOFTKEYS=off`) legs cannot drive first-run or directions.** Both phases
+   advance the UI with D-pad OK, which correctly does nothing when nothing is focused in touch. The app
+   is fine there (verified by hand); the legs simply give no verdict for those surfaces.
 
 ## Testing done
 
