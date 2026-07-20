@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.getSystemService
@@ -141,6 +142,39 @@ class VoiceGuide @Inject constructor(
     @Volatile private var focusHeld = false // do we currently hold audio focus? (so a new prompt during
                                             // the release-hold window doesn't needlessly re-request)
     private val focusHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Real romanized road names (local name -> Latin, from the basemap's name:latin), set by `:app`
+     *  as nav tiles load. Lets us speak "Rehov Herzl" rather than the ICU skeleton "rhwb hrzl" for a
+     *  foreign street; empty by default so nothing changes without it (upstream, issue #184). */
+    @Volatile var roadNameLatin: Map<String, String> = emptyMap()
+
+    // Bumped by stop()/a new opener so a deferred nav-start opener still waiting for its road name
+    // to romanize gets cancelled instead of speaking into a dead session.
+    @Volatile private var openerToken = 0
+    private val OPENER_MAX_WAIT_MS = 2500L // cap the opener's wait for its romanized road name
+
+    /** Speak the nav-START opener ("Starting navigation. Head ... on <road>"), but hold it briefly if
+     *  its road name is still in a foreign script we have no real romanization for yet. A drive begins
+     *  before the nav-zoom tiles load, so speaking immediately reads the ICU skeleton ("rhwb hrzl");
+     *  waiting a beat lets [roadNameLatin] fill so the opener says the real name ("Rehov Herzl").
+     *  Retries every 200 ms up to [OPENER_MAX_WAIT_MS], then speaks whatever we have (never silent).
+     *  An all-Latin opener, or one whose road is already covered, speaks instantly. */
+    fun speakOpener(text: String) {
+        val token = ++openerToken
+        val deadline = SystemClock.elapsedRealtime() + OPENER_MAX_WAIT_MS
+        fun attempt() {
+            if (token != openerToken) return // a newer start / a stop superseded this opener
+            val covered = roadNameLatin.keys.any { it.isNotEmpty() && text.contains(it) }
+            val ready = covered || !hasForeignRun(text) || SystemClock.elapsedRealtime() >= deadline
+            if (ready) speak(text) else focusHandler.postDelayed(::attempt, 200)
+        }
+        attempt()
+    }
+
+    /** True if [text] has a letter in a script other than Latin (so an English opener never waits). */
+    private fun hasForeignRun(text: String): Boolean = text.any {
+        Character.isLetter(it) && Character.UnicodeScript.of(it.code) != Character.UnicodeScript.LATIN
+    }
     // Abandon focus a beat AFTER the last prompt ends (see releaseFocus) rather than instantly, so the
     // driver's music stays ducked CONTINUOUSLY across closely-spaced prompts instead of snapping back to
     // full between them - the "didn't reliably duck / not ducking enough" bug.
@@ -339,7 +373,10 @@ class VoiceGuide @Inject constructor(
             // utterance's own onDone is still in flight and a reset would double-count it,
             // abandoning focus while the interrupting prompt speaks.
             acquireFocus()
-            n.speak(forSpeech(text), interrupt) { releaseFocus() }
+            // Romanize any foreign-script name for this voice so it is not dropped: a Latin voice
+            // has no phonemes for Hebrew glyphs and silently drops exactly the words the driver
+            // needs. The on-screen banner keeps the real local-script name (upstream, issue #184).
+            n.speak(forSpeech(SpokenScript.forVoice(text, n.voiceLanguage ?: t, roadNameLatin)), interrupt) { releaseFocus() }
             return
         }
         speakViaSystem(text, interrupt, t)
@@ -373,7 +410,9 @@ class VoiceGuide @Inject constructor(
         // decrement, so just acquire for the new utterance.
         acquireFocus()
         val mode = if (interrupt) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-        val result = engine.speak(forSpeech(text), mode, null, "vela-${text.hashCode()}")
+        // Same romanizing as the neural path: the system voice for [t] is Latin-script for the
+        // Latin languages, so a foreign road name would otherwise be lost.
+        val result = engine.speak(forSpeech(SpokenScript.forVoice(text, t, roadNameLatin)), mode, null, "vela-${text.hashCode()}")
         if (result == TextToSpeech.ERROR) {
             // The utterance was never enqueued, so NONE of the onDone/onStop/onError callbacks that
             // release focus will ever fire for it - roll back the acquire here or music stays ducked
@@ -401,6 +440,7 @@ class VoiceGuide @Inject constructor(
         app.vela.core.i18n.NavStringsRegistry.current().expandForSpeech(text)
 
     fun stop() {
+        openerToken++ // cancel any deferred nav-start opener still waiting for its road name
         tts?.stop()
         neural?.stop()
         releaseAllFocus()

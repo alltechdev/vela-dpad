@@ -250,6 +250,10 @@ fun VelaMapView(
     onUserPan: () -> Unit = {},
     parkingSpot: LatLng? = null, // saved "parked here" pin; tap -> onParkingTap
     onParkingTap: () -> Unit = {},
+    // Foreign-name romanizing: as nav road tiles load, report each road's local name -> its basemap
+    // name:en/name:latin, so guidance can SAY and SHOW the real romanized name ("Rehov Herzl")
+    // instead of ICU's consonant skeleton ("'rlwzwrwb"). Accumulates across the drive.
+    onNavRoadLatin: (Map<String, String>) -> Unit = {},
     onNavPanned: () -> Unit = {},
     onMapTap: () -> Unit = {}, // ANY map tap, before POI/marker resolution - dismiss-transients hook
     onScaleChanged: (metersPerPixel: Double) -> Unit = {},
@@ -323,6 +327,9 @@ fun VelaMapView(
     val cameraIdle = rememberUpdatedState(onCameraIdle)
     val longPress = rememberUpdatedState(onMapLongPress)
     val addrLabelTap = rememberUpdatedState(onAddressLabelTap)
+    val navRoadLatin = rememberUpdatedState(onNavRoadLatin)
+    // Accumulates local road name -> Latin alias for the whole drive (cleared by the VM on nav end).
+    val roadLatinAcc = remember { mutableMapOf<String, String>() }
     val navPanned = rememberUpdatedState(onNavPanned)
     val parkingTap = rememberUpdatedState(onParkingTap)
     val svMapTap = rememberUpdatedState(onSvMapTap)
@@ -1264,6 +1271,26 @@ fun VelaMapView(
                         keyPanPending[0] = false
                         map.cameraPosition.target?.let { t ->
                             cameraIdle.value(LatLng(t.latitude, t.longitude))
+                        }
+                    }
+                    // Foreign road names -> their basemap Latin aliases, harvested as nav tiles
+                    // land. Runs only while NAVIGATING and only until a name is known (the accumulator
+                    // skips ones already held), so this is two string-property reads per new road, not
+                    // per frame. Feeds VoiceGuide/the banner so a Hebrew street is SAID as "Rehov
+                    // Herzl" rather than ICU's consonant skeleton.
+                    if (navModeHolder.value) {
+                        val src = map.style?.getSource("openmaptiles") as? VectorSource
+                        if (src != null) {
+                            val feats = runCatching {
+                                src.querySourceFeatures(arrayOf("transportation_name"), null)
+                            }.getOrNull().orEmpty()
+                            var grew = false
+                            for (ft in feats) {
+                                val nm = runCatching { ft.getStringProperty("name") }.getOrNull()
+                                if (nm.isNullOrBlank() || nm in roadLatinAcc) continue
+                                latinAliasOf(ft, nm)?.let { roadLatinAcc[nm] = it; grew = true }
+                            }
+                            if (grew) navRoadLatin.value(HashMap(roadLatinAcc))
                         }
                     }
                     // Keep the VM's "area you're viewing" current so the offline
@@ -3471,4 +3498,21 @@ private fun svConeBitmap(): Bitmap {
     val half = s * 0.30f // puck diameter ~60% of the canvas, centred
     c.drawBitmap(puck, null, RectF(cx - half, cy - half, cx + half, cy + half), Paint(Paint.ANTI_ALIAS_FLAG))
     return bmp
+}
+
+/** The basemap's romanized alias for a road [name]: its name:en (a real English name), else
+ *  name:latin (which OpenMapTiles fills from name:en where OSM has one, otherwise a transliteration).
+ *  Returned only when it is a genuinely Latin-script string that DIFFERS from the local name, so we
+ *  never store another non-Latin alias as if it were romanized. Ported from upstream (issue #184).*/
+private fun latinAliasOf(f: org.maplibre.geojson.Feature, name: String): String? {
+    for (key in arrayOf("name:en", "name:latin")) {
+        val v = runCatching { f.getStringProperty(key) }.getOrNull()
+        if (v.isNullOrBlank() || v == name) continue
+        val hasLatinLetter = v.any { it in 'a'..'z' || it in 'A'..'Z' }
+        val noForeignLetter = v.none {
+            Character.isLetter(it) && Character.UnicodeScript.of(it.code) != Character.UnicodeScript.LATIN
+        }
+        if (hasLatinLetter && noForeignLetter) return v
+    }
+    return null
 }

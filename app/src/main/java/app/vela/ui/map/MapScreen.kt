@@ -857,6 +857,7 @@ fun MapScreen(
             svPose = svPose,
             svTopInsetPx = (screenHeightPx * 0.55f).toInt(),
             onSvMapTap = vm::moveStreetViewTo,
+            onNavRoadLatin = { vm.onNavRoadLatin(it) },
             onNavPanned = {
                 vm.onNavPanned()
                 // The fork routes NAV pans here (browse pans go through onUserPan), so the
@@ -1047,9 +1048,18 @@ fun MapScreen(
             val shownIdx = (state.previewStepIndex ?: liveStep).coerceIn(0, mans?.lastIndex ?: 0)
             val shown = mans?.getOrNull(shownIdx)
             val next = mans?.getOrNull(shownIdx + 1)
+            // Show the real romanized road name where the basemap gave us one: swap the
+            // local-script name in the instruction for its Latin form. Deliberately NO ICU fallback
+            // here - a name we have no real romanization for keeps its local script, because a
+            // consonant skeleton next to a Hebrew street sign reads broken. The VOICE still falls
+            // back to ICU (better a rough reading than silence); the SCREEN does not.
+            val navUiLang = app.vela.ui.AppLocale.effective().language
+            fun navRomanize(t: String): String =
+                if (t.isEmpty() || state.roadNameLatin.isEmpty()) t
+                else app.vela.core.voice.SpokenScript.forDisplay(t, navUiLang, state.roadNameLatin)
             ManeuverBanner(
                 offRoute = state.nav.offRoute,
-                text = if (previewing) (shown?.instruction.orEmpty()) else state.maneuverText,
+                text = navRomanize(if (previewing) (shown?.instruction.orEmpty()) else state.maneuverText),
                 // The headline distance is the APPROACH to the shown maneuver. A maneuver's own
                 // distanceMeters is the travel AFTER it (Route.kt convention) - showing it here
                 // put the leg-after on the previewed step's headline ("3.1 mi - Turn right onto
@@ -1064,7 +1074,7 @@ fun MapScreen(
                 ref = shown?.ref,
                 laneHint = shown?.laneHint,
                 lanes = shown?.lanes.orEmpty(),
-                nextText = next?.instruction,
+                nextText = next?.instruction?.let { navRomanize(it) },
                 nextType = next?.type,
                 nextRef = next?.ref,
                 // The shown→next gap is the SHOWN maneuver's step length (a maneuver's distanceMeters is

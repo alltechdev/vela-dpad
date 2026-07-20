@@ -180,6 +180,9 @@ data class MapUiState(
     val arrived: Boolean = false,
     val nav: NavState = NavState(),
     val maneuverText: String = "",
+    // Foreign road name -> its basemap Latin name, grown from map tiles as the drive proceeds; the
+    // banner/steps show the real romanized name where we have one. Empty otherwise.
+    val roadNameLatin: Map<String, String> = emptyMap(),
     val fasterRoute: Route? = null,
     val fasterSavingSeconds: Double = 0.0,
     val arrivedLabel: String = "",
@@ -857,7 +860,9 @@ class MapViewModel @Inject constructor(
         }
         suggestJob = viewModelScope.launch {
             delay(320) // only fire once typing pauses
-            val near = mapCenter ?: _state.value.myLocation // suggestions near the viewport, like search
+            // plausibleBias: a no-GPS device never gets a fix, so mapCenter is MapLibre's virgin
+            // 0,0 camera and biasing to it skews ranking to null island (upstream, 2026-07-19).
+            val near = plausibleBias(mapCenter) ?: plausibleBias(_state.value.myLocation) // suggestions near the viewport, like search
             val res = runCatching { dataSource.search(term, near).places }.getOrDefault(emptyList())
             if (_state.value.query.trim() == term) { // ignore if the query changed meanwhile
                 // Google gets the viewport bias, but keyless ranking for a PARTIAL address is
@@ -1093,10 +1098,16 @@ class MapViewModel @Inject constructor(
     // Bias to what the user is LOOKING at (the panned viewport), Google-style - so searching after
     // panning to another area returns results THERE, not back at your GPS location. Falls back to GPS
     // before the map has settled a centre.
-    fun search() = runSearch(_state.value.query.trim(), mapCenter ?: _state.value.myLocation)
+    fun search() = runSearch(_state.value.query.trim(), plausibleBias(mapCenter) ?: plausibleBias(_state.value.myLocation))
 
     /** Re-run the current query biased to the area the user has panned to. */
-    fun searchThisArea() = runSearch(_state.value.query.trim(), mapCenter)
+    fun searchThisArea() = runSearch(_state.value.query.trim(), plausibleBias(mapCenter))
+
+    // A point within ~50 km of 0,0 is MapLibre's virgin camera (a no-GPS device that never got a
+    // fix or a fly-to) or a bogus provider fix, open ocean, never a real position. Passing it as
+    // search bias skews ranking toward null island; no bias at all lets gl/hl regional ranking win.
+    private fun plausibleBias(l: LatLng?): LatLng? =
+        l?.takeUnless { kotlin.math.abs(it.lat) < 0.5 && kotlin.math.abs(it.lng) < 0.5 }
 
     /** Map settled after a user pan: offer "Search this area" while results show. */
     fun onCameraIdle(center: LatLng) {
@@ -2868,6 +2879,7 @@ class MapViewModel @Inject constructor(
     private fun launchNav(route: app.vela.core.model.Route) {
         val dest = destination ?: route.polyline.lastOrNull() ?: return
         startLocation() // make sure live fixes are flowing - they drive the nav loop
+        seedOfflineRoadNames() // real romanized names with NO signal; tile harvest merges on top
         // Stops are stored in travel order (swapDirections reverses the list itself) → per-stop arrival
         // cues + reroute-through-remaining.
         val s = _state.value
@@ -2892,6 +2904,27 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /** VelaMapView reports romanized road names (local -> basemap Latin) as nav tiles load. Merge
+     *  into state (banner/steps consult it) and hand the full map to VoiceGuide so guidance SAYS
+     *  "Rehov Herzl" instead of ICU's consonant skeleton. Only grows during a drive; reset on end. */
+    /** Seed the romanized-road dictionary from any installed OFFLINE region's names sidecar, so a
+     *  drive with NO SIGNAL still says and shows the real street name rather than an ICU skeleton.
+     *  The online tile harvest ([onNavRoadLatin]) merges on top of this as tiles load. Fire-and-forget
+     *  off the main thread; a missing or unreadable sidecar just leaves the map empty. */
+    fun seedOfflineRoadNames() = viewModelScope.launch {
+        val offline = runCatching { routingGraphStore.roadNames() }.getOrDefault(emptyMap())
+        if (offline.isEmpty()) return@launch
+        onNavRoadLatin(offline)
+    }
+
+    fun onNavRoadLatin(map: Map<String, String>) {
+        if (map.isEmpty()) return
+        val merged = if (_state.value.roadNameLatin.isEmpty()) map else _state.value.roadNameLatin + map
+        if (merged.size == _state.value.roadNameLatin.size) return
+        voice.roadNameLatin = merged
+        _state.update { it.copy(roadNameLatin = merged) }
+    }
+
     fun stopNav() {
         // A replay OR a demo drive owns nav through the replay job - "End" (and the back gesture, which
         // also routes here) must end the REPLAY, not run live-nav teardown: stopReplay cancels replayJob
@@ -2905,6 +2938,7 @@ class MapViewModel @Inject constructor(
         tripStore.finishTrip() // close + persist the recorded trip (drops too-short ones)
         clearSpeedLimit() // clear the speed-limit badge for the next drive
         clearPersistedNav() // this drive is over → don't offer to resume it next launch
+        clearRoadLatin() // next drive re-resolves its own romanized road names
         _state.update { it.copy(showSteps = false, previewStepIndex = null, navCameraDetached = false, speedLimitKmh = null) }
     }
 
@@ -3167,6 +3201,12 @@ class MapViewModel @Inject constructor(
     fun finishNav() {
         stopNav()
         clearSelection()
+    }
+
+    /** Drop the drive's romanized-road dictionary so the next one re-resolves from its own tiles. */
+    private fun clearRoadLatin() {
+        voice.roadNameLatin = emptyMap()
+        if (_state.value.roadNameLatin.isNotEmpty()) _state.update { it.copy(roadNameLatin = emptyMap()) }
     }
 
     // --- nav resume across process death -----------------------------------------------------------
