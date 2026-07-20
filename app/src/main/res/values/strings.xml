@@ -526,6 +526,15 @@
     <string name="settings_voice_search_engine_auto">Vela Voice</string>
     <string name="settings_voice_search_engine_default">Android default</string>
     <string name="map_asr_offer_title">Voice search</string>
+    <!-- Voice-search failures. Until issue #81 every one of these closed the listening sheet with no
+         message at all, so a tester could only report "a box pops up for a second then closes". -->
+    <string name="voice_error_title">Voice search didn\'t start</string>
+    <string name="voice_error_retry">Try again</string>
+    <string name="voice_error_model">The voice model isn\'t ready. Re-download it in Settings \u2192 Search.</string>
+    <string name="voice_error_permission">Vela needs microphone permission to listen. Grant it in Android\'s app settings.</string>
+    <string name="voice_error_vad">Part of the voice model is missing. Re-download it in Settings \u2192 Search.</string>
+    <string name="voice_error_audio">This phone wouldn\'t open its microphone for Vela. Close anything else that records audio and try again.</string>
+    <string name="voice_error_recording">Recording stopped unexpectedly. Try again.</string>
     <string name="map_asr_offer_body">Download Vela Voice to speak your searches. It runs entirely on your phone and uploads nothing.</string>
     <string name="map_parking_saved">Parking spot saved</string>
     <string name="map_parking_no_fix">Waiting for a location fix</string>
