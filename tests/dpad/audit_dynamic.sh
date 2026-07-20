@@ -41,7 +41,15 @@ if ! $ADB get-state >/dev/null 2>&1; then echo "No device."; exit 2; fi
 bash "$D/setup.sh"
 warm_up   # clear cold-start so the first surface isn't racing a freshly-installed app
 
-echo "== bare map (ambient: unfocused on open, first arrow -> search bar) =="
+# The bare map has TWO layouts and the auditor must model the right one (#76). Under soft-keys it is
+# decluttered: no search bar, no Layers button, no Park FAB, no locate FAB, no "Search this area" -
+# every one of those lives on a soft key or in the bare-map Options menu instead, and the category
+# chips ride up into the search bar's slot. So the first arrow lands on a CHIP there, not the bar.
+if softkeys_shown; then
+  echo "== bare map (soft-keys: decluttered, ambient on open, first arrow -> category chips) =="
+else
+  echo "== bare map (touch: ambient on open, first arrow -> search bar) =="
+fi
 goto_map
 # The bare map opens AMBIENT (nothing focused). A sample right after cold launch can catch a transient
 # focus mid-load, so if focus shows, re-check after a settle - only a PERSISTENT focus is a real
@@ -49,12 +57,42 @@ goto_map
 f="$(focused)"; [ -n "$f" ] && { sleep 0.8; f="$(focused)"; }
 [ -z "$f" ] && ok "opens ambient (nothing focused)" || bad "bare map should open unfocused, got '$f'"
 key "$K_DOWN"
-[ -n "$(focused)" ] && ok "first arrow lands focus (search bar)" || bad "first arrow did not land focus"
-# every bare-map chrome control (search bar, chips, zoom, FABs, map target) must be traversable
+if [ -n "$(focused)" ]; then
+  if softkeys_shown; then ok "first arrow lands focus (category chips)"; else ok "first arrow lands focus (search bar)"; fi
+else bad "first arrow did not land focus"; fi
+# every bare-map chrome control still on screen for this layout must be traversable
 integrity "bare map chrome traversal" 12
 
+# DECLUTTER ASSERTION (soft-keys only): walking the whole bare map must never land on a control the
+# declutter removed. A regression here means the gate stopped applying and the old chrome is back -
+# which the screenshots alone would not fail on, since a cluttered map still "looks fine".
+if softkeys_shown; then
+  goto_map
+  hits=""
+  for _ in $(seq 1 14); do
+    fd="$(focused)"
+    case "$fd" in
+      *"Center on my location"*) hits="$hits locate-FAB" ;;
+      *"Save parking spot"*|*"Parked car"*) hits="$hits park-FAB" ;;
+      *"Layers"*) hits="$hits layers-button" ;;
+      *"Search this area"*) hits="$hits search-this-area" ;;
+    esac
+    key "$K_DOWN"
+  done
+  if [ -z "$hits" ]; then ok "declutter holds - none of locate/Park/Layers/Search-this-area is focusable on the bare map"
+  else bad "declutter REGRESSED - still focusable on the bare map:$hits"; fi
+  # ...and each one must still be REACHABLE from the Options menu, or we decluttered it into oblivion.
+  key "$K_SOFT_LEFT" 1
+  miss=""
+  for item in "Recenter" "Layers" "Settings"; do on_screen "$item" || miss="$miss $item"; done
+  on_screen "Save parking spot" || on_screen "Parked car" || miss="$miss Park"
+  key "$K_BACK" 1
+  if [ -z "$miss" ]; then ok "Options menu carries what the map no longer draws (Recenter/Layers/Park/Settings)"
+  else bad "Options menu is MISSING:$miss - those actions are now unreachable"; fi
+fi
+
 echo "== search overlay (opens on armed field; BACK exits) =="
-goto_map; focus_search_bar; key "$K_OK" 1.5
+goto_map; open_search
 [ -n "$(focused)" ] && ok "opens focused" || bad "search overlay opened unfocused"
 integrity "search overlay traversal" 10
 # BACK exits the overlay, but after the traversal it may first dismiss the soft IME or step a result
@@ -77,7 +115,7 @@ if open_settings; then
 else bad "could not open Settings (search bar -> gear -> OK did not reach it)"; fi
 
 echo "== Settings sub-screens (voice library / saved places / offline) =="
-goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
+open_settings
 for sub in "Voice library" "Saved places" "Offline"; do
   if focus_and_ok "$sub"; then
     sleep 1
@@ -85,10 +123,10 @@ for sub in "Voice library" "Saved places" "Offline"; do
     integrity "'$sub' traversal" 8
     key "$K_BACK" 1
     # re-enter Settings for the next sub (BACK may have left it)
-    on_screen "Appearance" || { goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5; }
+    on_screen "Appearance" || open_settings
   else
     echo "  SKIP '$sub' - not reachable by scroll from the top"
-    on_screen "Appearance" || { goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5; }
+    on_screen "Appearance" || open_settings
   fi
 done
 key "$K_BACK" 1

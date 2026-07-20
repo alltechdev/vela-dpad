@@ -37,8 +37,12 @@ def code_of(ln):
 def has(regex, ln): return regex.search(code_of(ln)) is not None
 
 # --- interactive modifiers that MUST carry a visible focus ring (.dpadHighlight) --------------
-RING_REQUIRED = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable)\s*[({]')
-CLICKISH = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable)\s*[({]')
+# NB dpadClickable is Vela's own `clickable` (it drops Material's grey focus state layer while input
+# is key-driven, so the orange ring is the only focus signal). It is STILL a focus target and still
+# needs a ring, so it must be listed here - when the rows were converted to it they silently dropped
+# out of this auditor's scope until it was taught the name (2026-07-19).
+RING_REQUIRED = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable|dpadClickable)\s*[({]')
+CLICKISH = re.compile(r'\.(clickable|combinedClickable|toggleable|selectable|triStateToggleable|dpadClickable)\s*[({]')
 FOCUSABLE = re.compile(r'\.focusable\s*\(')
 # Scan the Modifier chain backwards for a ring, stopping at a different focus target / declaration.
 def chain_has_ring(lines, idx):
@@ -114,8 +118,10 @@ for path in walk():
         # C. theme
         if base != "AppTheme.kt" and has(RE_ISSYS, ln):
             viol.append(("MED", f"{name}:{n}", "isSystemInDarkTheme() - use isAppInDarkTheme()"))
-        # D. any ring-required interactive modifier without a ring
-        if has(RING_REQUIRED, ln):
+        # D. any ring-required interactive modifier without a ring. DpadFocus.kt is where these
+        # helpers are DEFINED (dpadClickable wraps clickable itself), so this usage check skips it -
+        # same carve-out the weak-auto-focus rule below already makes.
+        if has(RING_REQUIRED, ln) and base != "DpadFocus.kt":
             if chain_has_ring(lines, i):
                 if verbose: oknote.append(f"ring {name}:{n}")
             else:
