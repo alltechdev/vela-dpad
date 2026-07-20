@@ -135,6 +135,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import app.vela.ui.dpadHighlight
+import app.vela.ui.dpadClickable
 import app.vela.ui.dpadFieldEscape
 import app.vela.ui.rememberDpadAutoFocus // D-pad-first initial focus (docs/dpad.md)
 import app.vela.ui.VelaMenu // D-pad-first menu (docs/dpad.md)
@@ -861,7 +862,7 @@ fun PlaceSheet(
             // are the fast path; these are the detail for when you want to see/copy the number or URL.
             place.phone?.let { ph ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).clickable {
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).dpadClickable {
                         val dialable = "tel:" + ph.filter { it.isDigit() || it == '+' }
                         runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse(dialable))) }
                     }.padding(vertical = 8.dp),
@@ -874,7 +875,7 @@ fun PlaceSheet(
             }
             place.website?.takeIf { !app.vela.ui.HideExternalLinks.on.value }?.let { site ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).clickable {
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).dpadClickable {
                         app.vela.ui.ExternalLinks.open(context, site)
                     }.padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -973,7 +974,7 @@ fun PlaceSheet(
                 Text(stringResource(R.string.place_also_at_location), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = ink)
                 placesHere.forEach { other ->
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).clickable { onOpenPlace(other) }.padding(vertical = 10.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).dpadClickable { onOpenPlace(other) }.padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -1057,6 +1058,10 @@ fun DirectionsPanel(
     val dark = isAppInDarkTheme()
     val ink = if (dark) InkDark else InkLight
     val dim = if (dark) DimDark else DimLight
+    // Keypad phones: the route-preview soft keys ARE Steps (LEFT) and Start (RIGHT), so the panel's
+    // own Start/Steps buttons are pure duplication - dropping them hands a short screen back to what
+    // it is actually for, the list of route alternatives.
+    val skActive = app.vela.ui.softkey.VelaSoftkeys.isActive()
     // Keyed to the destination so opening directions for a different place starts
     // expanded again instead of inheriting the previous session's collapsed state.
     val collapsed = remember(destinationName) { mutableStateOf(false) }
@@ -1159,16 +1164,18 @@ fun DirectionsPanel(
                             RouteOption(r, selected, fastestEtaSeconds = fastestEta, isFastest = i == fastestIdx, dark = dark, ink = ink, dim = dim, flockCount = flockOnRoute.getOrElse(i) { 0 }) { onSelectRoute(i) }
                         }
                     }
-                    Spacer(Modifier.height(14.dp))
-                    Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = onStartNav, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                            Text(stringResource(R.string.place_start))
-                        }
-                        onSteps?.let {
-                            OutlinedButton(onClick = it) {
-                                Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                                Text(stringResource(R.string.place_steps))
+                    if (!skActive) {
+                        Spacer(Modifier.height(14.dp))
+                        Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(onClick = onStartNav, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                                Text(stringResource(R.string.place_start))
+                            }
+                            onSteps?.let {
+                                OutlinedButton(onClick = it) {
+                                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                                    Text(stringResource(R.string.place_steps))
+                                }
                             }
                         }
                     }
@@ -1207,8 +1214,9 @@ fun DirectionsPanel(
             }
               }
             }
-            // Minimised: keep a Start button reachable without expanding.
-            if (collapsed.value) {
+            // Minimised: keep a Start button reachable without expanding (soft-keys already have
+            // Start on the RIGHT key, so the minimised bar is empty chrome there).
+            if (collapsed.value && !skActive) {
                 Button(
                     onClick = onStartNav,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, end = 12.dp),
@@ -1526,7 +1534,7 @@ private fun TransitRow(t: TransitItinerary, nowSec: Long, ink: Color, dim: Color
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(SheetPalette.row(dark))
-            .then(if (canExpand) Modifier.dpadHighlight(RoundedCornerShape(12.dp)).clickable { expanded = !expanded } else Modifier)
+            .then(if (canExpand) Modifier.dpadHighlight(RoundedCornerShape(12.dp)).dpadClickable { expanded = !expanded } else Modifier)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -1636,7 +1644,7 @@ private fun TransitRow(t: TransitItinerary, nowSec: Long, ink: Color, dim: Color
                         info,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (phone != null) MaterialTheme.colorScheme.primary else dim,
-                        modifier = if (phone != null) Modifier.dpadHighlight(RoundedCornerShape(6.dp)).clickable {
+                        modifier = if (phone != null) Modifier.dpadHighlight(RoundedCornerShape(6.dp)).dpadClickable {
                             val dialable = "tel:" + phone.filter { it.isDigit() || it == '+' }
                             runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse(dialable))) }
                         } else Modifier,
@@ -1665,7 +1673,7 @@ private fun TransitStepRow(s: TransitStep, ink: Color, dim: Color, onWalkDirecti
             Icon(transitModeIcon(s.mode), null, tint = dim, modifier = Modifier.padding(top = 2.dp).size(18.dp))
             Column(Modifier.fillMaxWidth()) {
                 Row(
-                    Modifier.then(if (canExpand) Modifier.dpadHighlight(RoundedCornerShape(8.dp)).clickable { open = !open } else Modifier),
+                    Modifier.then(if (canExpand) Modifier.dpadHighlight(RoundedCornerShape(8.dp)).dpadClickable { open = !open } else Modifier),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -1712,7 +1720,7 @@ private fun TransitStepRow(s: TransitStep, ink: Color, dim: Color, onWalkDirecti
             ).joinToString("  ·  ")
             if (s.intermediateStops.isNotEmpty()) {
                 Row(
-                    Modifier.dpadHighlight(RoundedCornerShape(6.dp)).clickable { stopsOpen = !stopsOpen }.padding(vertical = 1.dp),
+                    Modifier.dpadHighlight(RoundedCornerShape(6.dp)).dpadClickable { stopsOpen = !stopsOpen }.padding(vertical = 1.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
@@ -2631,7 +2639,7 @@ private fun ReviewsTab(
             // intermittent), so this is a load FAILURE, not a review-less place. Say so and
             // let the user retry instead of lying with "No reviews available."
             reviews.isEmpty() && (place.reviewCount ?: 0) > 0 -> Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).clickable { onRetry() }.padding(vertical = 8.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).dpadHighlight(RoundedCornerShape(8.dp)).dpadClickable { onRetry() }.padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, tint = dim, modifier = Modifier.size(18.dp))
@@ -2656,7 +2664,7 @@ private fun ReviewsTab(
                             {
                                 Icon(
                                     Icons.Default.Close, contentDescription = stringResource(R.string.place_clear_review_search), tint = dim,
-                                    modifier = Modifier.size(18.dp).clip(CircleShape).dpadHighlight(CircleShape).clickable { reviewQuery = "" },
+                                    modifier = Modifier.size(18.dp).clip(CircleShape).dpadHighlight(CircleShape).dpadClickable { reviewQuery = "" },
                                 )
                             }
                         } else null,
@@ -2933,7 +2941,7 @@ private fun PopularTimesSection(pt: app.vela.core.model.PopularTimes, ink: Color
                     style = MaterialTheme.typography.bodySmall,
                     color = if (sel) accent else dim,
                     fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.clip(CircleShape).dpadHighlight(CircleShape).clickable { selectedDow = d.dayOfWeek }
+                    modifier = Modifier.clip(CircleShape).dpadHighlight(CircleShape).dpadClickable { selectedDow = d.dayOfWeek }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }

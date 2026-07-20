@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.offset
@@ -164,6 +165,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import app.vela.ui.dpadHighlight
+import app.vela.ui.dpadClickable
 import app.vela.ui.dpadModeAutoFocus // reactive auto-focus for the bare-map cards (docs/dpad.md)
 import app.vela.ui.toggleItem
 import app.vela.ui.rememberDpadAutoFocus // D-pad-first initial focus (docs/dpad.md)
@@ -304,6 +306,13 @@ fun MapScreen(
     var moveMapArm by remember { mutableStateOf(false) } // Options "Move map" -> engage the map to pan
     var searchArmSignal by remember { mutableStateOf(0) } // bump to open+focus the search field
     var layersOpen by remember { mutableStateOf(false) } // the top-right layers panel (also a map-Options item)
+    // Declared up here, ABOVE the nav Options menu that opens it: a state hoisted below its menu is
+    // out of scope for the item, and a control gated off the screen has to be reachable from the menu.
+    var navSearchOpen by remember { mutableStateOf(false) } // in-nav search-along-route panel
+    // Hoisted for the same reason: the locate FAB is hidden under soft-keys and Options -> Recenter
+    // takes its place, so the menu item must be able to re-arm free-drive follow exactly as the FAB
+    // tap did. Recenter WITHOUT this re-arm would silently lose the follow-me behaviour.
+    var followMe by remember { mutableStateOf(true) }
     LaunchedEffect(placeSheetUp) { if (!placeSheetUp) placeOptionsOpen = false } // reset on leave
     LaunchedEffect(state.navigating) { if (!state.navigating) navOptionsOpen = false }
     val browseMap = !placeSheetUp && !searchOpen && !state.navigating && !state.directionsOpen &&
@@ -352,19 +361,38 @@ fun MapScreen(
                     ),
                     vm::confirmMapPick,
                 )
+            // Street View owns the whole screen, but placeSheetUp is still true underneath it (the
+            // sheet is merely not composed), so this surface used to inherit the place sheet's keys:
+            // a LEFT "Options" that opened a menu nobody could see, and a RIGHT "Directions" that
+            // started routing from behind the panorama. Bind LEFT to Close and leave RIGHT unbound.
+            state.streetView != null || state.streetViewLoading ->
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_close), vm::closeStreetView) to null
+            // Arrival: `arrived` is set with `navigating` already false, so without this branch the
+            // card fell through to routePreview and the bar offered to START a drive to the place
+            // you had just reached. RIGHT finishes the trip.
+            state.arrived -> null to
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.nav_done), vm::finishNav)
             // Turn-by-turn: LEFT opens the nav Options menu (Mute / Steps / Recenter / End) so a keypad
             // driver can actually control the drive; RIGHT enters zoom mode.
             state.navigating -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { navOptionsOpen = true } to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.softkey_zoom_menu)) { mapZoomMode = true }
             placeSheetUp -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { placeOptionsOpen = true } to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_directions), vm::routeToSelected)
-            // The turn-list overlay (reached while previewing a route): RIGHT starts the drive.
-            state.showSteps -> null to
+            // The turn-list overlay (reached while previewing a route): RIGHT starts the drive, LEFT
+            // closes. LEFT used to be null - a dead key on the one surface that still drew its own
+            // on-screen Close button, so the labelled key did nothing and the button took a focus
+            // stop. Bound here, the button goes.
+            state.showSteps -> app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_close), vm::closeSteps) to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_start), onStartNav)
             // A previewed route (before driving): LEFT sees the turn list, RIGHT starts navigation -
             // no more walking focus to the on-screen Start button.
             routePreview -> app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.nav_steps), vm::openSteps) to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.place_start), onStartNav)
+            // A cut-off drive can be resumed: LEFT dismisses, RIGHT resumes. Its on-screen pair sits
+            // in a Row, so without this the keypad could only reach one of the two.
+            state.resumeNavLabel != null && !state.navigating && state.selected == null ->
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.mapscreen_dismiss)) { vm.dismissResume() } to
+                    app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.mapscreen_resume)) { vm.resumeNav() }
             // An update is offered on the browse map: LEFT dismisses ("Later"), RIGHT installs - the
             // same soft-key pattern every other surface uses, so Install is reliably reachable and
             // labelled instead of stranding D-pad focus on the on-screen "Later" button (the two
@@ -422,7 +450,14 @@ fun MapScreen(
                 mapEngaged -> item(stringResource(R.string.softkey_zoom_menu)) { mapOptionsOpen = false; mapZoomMode = true }
                 else -> item(stringResource(R.string.softkey_move_map)) { mapOptionsOpen = false; moveMapArm = true }
             }
-            item(stringResource(R.string.softkey_recenter)) { mapOptionsOpen = false; vm.recenter() }
+            // followMe = true exactly as the locate FAB's tap did - this menu item REPLACES that FAB
+            // on keypad phones, so dropping the re-arm would quietly cost free-drive follow.
+            item(stringResource(R.string.softkey_recenter)) { mapOptionsOpen = false; followMe = true; vm.recenter() }
+            // Only offered when the map has actually been panned off the last search - the same
+            // condition that draws the on-screen button this replaces.
+            if (state.showSearchThisArea && state.selected == null && !state.navigating) {
+                item(stringResource(R.string.mapscreen_search_this_area)) { mapOptionsOpen = false; vm.searchThisArea() }
+            }
             if (app.vela.ui.LayersButton.on.value) {
                 item(stringResource(R.string.map_layers)) { mapOptionsOpen = false; layersOpen = true }
             }
@@ -446,6 +481,9 @@ fun MapScreen(
             val muteLabel = if (state.voiceMuted) R.string.softkey_unmute else R.string.softkey_mute
             item(stringResource(muteLabel)) { navOptionsOpen = false; vm.toggleVoice() }
             item(stringResource(R.string.nav_steps)) { navOptionsOpen = false; vm.openSteps() }
+            // The search FAB is one of the controls the soft-key drive screen drops, so the menu is
+            // the ONLY way to search along the route on a keypad phone.
+            item(stringResource(R.string.place_search_along_route)) { navOptionsOpen = false; navSearchOpen = true }
             item(stringResource(R.string.softkey_recenter)) { navOptionsOpen = false; vm.recenterNav() }
             item(stringResource(R.string.nav_end)) { navOptionsOpen = false; vm.stopNav() }
         }
@@ -470,7 +508,7 @@ fun MapScreen(
     // default so an open, unobstructed map glides to your fix; a user pan drops it and the locate
     // tap raises it again. Suppressed whenever a focus surface owns the camera (search, a place,
     // directions, the results list) so it never fights that framing. Nav has its own follow.
-    var followMe by remember { mutableStateOf(true) }
+    // (Declared above, with the soft-key state, so Options -> Recenter can re-arm it.)
     // A programmatic camera jump far from the fix (a recents pick, a search hit, a pasted
     // coordinate, a deep link) means the user went to look somewhere else - drop follow exactly
     // like a pan would. Without this, follow was only SUSPENDED while the place sheet owned the
@@ -513,9 +551,10 @@ fun MapScreen(
     // The endpoints card's measured bottom edge, so the route fit can clear the card
     // instead of framing the start of the route exactly behind it.
     var topCardBottomPx by remember { mutableStateOf(0) }
-    // In-nav search-along-route: the map search FAB arms a panel (text field + chips) above
-    // the bar. Reset when nav ends so a stale-open panel can't greet the next drive.
-    var navSearchOpen by remember { mutableStateOf(false) }
+    // In-nav search-along-route: the map search FAB (touch) or the nav Options menu (soft-keys) arms
+    // a panel (text field + chips) above the bar. navSearchOpen itself is hoisted to the soft-key
+    // state block so the Options item can reach it. Reset when nav ends so a stale-open panel can't
+    // greet the next drive.
     var navSearchQuery by remember { mutableStateOf("") }
     // The open panel's measured bottom edge: the nav follow-camera pads the puck below it
     // so the panel can never cover the arrow (user 2026-07-15), on any screen height.
@@ -545,7 +584,7 @@ fun MapScreen(
     // search overlay is up over an engaged map. Order: cancel map-pick → disengage map →
     // close search → peel nav/route/place/results.
     BackHandler(
-        enabled = mapZoomMode || mapEngaged || searchOpen || state.showSteps || state.navigating || state.transitNav != null ||
+        enabled = mapZoomMode || mapEngaged || searchOpen || state.showSteps || state.navigating || state.arrived || state.transitNav != null ||
             state.directionsOpen || state.activeRoute != null || state.routes.isNotEmpty() ||
             state.selected != null ||
             state.results.isNotEmpty(),
@@ -565,6 +604,10 @@ fun MapScreen(
             searchOpen -> { searchExpanded = false; focusManager.clearFocus(); vm.cancelPickOrigin(); vm.cancelPickStop() }
             state.editingStops -> vm.closeStopsEditor()
             state.showSteps -> vm.closeSteps()
+            // Arrival card: only finishNav clears `arrived`. Without this case BACK fell through to
+            // clearRoute(), which leaves `arrived` set - the card stayed on screen and the soft keys
+            // silently re-read as a place sheet underneath it.
+            state.arrived -> vm.finishNav()
             // In-nav search: BACK peels the results list / the chip row before it can end the
             // whole drive - ending nav because you browsed gas stations would be brutal.
             state.navigating && state.results.isNotEmpty() -> vm.clearSearch()
@@ -1094,6 +1137,7 @@ fun MapScreen(
                             onAddStop = vm::openStopsEditor,
                             onSwap = vm::swapDirections,
                             onClose = vm::clearRoute,
+                            softkeys = softkeyBarShown,
                         )
                     }
                     // The search bar hides while the endpoints card replaces it in directions mode,
@@ -1118,6 +1162,7 @@ fun MapScreen(
                         },
                         onBack = if (searchOpen) ({ searchExpanded = false; focusManager.clearFocus(); vm.cancelPickOrigin(); vm.cancelPickStop() }) else null,
                         dpadMode = dpadMode,
+                        softkeys = softkeyBarShown,
                         offline = state.offline,
                         onMic = onMic,
                         armFieldSignal = searchArmSignal, // the bare-map RIGHT "Search" soft key opens it
@@ -1246,7 +1291,9 @@ fun MapScreen(
         // cramming four controls - user 2026-07-14; Google floats these there too), with the
         // re-center button joining the stack when panned away / previewing a step. Hidden
         // while the along-route results own the bottom slot.
-        if (state.navigating && state.results.isEmpty() && !navSearchOpen) {
+        // ...and dropped entirely on keypad phones: Recenter and Search along route are both on the
+        // in-nav Options menu, so at speed the map carries only the banner, the ETA and the bar.
+        if (state.navigating && state.results.isEmpty() && !navSearchOpen && !softkeyBarShown) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1322,7 +1369,9 @@ fun MapScreen(
             )
         }
 
-        if (!state.navigating && state.showSearchThisArea && state.selected == null && !searchOpen && !resultsShown) {
+        // Hidden under soft-keys (it is a map-Options item there): it sat in the bottom band, which is
+        // exactly where the soft-key bar draws, and on a keypad you reach this after "Move map".
+        if (!state.navigating && state.showSearchThisArea && state.selected == null && !searchOpen && !resultsShown && !softkeyBarShown) {
             ElevatedButton(
                 onClick = vm::searchThisArea,
                 modifier = Modifier
@@ -1358,10 +1407,15 @@ fun MapScreen(
                         ),
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    Row(Modifier.align(Alignment.End).padding(top = 8.dp)) {
-                        TextButton(onClick = vm::dismissResume) { Text(stringResource(R.string.mapscreen_dismiss)) }
-                        Spacer(Modifier.width(8.dp))
-                        Button(onClick = vm::resumeNav) { Text(stringResource(R.string.mapscreen_resume)) }
+                    // Same shape as the update card's bug (#74): two buttons in a Row, where LEFT/
+                    // RIGHT are soft keys and NOT focus traversal, so a keypad user could only ever
+                    // reach one of them. The soft keys carry both actions instead.
+                    if (!softkeyBarShown) {
+                        Row(Modifier.align(Alignment.End).padding(top = 8.dp)) {
+                            TextButton(onClick = vm::dismissResume) { Text(stringResource(R.string.mapscreen_dismiss)) }
+                            Spacer(Modifier.width(8.dp))
+                            Button(onClick = vm::resumeNav) { Text(stringResource(R.string.mapscreen_resume)) }
+                        }
                     }
                 }
             }
@@ -1390,6 +1444,7 @@ fun MapScreen(
                 currentStep = if (state.navigating) state.nav.stepIndex else null,
                 onStep = vm::previewStep,
                 onClose = vm::closeSteps,
+                softkeys = softkeyBarShown,
                 // Arrive-row destination lines: the live nav state while navigating; pre-nav (the
                 // Steps preview from the directions panel) the selected place, unless the trip is
                 // reversed (the destination is you, so a place line would be wrong).
@@ -1413,7 +1468,9 @@ fun MapScreen(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(16.dp),
+                    // Tighter inset under soft-keys: the thin one-line ETA bar sits right above the
+                    // key bar, so 16dp all round was a second margin stacked on the bar's own.
+                    .padding(horizontal = if (softkeyBarShown) 8.dp else 16.dp, vertical = if (softkeyBarShown) 6.dp else 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 NavControls(
@@ -1425,6 +1482,7 @@ fun MapScreen(
                     voiceMuted = state.voiceMuted,
                     onToggleVoice = vm::toggleVoice,
                     trafficRatio = state.activeRoute?.trafficRatio,
+                    softkeys = softkeyBarShown,
                     // Measured AFTER the padding → the bar surface itself; navBarClearance adds the
                     // padding + gap back. Everything stacked above the bar keys off this.
                     modifier = Modifier.onGloballyPositioned { navBarHeightPx = it.size.height },
@@ -1442,6 +1500,7 @@ fun MapScreen(
                 onApply = vm::applyStops,
                 onAddStop = vm::beginPickStop,
                 onDismiss = vm::closeStopsEditor,
+                softkeys = softkeyBarShown,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
 
@@ -1576,6 +1635,7 @@ fun MapScreen(
                 target = target,
                 onConfirm = vm::confirmMapPick,
                 onCancel = vm::cancelChooseOnMap,
+                softkeys = softkeyBarShown,
             )
         }
 
@@ -1668,16 +1728,23 @@ fun MapScreen(
         }
 
         if (!state.navigating && state.selected == null && !searchOpen && state.resumeNavLabel == null && !resultsShown) {
-            FloatingActionButton(
-                onClick = { followMe = true; vm.recenter() }, // locate tap = "track me again" (re-arms free-drive follow)
-                modifier = Modifier
-                    .dpadHighlight(RoundedCornerShape(16.dp))
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(16.dp)
-                    .padding(bottom = chromeLift),
-            ) {
-                Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.mapscreen_center_on_my_location))
+            // The locate FAB is Options -> Recenter under soft-keys (which re-arms followMe
+            // identically), so the bottom-right corner goes back to being map. NB the gate is on the
+            // FAB ITSELF, not on the enclosing block: the parking hub menu and history sheet are
+            // hoisted inside that block, and gating it off would uncompose them with the FAB and
+            // strand Options -> Park - the Layers regression, exactly.
+            if (!softkeyBarShown) {
+                FloatingActionButton(
+                    onClick = { followMe = true; vm.recenter() }, // locate tap = "track me again" (re-arms free-drive follow)
+                    modifier = Modifier
+                        .dpadHighlight(RoundedCornerShape(16.dp))
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(16.dp)
+                        .padding(bottom = chromeLift),
+                ) {
+                    Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.mapscreen_center_on_my_location))
+                }
             }
             // Parking button, its OWN control above the locate FAB (touch/hybrid only - under soft-keys
             // it's decluttered away and Options -> Park drives the same action; F/#76). TAP with NO spot
@@ -2412,11 +2479,20 @@ private fun CategoryChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         categories.forEach { (labelRes, query, icon) ->
+            // The ring rides a Box pinned to the chip's OWN 32dp height, not the chip's modifier:
+            // Material inflates a chip to the 48dp minimum touch target, so a ring on the chip drew
+            // a box half again too tall, floating clear of the pill. Same clean-wrap trick VelaSwitch
+            // uses. CircleShape because the chip below is a full pill - an 8dp rounded rect around a
+            // pill was "the wrong shape" (tester 2026-07-19).
+            Box(
+                Modifier
+                    .requiredHeight(androidx.compose.material3.AssistChipDefaults.Height)
+                    .dpadHighlight(androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
             ElevatedAssistChip(
                 onClick = { onPick(query) },
-                modifier = Modifier
-                    .focusProperties { canFocus = focusable }
-                    .dpadHighlight(RoundedCornerShape(8.dp)),
+                modifier = Modifier.focusProperties { canFocus = focusable },
                 label = { Text(stringResource(labelRes)) },
                 leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 // Full pill, Google-style - the M3 default 8dp corners read dated on a map chip row.
@@ -2427,6 +2503,7 @@ private fun CategoryChips(
                     leadingIconContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
+            }
         }
     }
 }
@@ -2439,6 +2516,12 @@ private fun ChooseOnMapOverlay(
     target: MapPick,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
+    // Keypad phones drop BOTH buttons: Cancel is the LEFT soft key AND hardware BACK, Set start/stop
+    // is the RIGHT soft key AND D-pad OK on the crosshair - triple-covered either way. They also cost
+    // more than the room they take: this is the one surface whose whole job is PANNING the map, and
+    // the two buttons are focus stops competing with it (arrows used to walk to the X instead of
+    // moving the pin). The hint banner stays, the buttons go.
+    softkeys: Boolean = false,
 ) {
     Box(Modifier.fillMaxSize()) {
         Surface(
@@ -2464,8 +2547,10 @@ private fun ChooseOnMapOverlay(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onCancel) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.mapscreen_cancel))
+                if (!softkeys) {
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.mapscreen_cancel))
+                    }
                 }
             }
         }
@@ -2479,20 +2564,22 @@ private fun ChooseOnMapOverlay(
                 .size(44.dp)
                 .offset(y = (-22).dp),
         )
-        Button(
-            onClick = onConfirm,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp),
-        ) {
-            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-            Text(
-                stringResource(
-                    if (target == MapPick.ORIGIN) R.string.mapscreen_choose_set_start
-                    else R.string.mapscreen_choose_set_stop,
-                ),
-            )
+        if (!softkeys) {
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 24.dp),
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                Text(
+                    stringResource(
+                        if (target == MapPick.ORIGIN) R.string.mapscreen_choose_set_start
+                        else R.string.mapscreen_choose_set_stop,
+                    ),
+                )
+            }
         }
     }
 }
@@ -2787,7 +2874,7 @@ private fun SuggestionRow(
     sublabel: String? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().dpadHighlight(RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().dpadHighlight(RoundedCornerShape(6.dp)).dpadClickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 12.dp), tint = tint)

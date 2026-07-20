@@ -71,6 +71,10 @@ fun SearchBar(
     onFocusChange: (Boolean) -> Unit = {},
     onBack: (() -> Unit)? = null,
     dpadMode: Boolean = false,
+    // Keypad phones drop the Settings gear: the bare-map Options menu already has Settings, and this
+    // overlay is the one screen a keypad user is TYPING on - every icon in the field's trailing slot
+    // is a focus stop between them and the results.
+    softkeys: Boolean = false,
     offline: Boolean = false,
     // Voice search: tap to dictate a query (tier-1 on-device Whisper, or tier-2 a system voice-input
     // app). Null = no mic. Sits at the right when the field is EMPTY, Google-style.
@@ -295,7 +299,7 @@ fun SearchBar(
                 // The old `.size(22.dp).padding(end=10.dp)` squeezed the arc into a 12x22 box, so it
                 // drew as an ellipse and looked like it was spinning off-axis (user report).
                 CircularProgressIndicator(Modifier.padding(end = 10.dp).size(22.dp), strokeWidth = 2.dp)
-            } else {
+            } else if (!softkeys) {
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.search_settings_cd))
                 }

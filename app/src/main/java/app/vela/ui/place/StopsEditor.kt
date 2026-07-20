@@ -82,6 +82,10 @@ fun StopsEditorSheet(
     onApply: (List<Place>) -> Unit,
     onAddStop: () -> Unit,
     onDismiss: () -> Unit,
+    // Keypad phones drop the close X: hardware BACK already closes the editor, and Done (which is
+    // what actually COMMITS the edit) is the auto-focused primary here - two exits, one of them a
+    // discard, is a trap on a screen this small.
+    softkeys: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val dark = isAppInDarkTheme()
@@ -119,8 +123,10 @@ fun StopsEditorSheet(
                     color = ink,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.mapscreen_cancel), tint = dim)
+                if (!softkeys) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.mapscreen_cancel), tint = dim)
+                    }
                 }
             }
             // The endpoint + stop rows scroll inside a height cap so Add stop / Done stay

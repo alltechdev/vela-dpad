@@ -82,6 +82,8 @@ import app.vela.ui.map.MapViewModel
 import app.vela.ui.theme.AppTheme
 import app.vela.ui.theme.ThemeMode
 import app.vela.ui.dpadHighlight // D-pad-only operation (docs/dpad.md)
+import app.vela.ui.DpadRingBox
+import app.vela.ui.dpadClickable
 import app.vela.ui.dpadFieldEscape
 import app.vela.ui.dpadSwallowHorizontal
 import app.vela.ui.dpadRowSibling
@@ -1247,17 +1249,22 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                     // them the fork's focus ring, like the map UpdateCard already has. The ring shape
                     // MUST match each button's OWN shape - CircleShape drew a circle over a pill (tester
                     // report), so pass the matching ButtonDefaults shape per button type.
-                    Button(onClick = { vm.downloadUpdate() }, modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.shape)) { Text(stringResource(R.string.update_install)) }
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.shape) {
+                        Button(onClick = { vm.downloadUpdate() }) { Text(stringResource(R.string.update_install)) }
+                    }
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }, modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.textShape)) { Text(stringResource(R.string.update_later)) }
+                    DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape) {
+                        TextButton(onClick = { vm.dismissUpdate(); updateStatus = null }) { Text(stringResource(R.string.update_later)) }
+                    }
                 }
-            } ?: OutlinedButton(
-                modifier = Modifier.dpadHighlight(androidx.compose.material3.ButtonDefaults.outlinedShape),
-                onClick = {
-                    updateStatus = checkingText
-                    vm.checkForUpdateNow { found -> updateStatus = if (found) null else noneText }
-                },
-            ) { Text(stringResource(R.string.settings_update_check_now)) }
+            } ?: DpadRingBox(androidx.compose.material3.ButtonDefaults.outlinedShape) {
+                OutlinedButton(
+                    onClick = {
+                        updateStatus = checkingText
+                        vm.checkForUpdateNow { found -> updateStatus = if (found) null else noneText }
+                    },
+                ) { Text(stringResource(R.string.settings_update_check_now)) }
+            }
             updateStatus?.let { Hint(it) }
             // Breathing room under the last control so the button doesn't sit right on the
             // gesture bar at the end of the scroll.
@@ -1281,7 +1288,7 @@ private fun SectionTitle(text: String) {
 @Composable
 private fun CollapsibleSectionTitle(text: String, expanded: Boolean, onToggle: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).clickable(onClick = onToggle).padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).dpadClickable(onClick = onToggle).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1302,7 +1309,7 @@ private fun CollapsibleSectionTitle(text: String, expanded: Boolean, onToggle: (
 @Composable
 private fun SelectableRow(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+        modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).dpadClickable(onClick = onClick).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // onClick = null: the RadioButton is display-only so the ROW is the single focus stop. A

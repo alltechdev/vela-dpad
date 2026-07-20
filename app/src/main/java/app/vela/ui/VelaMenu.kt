@@ -9,11 +9,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.rememberScrollState
@@ -35,9 +37,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -166,12 +172,16 @@ fun VelaMenuScope.toggleItem(text: String, checked: Boolean, onToggle: (Boolean)
             }
         }
     }
+    // The ring goes on the SWITCH, not on this row: focus lives on the row (it is the single focus
+    // stop), but ringing the row wrapped the whole option instead of the toggle and disagreed with
+    // Settings, where the ring hugs the pill. Track focus here, draw it there.
+    var rowFocused by remember { mutableStateOf(false) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(fr)
-            .dpadHighlight(RoundedCornerShape(8.dp))
+            .onFocusEvent { rowFocused = it.hasFocus }
             .onKeyEvent { ev ->
                 if ((ev.key == Key.DirectionCenter || ev.key == Key.Enter) && ev.type == KeyEventType.KeyUp) {
                     onToggle(!checked); true
@@ -185,7 +195,16 @@ fun VelaMenuScope.toggleItem(text: String, checked: Boolean, onToggle: (Boolean)
     ) {
         Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(16.dp))
-        VelaSwitch(checked = checked, onCheckedChange = onToggle)
+        // onCheckedChange = null: display-only, so the switch is not a SECOND focus stop inside a row
+        // that is already one (the row's pointerInput still toggles it under touch).
+        Box(
+            Modifier
+                .requiredHeight(32.dp)
+                .dpadRingWhen(rowFocused, androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            androidx.compose.material3.Switch(checked = checked, onCheckedChange = null)
+        }
     }
 }
 
