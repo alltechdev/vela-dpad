@@ -782,6 +782,25 @@ class NavReplayTest {
  * plain turn/ramp fell through to UNKNOWN - generic arrow + wrong haptic. */
 class DirectionsManeuverTest {
 
+    /** Exits: Google also sends the direction IN THE TOKEN ("OFF_RAMP_RIGHT") with no child
+     *  `<turn side=>`. mapType read left/right ONLY from that child, so every such ramp fell to the
+     *  lr() fallback - MERGE for ramps, STRAIGHT for forks/keeps - and EVERY EXIT CARD DREW THE SAME
+     *  SYMBOL regardless of which way the exit went (issue #79, @SILB). */
+    @Test
+    fun explicitDirectionInTheTokenResolvesWithoutATurnChild() {
+        assertEquals(ManeuverType.RAMP_RIGHT, DirectionsParser.mapType("OFF_RAMP_RIGHT", null, null))
+        assertEquals(ManeuverType.RAMP_LEFT, DirectionsParser.mapType("OFF_RAMP_LEFT", null, null))
+        assertEquals(ManeuverType.RAMP_RIGHT, DirectionsParser.mapType("ON_RAMP_RIGHT", null, null))
+        assertEquals(ManeuverType.RAMP_LEFT, DirectionsParser.mapType("RAMP_LEFT", null, null))
+        assertEquals(ManeuverType.FORK_LEFT, DirectionsParser.mapType("FORK_LEFT", null, null))
+        assertEquals(ManeuverType.FORK_RIGHT, DirectionsParser.mapType("FORK_RIGHT", null, null))
+        assertEquals(ManeuverType.KEEP_LEFT, DirectionsParser.mapType("KEEP_LEFT", null, null))
+        assertEquals(ManeuverType.KEEP_RIGHT, DirectionsParser.mapType("KEEP_RIGHT", null, null))
+        // A side child still wins where present, and a directionless token keeps its fallback.
+        assertEquals(ManeuverType.RAMP_LEFT, DirectionsParser.mapType("ON_RAMP", "LEFT", null))
+        assertEquals(ManeuverType.MERGE, DirectionsParser.mapType("ON_RAMP", null, null))
+    }
+
     @Test
     fun mapsRealKeylessTurnTokensAndKeepsRoadName() {
         val left = DirectionsParser.parseStep(

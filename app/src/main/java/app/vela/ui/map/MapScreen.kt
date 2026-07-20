@@ -372,6 +372,14 @@ fun MapScreen(
             // you had just reached. RIGHT finishes the trip.
             state.arrived -> null to
                 app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.nav_done), vm::finishNav)
+            // A faster route is offered mid-drive: LEFT declines, RIGHT switches. Its two on-screen
+            // buttons sit in a Row, and LEFT/RIGHT are SOFT KEYS rather than focus traversal, so a
+            // keypad driver could only ever reach one of them (issue #79, @SILB - the same trap as the
+            // update card in #74). Sits ABOVE the navigating branch so the transient offer owns the
+            // keys while it is up; Options/Zoom return the moment it is answered or expires.
+            state.navigating && state.fasterRoute != null ->
+                app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.mapscreen_no)) { vm.dismissFasterRoute() } to
+                    app.vela.ui.softkey.VelaSoftkeys.Key(stringResource(R.string.mapscreen_switch)) { vm.acceptFasterRoute() }
             // Turn-by-turn: LEFT opens the nav Options menu (Mute / Steps / Recenter / End) so a keypad
             // driver can actually control the drive; RIGHT enters zoom mode.
             state.navigating -> app.vela.ui.softkey.VelaSoftkeys.Key(skOptions) { navOptionsOpen = true } to
@@ -1268,6 +1276,7 @@ fun MapScreen(
                 savingSeconds = state.fasterSavingSeconds,
                 onSwitch = vm::acceptFasterRoute,
                 onDismiss = vm::dismissFasterRoute,
+                softkeys = softkeyBarShown,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
@@ -3104,6 +3113,7 @@ private fun FasterRouteCard(
     savingSeconds: Double,
     onSwitch: () -> Unit,
     onDismiss: () -> Unit,
+    softkeys: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -3125,8 +3135,12 @@ private fun FasterRouteCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.mapscreen_no)) }
-            Button(onClick = onSwitch) { Text(stringResource(R.string.mapscreen_switch)) }
+            // Dropped under soft-keys: both actions ARE the two keys there (issue #79). Keeping them
+            // would leave a keypad driver able to focus only one of the pair.
+            if (!softkeys) {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.mapscreen_no)) }
+                Button(onClick = onSwitch) { Text(stringResource(R.string.mapscreen_switch)) }
+            }
         }
     }
 }

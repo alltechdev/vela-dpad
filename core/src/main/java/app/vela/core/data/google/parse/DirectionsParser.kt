@@ -177,12 +177,17 @@ object DirectionsParser {
      * arrow and the wrong direction-coded haptic. Old explicit *_LEFT/_RIGHT tokens stay handled in
      * case the feed varies. */
     internal fun mapType(token: String?, side: String?, severity: String?): ManeuverType {
-        val left = side.equals("LEFT", ignoreCase = true)
-        val right = side.equals("RIGHT", ignoreCase = true)
+        // The direction can arrive EITHER as the child `<turn side=>` OR baked into the token itself
+        // ("OFF_RAMP_RIGHT"). Reading only the child meant every explicit-token ramp/fork/keep fell to
+        // the lr() fallback, so EVERY EXIT CARD DREW THE SAME SYMBOL whichever way the exit went
+        // (issue #79). Suffix-match the token too; the child still wins where both are present.
+        val tok = token?.uppercase()
+        val left = side.equals("LEFT", ignoreCase = true) || (side == null && tok?.endsWith("_LEFT") == true)
+        val right = side.equals("RIGHT", ignoreCase = true) || (side == null && tok?.endsWith("_RIGHT") == true)
         val slight = severity.equals("SLIGHT", ignoreCase = true)
         val sharp = severity.equals("SHARP", ignoreCase = true)
         fun lr(l: ManeuverType, r: ManeuverType, fallback: ManeuverType) = if (left) l else if (right) r else fallback
-        return when (token?.uppercase()) {
+        return when (tok) {
             "DEPART" -> ManeuverType.DEPART
             "DESTINATION", "ARRIVE" -> ManeuverType.ARRIVE
             "TURN_LEFT" -> ManeuverType.TURN_LEFT
