@@ -721,6 +721,34 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
       the two scraper WebViews exist. That is the offscreen layouts (`WV_WIDTH`x`WV_HEIGHT`, e.g.
       1200x3200) allocating graphics buffers charged to OUR process. Chromium logs
       `tile memory limits exceeded` at that size. Cutting the offscreen viewport is a real lead.
+  - **MEASURE THE `staging` VARIANT, NOT `debug`.** `staging` is `initWith(release)` - R8-minified,
+    resources shrunk, non-debuggable, installs side by side as `app.vela.staging` - so it is the
+    production memory profile without touching a real release install. Every number in issue #83 was
+    `standardDebug` and overstates the app substantially:
+
+    | state | standardDebug | standardStaging (production) |
+    |---|---|---|
+    | after a search (warm) | ~460 MB | **~279 MB** |
+    | place open | 410-508 MB | **335-392 MB** |
+    | after a severe trim | - | **140-146 MB** |
+    | `Code` bucket | 101 MB | **30-45 MB** |
+
+    The `Code` gap is extracted dex and JIT profiles that simply do not exist in a release build, so
+    roughly 55-70 MB of any debug reading is an artifact. Check a conclusion against `staging` before
+    spending effort on it.
+  - **`mallinfo` "free" is address space, NOT reclaimable resident memory. Do not chase it.** The
+    arena routinely reports something like 440 MB total against 41 MB live, which looks like ~400 MB
+    waiting to be reclaimed. It is not: scudo has already madvised those pages away, and
+    `scudo:primary` PSS at that same moment was only 67 MB. Measured directly by purging during
+    active use with no listener release (a `RUNNING_MODERATE` trim, which `isSevere` excludes):
+    `scudo:primary` moved 67.1 -> 64.5 MB, i.e. **2.6 MB**. A periodic idle purge is therefore not
+    worth building; the earlier framing of that gap as reclaimable was wrong.
+  - **What the `mallopt` purge is actually worth: ~10 MB, on production.** A/B on `staging`, 3 runs
+    per arm, comparing where `scudo:primary` SETTLES after a severe trim (the pre-trim value swings
+    147-382 MB run to run and is useless): purge on 52.4/53.1/54.1 MB, purge off 54.4/58.6/76.7 MB.
+    A single trim reclaims 133-328 MB on production, but nearly all of that is the registered
+    listeners releasing plus what the platform already does on trim - only ~10 MB is the purge. Do
+    not credit the purge with the whole trim delta; run the control.
   - **Throw the scraped DOCUMENT away when the scrape ends; the viewport is not the lever.** After
     a scrape the photo fetcher used to hold a fully rasterized Google Maps page until the 120 s reap,
     i.e. through the whole time the user reads the place sheet. `blankAfterScrape()` navigates to
