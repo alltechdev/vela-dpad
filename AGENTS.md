@@ -647,6 +647,21 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     from a trim would CONSTRUCT it, so the trim would allocate the very thing it is freeing.
   - `LowRamMode.enabled` (`:core`) is the `:core`-visible mirror, pushed in by `VelaApp` - same seam
     as `CategoryFilter.enabled`, because `:core` must never read an `:app` holder.
+  - **The low-RAM predicate lives in `:core` as `LowRamMode.classify`, and it has TESTS.** It has
+    shipped wrong twice, both times in ways no dev device could reveal: `heapClassMb in 1..127`
+    excluded 128, the one heap class 1 GB phones and low-end 2 GB phones actually use - so the
+    device issue #83 was filed from could plausibly have received none of the work - and a 0 from a
+    failed probe fell out of that range and selected the memory-HUNGRY path for a device we knew
+    nothing about. It now takes three signals (`isLowRamDevice`, total RAM <= 2048 MB, heap class
+    <= 128 MB), **treats an unreadable probe as constrained**, and lives in `:core` purely so
+    `core/src/test/.../LowRamModeTest.kt` can pin the boundaries. Failing toward low-RAM costs a
+    roomy phone about a second on its first mic tap; failing the other way can OOM a phone with no
+    headroom.
+    - Total RAM is the signal that actually describes the device; heap class is a Dalvik knob an OEM
+      can set to anything. `MemoryInfo.totalMem` reports what the OS can hand out, so a nominal 2 GB
+      phone reads ~1900 MB and a 3 GB phone ~2800 MB. The M5 reads 2878 MB and stays on the normal
+      path, which is what keeps every measurement in this file comparable - there is a test asserting
+      exactly that, so if it ever flips you will be told.
   - **Verify the low-RAM path or it ships unverified.** Every dev phone we own reports
     `lowRam=false heapClassMb=256`, so those branches are dead code locally. Debug builds honour
     `adb shell setprop debug.vela.lowram true` (then relaunch). NB `false` FORCES the normal path,

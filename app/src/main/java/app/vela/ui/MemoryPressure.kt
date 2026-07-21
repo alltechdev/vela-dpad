@@ -29,26 +29,56 @@ object MemoryPressure {
     private val listeners = CopyOnWriteArrayList<Listener>()
 
     /**
-     * True when the OS classes this device as low-RAM (`ActivityManager.isLowRamDevice`) OR its
-     * heap class is small enough that our normal budgets do not fit. The heap-class arm matters:
-     * plenty of cheap keypad phones do NOT set the low-RAM system property yet still hand out a
-     * 96 MB heap class, and those are exactly the phones this work is for.
+     * True when this device cannot comfortably carry our normal budgets. Three independent signals,
+     * any of which is enough, because no single one catches the phones this work is for:
+     *
+     * - `ActivityManager.isLowRamDevice`, the canonical flag, but only Go-configured builds set it.
+     * - Total system RAM ([totalRamMb]) at or under `LowRamMode.LOW_TOTAL_RAM_MB`. This is the
+     *   signal that actually describes the device; heap class is a Dalvik tuning knob an OEM can set
+     *   to anything.
+     * - Heap class ([heapClassMb]) at or under `LowRamMode.LOW_HEAP_CLASS_MB`, which catches an OEM
+     *   that ships plenty of RAM but hands apps a small heap.
+     *
+     * The predicate itself is `LowRamMode.classify`, in `:core` so it can be unit-tested.
+     *
+     * **When we cannot tell, we assume constrained.** Failing to the low-RAM path costs a roomy
+     * phone about a second on its first mic tap and its first place open; failing the other way can
+     * OOM a phone that had no headroom. The old predicate did the opposite: it read
+     * `heapClassMb in 1..127`, so a failed `ActivityManager` lookup produced 0, fell out of the
+     * range, and silently selected the memory-hungry path on a device we knew nothing about.
      */
     @Volatile var lowRam: Boolean = false
         private set
 
-    /** The device's normal (non-large) heap class in MB. 0 until [init]. */
+    /** The device's normal (non-large) heap class in MB. 0 when it could not be read. */
     @Volatile var heapClassMb: Int = 0
+        private set
+
+    /** Total system RAM in MB, as the OS reports it. 0 when it could not be read. */
+    @Volatile var totalRamMb: Int = 0
         private set
 
     fun init(context: Context) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         heapClassMb = am?.memoryClass ?: 0
+        totalRamMb = am?.let { m ->
+            runCatching {
+                val mi = ActivityManager.MemoryInfo()
+                m.getMemoryInfo(mi)
+                (mi.totalMem / (1024L * 1024L)).toInt()
+            }.getOrDefault(0)
+        } ?: 0
         val forced = forcedLowRam()
-        lowRam = forced ?: ((am?.isLowRamDevice == true) || (heapClassMb in 1..127))
+        // The decision itself lives in :core so it can be unit-tested; this side only probes.
+        // am == null means we could not ask at all, which the 0/0 probes already classify as
+        // constrained, but say it explicitly rather than leaning on that coincidence.
+        lowRam = forced ?: (
+            am == null ||
+                app.vela.core.data.LowRamMode.classify(am.isLowRamDevice, heapClassMb, totalRamMb)
+            )
         Timber.i(
-            "MemoryPressure init lowRam=%b heapClassMb=%d forced=%s",
-            lowRam, heapClassMb, forced?.toString() ?: "no",
+            "MemoryPressure init lowRam=%b heapClassMb=%d totalRamMb=%d forced=%s",
+            lowRam, heapClassMb, totalRamMb, forced?.toString() ?: "no",
         )
     }
 
@@ -185,6 +215,7 @@ object MemoryPressure {
 
     /** Long enough for the main-looper-posted WebView destroys and the Coil clear to have landed. */
     private const val PURGE_DELAY_MS = 750L
+
 
     /**
      * The app is backgrounded or the OS is genuinely short of memory, so caches that only speed
