@@ -38,13 +38,43 @@ object FlockCameras {
     private var lat = DoubleArray(0)
     private var lng = DoubleArray(0)
     private var op = arrayOf<String>()
-    private val grid = HashMap<Long, MutableList<Int>>()
+    /**
+     * The 0.1 deg bucket index, as a flat CSR (compressed sparse row) triple rather than a
+     * `HashMap<Long, MutableList<Int>>`.
+     *
+     * [cellKeys] is sorted and unique; the rows in cell `k` are
+     * `cellRows[cellStart[k] until cellStart[k + 1]]`. Lookup is a binary search on [cellKeys].
+     *
+     * Why: the map version cost roughly 166,000 objects to build - one boxed `Integer` per camera
+     * (124,406 of them), plus an `ArrayList` + its `Object[]` + a boxed `Long` key + a `HashMap.Node`
+     * per occupied cell (13,965 of those) - and every one of them was garbage the moment the parse
+     * finished. This is five arrays. Startup on this app is GC-bound, not compilation-bound (forcing
+     * full AOT made cold start WORSE, 828 ms against 775 ms), so allocation count at startup is the
+     * thing worth cutting. Lookups are unchanged in behaviour and no slower in practice: the viewport
+     * scan touches on the order of 100 cells, and a binary search over ~14,000 keys is ~14 compares.
+     */
+    private var cellKeys = LongArray(0)
+    private var cellStart = IntArray(1)
+    private var cellRows = IntArray(0)
 
     val isLoaded: Boolean get() = loaded
     val size: Int get() = lat.size
 
     private fun key(row: Long, col: Long): Long = (row shl 32) xor (col and 0xffffffffL)
     private fun rowOf(v: Double): Long = Math.floor(v / CELL).toLong()
+
+    /**
+     * Run [body] for every camera row in the cell at ([row], [col]). No-op when the cell is empty.
+     * Replaces `grid[key(r, c)]?.let { ... }`, and allocates nothing - notably no iterator, which
+     * the old `for (i in bucket)` over a `MutableList<Int>` created (and unboxed on every step).
+     */
+    private inline fun forEachInCell(row: Long, col: Long, body: (Int) -> Unit) {
+        val k = cellKeys.binarySearch(key(row, col))
+        if (k < 0) return
+        var p = cellStart[k]
+        val end = cellStart[k + 1]
+        while (p < end) { body(cellRows[p]); p++ }
+    }
 
     private fun dir(context: Context) = File(context.filesDir, "flock").apply { mkdirs() }
     private fun downloadedBin(context: Context) = File(dir(context), "cameras.bin")
@@ -72,9 +102,13 @@ object FlockCameras {
 
     /** Build the arrays + index from a gzipped-TSV stream and publish them (never leaves `loaded` false once set). */
     private fun loadFrom(raw: InputStream) {
-        val las = ArrayList<Double>(130_000)
-        val los = ArrayList<Double>(130_000)
-        val ops = ArrayList<String>(130_000)
+        // Primitive growable arrays, not ArrayList<Double>: the list version boxed a java.lang.Double
+        // per coordinate, 248,812 of them for the bundled 124,406-row dataset, all garbage the moment
+        // toDoubleArray() copied them out.
+        var las = DoubleArray(130_000)
+        var los = DoubleArray(130_000)
+        var ops = arrayOfNulls<String>(130_000)
+        var n = 0
         val intern = HashMap<String, String>() // operator column is highly repetitive - intern it
         raw.use { r ->
             GZIPInputStream(r).bufferedReader().useLines { lines ->
@@ -84,15 +118,40 @@ object FlockCameras {
                     val la = line.substring(0, t1).toDoubleOrNull() ?: continue
                     val lo = line.substring(t1 + 1, t2).toDoubleOrNull() ?: continue
                     val o = line.substring(t2 + 1)
-                    las.add(la); los.add(lo); ops.add(intern.getOrPut(o) { o })
+                    if (n == las.size) { // dataset outgrew the guess - double, same as ArrayList did
+                        las = las.copyOf(n * 2); los = los.copyOf(n * 2); ops = ops.copyOf(n * 2)
+                    }
+                    las[n] = la; los[n] = lo; ops[n] = intern.getOrPut(o) { o }
+                    n++
                 }
             }
         }
-        val g = HashMap<Long, MutableList<Int>>()
-        for (i in las.indices) g.getOrPut(key(rowOf(las[i]), rowOf(los[i]))) { ArrayList() }.add(i)
+
+        // CSR index, built with sorts and counting rather than a map of lists. Three passes over
+        // primitives and no per-row object at all; see [cellKeys].
+        val keys = LongArray(n) { key(rowOf(las[it]), rowOf(los[it])) }
+        val sorted = keys.copyOf()
+        sorted.sort()
+        var uniq = 0
+        for (i in 0 until n) if (i == 0 || sorted[i] != sorted[i - 1]) uniq++
+        val ck = LongArray(uniq)
+        var u = 0
+        for (i in 0 until n) if (i == 0 || sorted[i] != sorted[i - 1]) { ck[u] = sorted[i]; u++ }
+        // Count per cell, then prefix-sum into start offsets.
+        val start = IntArray(uniq + 1)
+        for (i in 0 until n) start[ck.binarySearch(keys[i]) + 1]++
+        for (k in 1..uniq) start[k] += start[k - 1]
+        // Scatter row indices into their cell's slot. `fill` walks a copy of the offsets so
+        // `start` stays the published boundary array.
+        val fill = start.copyOf()
+        val rows = IntArray(n)
+        for (i in 0 until n) { val k = ck.binarySearch(keys[i]); rows[fill[k]] = i; fill[k]++ }
+
         // Publish (a bad/partial parse threw before here, so we never swap in a half-built set).
-        lat = las.toDoubleArray(); lng = los.toDoubleArray(); op = ops.toTypedArray()
-        grid.clear(); grid.putAll(g)
+        lat = las.copyOf(n); lng = los.copyOf(n)
+        @Suppress("UNCHECKED_CAST")
+        op = (ops.copyOf(n) as Array<String>)
+        cellKeys = ck; cellStart = start; cellRows = rows
         loaded = true
     }
 
@@ -140,10 +199,8 @@ object FlockCameras {
         while (r <= r1) {
             var c = c0
             while (c <= c1) {
-                grid[key(r, c)]?.let { bucket ->
-                    for (i in bucket) {
-                        if (lat[i] in south..north && lng[i] in west..east) out.add(AlprCamera(LatLng(lat[i], lng[i]), op[i]))
-                    }
+                forEachInCell(r, c) { i ->
+                    if (lat[i] in south..north && lng[i] in west..east) out.add(AlprCamera(LatLng(lat[i], lng[i]), op[i]))
                 }
                 c++
             }
@@ -163,11 +220,9 @@ object FlockCameras {
         while (r <= r1) {
             var c = c0
             while (c <= c1) {
-                grid[key(r, c)]?.let { bucket ->
-                    for (i in bucket) {
-                        val p = LatLng(lat[i], lng[i])
-                        if (nearPolyline(p, polyline, meters)) out.add(AlprCamera(p, op[i]))
-                    }
+                forEachInCell(r, c) { i ->
+                    val p = LatLng(lat[i], lng[i])
+                    if (nearPolyline(p, polyline, meters)) out.add(AlprCamera(p, op[i]))
                 }
                 c++
             }
