@@ -743,6 +743,24 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     not mean your timer fired. The first attempt to verify this was unfalsifiable for exactly that
     reason: the renderer vanished at t+60 s and the logs showed `dispatch level=15`/`40`, i.e. a real
     trim, not the reaper. Log the reap, then assert the log AND assert no severe trim fired.
+  - **Freeing a native model needs a LEASE, not an atomic counter checked outside the lock.**
+    `WhisperRecognizer` guards the recognizer with `leases`, mutated ONLY under `loadLock`, and
+    `release()` checks the count and frees inside that same lock. The first version of this checked
+    an `AtomicInteger` before taking the lock while `ensureRecognizer()` handed the pointer out on a
+    lock-free fast path, which is a check-then-act: the reaper reads 0, a mic tap increments and
+    takes the pointer, the reaper frees it under the running decode. `runCatching` around the decode
+    CANNOT save you - `OfflineRecognizer.release()` frees C++ memory and the result is a SIGSEGV in
+    `libsherpa-onnx-jni` that takes the process down. **An atomic counter does not make a
+    check-then-act atomic.** Take the lease and the pointer under one lock, or do not take either.
+  - **`release()` must not block the main thread, so it `tryLock`s.** It is called from
+    `onTrimMemory` on the main thread, and `loadLock` is held across the ~1 s native model load, so
+    a blocking acquire stalls the UI thread for that whole load just to reclaim memory the idle
+    reaper would reclaim anyway. Skipping is safe; the next trim or the reaper retries. `Remove
+    model` passes `wait = true` because there the user asked for it. Device-verified that this
+    window is REAL and not theoretical: hammering `am send-trim-memory <pid> RUNNING_CRITICAL`
+    across startup logged `release skipped, model load in progress` 5 times in one run.
+    - `RUNNING_CRITICAL` is the level to use for this - it is `isSevere` AND the OS accepts it on a
+      FOREGROUND process, so it exercises the load window without needing HOME first.
   - **A quarantined ASR model makes `warmUp()` a silent no-op.** `WhisperRecognizer.isInstalled()`
     is `AsrModel.isInstalled() && !asr_model_bad`, and the corrupt-model quarantine (`asr_model_bad`
     in `vela_settings`) is only ever lifted by the installer's `clearQuarantine()`. Side-loading the

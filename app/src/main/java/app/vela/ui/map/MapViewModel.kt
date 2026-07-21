@@ -4369,7 +4369,7 @@ class MapViewModel @Inject constructor(
         // Free the loaded model BEFORE removing its files. Deleting the directory alone left the
         // native recognizer resident for the rest of the process (~267 MB measured, issue #83), so
         // "Remove" reclaimed disk but no memory at all.
-        whisperRecognizer.release()
+        whisperRecognizer.release(wait = true) // deliberate user action: worth waiting out a load
         app.vela.voice.AsrModel.dir(appContext).deleteRecursively()
         _state.update { it.copy(asrInstalled = false) }
     }

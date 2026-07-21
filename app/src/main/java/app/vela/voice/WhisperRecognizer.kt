@@ -44,15 +44,27 @@ import kotlin.math.sqrt
 class WhisperRecognizer @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    private val loadLock = Any()
+    /** Guards [recognizer]/[loadedLang] AND [leases]. A ReentrantLock rather than `synchronized`
+     *  so [release] can `tryLock` instead of blocking - see there. */
+    private val loadLock = java.util.concurrent.locks.ReentrantLock()
     @Volatile private var recognizer: OfflineRecognizer? = null
     @Volatile private var loadedLang: String? = null
 
-    /** Non-zero while a [listen] is inside the native recognizer. [release] refuses to free the
-     *  model while this is set: `OfflineRecognizer.release()` frees C++ memory that an in-flight
-     *  decode is still reading, which is a use-after-free that takes the process down rather than
-     *  throwing. A trim arriving mid-utterance simply keeps the model until the utterance ends. */
-    private val inFlight = java.util.concurrent.atomic.AtomicInteger(0)
+    /**
+     * Outstanding leases on the loaded recognizer: non-zero while a [listen] holds a pointer to it.
+     * [release] refuses to free the model while this is set, because `OfflineRecognizer.release()`
+     * frees C++ memory an in-flight decode is still reading - a use-after-free that takes the
+     * process down rather than throwing, so `runCatching` around the decode cannot save it.
+     *
+     * **Only ever mutated while holding [loadLock]**, in [acquireRecognizer]/[releaseLease]. That is
+     * the whole point. It used to be incremented in [listen] with no lock while [release] read it
+     * with no lock, which is a check-then-act with a real window: the reaper could evaluate the
+     * count as 0, a mic tap could then increment it and take the pointer off `ensureRecognizer`'s
+     * lock-free fast path, and the reaper would go on to free the model under the running decode.
+     * The window was not small either - any thread holding [loadLock] for a ~1 s model load parks
+     * `release()` between its check and the free for that whole time.
+     */
+    private val leases = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** Idle-reap timer, same idea as the web fetchers' `REAP_IDLE_MS` (issue #182). One daemon
      *  thread, shared, created lazily so a device that never loads the model never starts it. */
@@ -92,21 +104,65 @@ class WhisperRecognizer @Inject constructor(
 
     /**
      * Free the native recognizer. Safe to call any time: no-op when nothing is loaded, and declines
-     * while a listen is in flight (see [inFlight]). The next [listen]/[warmUp] rebuilds it.
+     * while a listen holds a lease (see [leases]). The next [listen]/[warmUp] rebuilds it.
+     *
+     * The lease check happens INSIDE [loadLock], together with the free, so a listen cannot start
+     * between the two. That is what makes this not a use-after-free.
+     *
+     * [wait] controls what happens when the lock is already held, which means a ~1 s native model
+     * load is in progress. The default does NOT block: the trim path runs on the MAIN thread from
+     * `Application.onTrimMemory`, and stalling the UI thread for a whole model load to reclaim
+     * memory is a bad trade when the idle reaper or the next trim will retry anyway. `Remove model`
+     * passes true, because there the user asked for it and a brief wait is correct.
      */
-    fun release() {
-        if (inFlight.get() > 0) {
-            Timber.tag(TAG).i("release skipped, listen in flight")
+    fun release(wait: Boolean = false) {
+        if (wait) loadLock.lock() else if (!loadLock.tryLock()) {
+            Timber.tag(TAG).i("release skipped, model load in progress")
             return
         }
-        synchronized(loadLock) {
+        try {
+            if (leases.get() > 0) {
+                Timber.tag(TAG).i("release skipped, listen in flight")
+                return
+            }
             val r = recognizer ?: return
             recognizer = null
             loadedLang = null
             runCatching { r.release() }
                 .onFailure { Timber.tag(TAG).w(it, "recognizer release failed") }
             Timber.tag(TAG).i("recognizer released")
+        } finally {
+            loadLock.unlock()
         }
+    }
+
+    /**
+     * Load if needed and take a LEASE, both under [loadLock]. Pair with [releaseLease] in a
+     * `finally`. Returns null when the model is absent or the native load failed, in which case no
+     * lease is taken.
+     *
+     * Callers must not hold the returned pointer past [releaseLease]: the lease is the only thing
+     * stopping [release] from freeing it.
+     */
+    private fun acquireRecognizer(): OfflineRecognizer? {
+        loadLock.lock()
+        try {
+            val r = ensureRecognizerLocked() ?: return null
+            leases.incrementAndGet()
+            return r
+        } finally {
+            loadLock.unlock()
+        }
+    }
+
+    /**
+     * Give back a lease taken by [acquireRecognizer]. Deliberately does NOT take [loadLock]: the
+     * decrement happens only once the decode is finished with the pointer, so the worst a racing
+     * [release] can do is read the pre-decrement value and conservatively decline. Taking the lock
+     * here would instead park the end of every utterance behind an unrelated model load.
+     */
+    private fun releaseLease() {
+        leases.decrementAndGet()
     }
 
     private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
@@ -205,63 +261,78 @@ class WhisperRecognizer @Inject constructor(
      *  null if the model isn't installed or the native load fails - callers then fall back to the
      *  provider intent or hide the mic. */
     private fun ensureRecognizer(): OfflineRecognizer? {
-        val lang = whisperLang()
-        recognizer?.let { if (loadedLang == lang) return it }
-        synchronized(loadLock) {
-            recognizer?.let { if (loadedLang == lang) return it else runCatching { it.release() } }
-            recognizer = null
-            if (!AsrModel.isInstalled(context)) return null
-
-            // CRASH SENTINEL around the native load. sherpa-onnx parses the .onnx files in C++, and a
-            // TRUNCATED-but-non-empty model segfaults inside libsherpa-onnx-jni rather than throwing -
-            // `runCatching` cannot catch a native abort, it takes the whole process down. That is
-            // reachable in the real world: the installer deletes destDir BEFORE moving staging into
-            // place, so a copy that stops partway (storage full on a flip phone, process killed) can
-            // leave a short file that isInstalled()'s present-and-non-empty test happily accepts.
-            // Because warmUp() runs at STARTUP, the result was an unrecoverable crash loop - the user
-            // cannot even reach Settings to delete the model, since the app dies before any UI.
-            // So: mark before the load, clear after. Finding the mark still set means the previous
-            // attempt never returned - quarantine the model, tell the UI it is not installed, and let
-            // the app start. Same idiom as the map's two-crash sentinel in VelaMapView.
-            val prefs = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
-            if (prefs.getBoolean(KEY_LOAD_INFLIGHT, false)) {
-                Timber.tag(TAG).e("previous ASR load never returned (native crash) - quarantining the model")
-                prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).putBoolean(KEY_MODEL_BAD, true).apply()
-                runCatching { AsrModel.dir(context).deleteRecursively() }
-                return null
-            }
-            if (prefs.getBoolean(KEY_MODEL_BAD, false)) return null
-            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, true).apply()
-
-            val dir = AsrModel.dir(context)
-            val r = runCatching {
-                OfflineRecognizer(
-                    config = OfflineRecognizerConfig(
-                        featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-                        modelConfig = OfflineModelConfig(
-                            whisper = OfflineWhisperModelConfig(
-                                encoder = File(dir, AsrModel.ENCODER).absolutePath,
-                                decoder = File(dir, AsrModel.DECODER).absolutePath,
-                                language = lang,      // pinned to the app language ("" = auto)
-                                task = "transcribe",
-                                tailPaddings = -1,
-                            ),
-                            tokens = File(dir, AsrModel.TOKENS).absolutePath,
-                            numThreads = 2,
-                            modelType = "whisper",
-                        ),
-                    ),
-                )
-            }.getOrNull()
-            // The load RETURNED (success or a catchable failure), so the process survived it: clear
-            // the sentinel. Only a native abort leaves it set, which is exactly the case we want the
-            // next launch to notice.
-            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).apply()
-            recognizer = r
-            loadedLang = lang
-            if (r != null) armIdleReap() // start the quiet-period countdown from the load
-            return r
+        loadLock.lock()
+        try {
+            return ensureRecognizerLocked()
+        } finally {
+            loadLock.unlock()
         }
+    }
+
+    /**
+     * The body of [ensureRecognizer]. **Caller must hold [loadLock].**
+     *
+     * There is deliberately NO lock-free fast path here any more. The old one
+     * (`recognizer?.let { if (loadedLang == lang) return it }` before the lock) is what let a decode
+     * obtain the native pointer while [release] was between its lease check and its free. Taking the
+     * lock on every acquire costs an uncontended lock per listen, which is nothing next to a 15 s
+     * utterance, and it is what makes the lease in [acquireRecognizer] atomic.
+     */
+    private fun ensureRecognizerLocked(): OfflineRecognizer? {
+        val lang = whisperLang()
+        recognizer?.let { if (loadedLang == lang) return it else runCatching { it.release() } }
+        recognizer = null
+        if (!AsrModel.isInstalled(context)) return null
+
+        // CRASH SENTINEL around the native load. sherpa-onnx parses the .onnx files in C++, and a
+        // TRUNCATED-but-non-empty model segfaults inside libsherpa-onnx-jni rather than throwing -
+        // `runCatching` cannot catch a native abort, it takes the whole process down. That is
+        // reachable in the real world: the installer deletes destDir BEFORE moving staging into
+        // place, so a copy that stops partway (storage full on a flip phone, process killed) can
+        // leave a short file that isInstalled()'s present-and-non-empty test happily accepts.
+        // Because warmUp() runs at STARTUP, the result was an unrecoverable crash loop - the user
+        // cannot even reach Settings to delete the model, since the app dies before any UI.
+        // So: mark before the load, clear after. Finding the mark still set means the previous
+        // attempt never returned - quarantine the model, tell the UI it is not installed, and let
+        // the app start. Same idiom as the map's two-crash sentinel in VelaMapView.
+        val prefs = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_LOAD_INFLIGHT, false)) {
+            Timber.tag(TAG).e("previous ASR load never returned (native crash) - quarantining the model")
+            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).putBoolean(KEY_MODEL_BAD, true).apply()
+            runCatching { AsrModel.dir(context).deleteRecursively() }
+            return null
+        }
+        if (prefs.getBoolean(KEY_MODEL_BAD, false)) return null
+        prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, true).apply()
+
+        val dir = AsrModel.dir(context)
+        val r = runCatching {
+            OfflineRecognizer(
+                config = OfflineRecognizerConfig(
+                    featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
+                    modelConfig = OfflineModelConfig(
+                        whisper = OfflineWhisperModelConfig(
+                            encoder = File(dir, AsrModel.ENCODER).absolutePath,
+                            decoder = File(dir, AsrModel.DECODER).absolutePath,
+                            language = lang,      // pinned to the app language ("" = auto)
+                            task = "transcribe",
+                            tailPaddings = -1,
+                        ),
+                        tokens = File(dir, AsrModel.TOKENS).absolutePath,
+                        numThreads = 2,
+                        modelType = "whisper",
+                    ),
+                ),
+            )
+        }.getOrNull()
+        // The load RETURNED (success or a catchable failure), so the process survived it: clear
+        // the sentinel. Only a native abort leaves it set, which is exactly the case we want the
+        // next launch to notice.
+        prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).apply()
+        recognizer = r
+        loadedLang = lang
+        if (r != null) armIdleReap() // start the quiet-period countdown from the load
+        return r
     }
 
     /**
@@ -273,25 +344,37 @@ class WhisperRecognizer @Inject constructor(
     /** Listen, transcribe, and say WHY when it does not work - see [VoiceResult]. Every failure exit
      *  logs under `VELAASR` so a tester's logcat names the cause without another round-trip.
      *
-     *  Thin wrapper over [listenInner] that marks the recognizer busy, so a memory trim arriving
-     *  mid-utterance cannot free the native model out from under the decode (see [inFlight]). The
-     *  inner function keeps its many early returns; this keeps the guard exception-safe. */
+     *  Thin wrapper over [listenInner] that holds a LEASE on the recognizer for the whole utterance,
+     *  so a memory trim or the idle reaper arriving mid-utterance cannot free the native model out
+     *  from under the decode (see [leases] and [acquireRecognizer]). Taking the lease out here, not
+     *  inside the inner function, is what makes it exception-safe against that function's many
+     *  early returns. */
     suspend fun listen(
         onLevel: (Float) -> Unit,
         onListening: () -> Unit,
         cancelled: () -> Boolean,
     ): VoiceResult {
-        inFlight.incrementAndGet()
+        // Acquire (and load) OFF the main thread: this can be a ~1 s native load, and callers reach
+        // listen() from a UI coroutine. The lease is taken here rather than inside listenInner so
+        // that the many early returns in there cannot leak it - the finally below always gives it
+        // back, and it covers recording as well as decoding.
         reapTask?.cancel(false) // never reap mid-utterance
+        val rec = withContext(Dispatchers.Default) { acquireRecognizer() }
+            ?: run {
+                Timber.tag(TAG).e("listen failed: MODEL (model absent or native load failed)")
+                armIdleReap()
+                return VoiceResult.Failed(VoiceResult.Reason.MODEL, "model absent or native load failed")
+            }
         try {
-            return listenInner(onLevel, onListening, cancelled)
+            return listenInner(rec, onLevel, onListening, cancelled)
         } finally {
-            inFlight.decrementAndGet()
+            releaseLease()
             armIdleReap() // restart the quiet period from the END of this utterance
         }
     }
 
     private suspend fun listenInner(
+        rec: OfflineRecognizer,
         onLevel: (Float) -> Unit,
         onListening: () -> Unit,
         cancelled: () -> Boolean,
@@ -300,8 +383,6 @@ class WhisperRecognizer @Inject constructor(
             Timber.tag(TAG).e("listen failed: $reason${detail?.let { " ($it)" } ?: ""}")
             return VoiceResult.Failed(reason, detail)
         }
-        val rec = ensureRecognizer()
-            ?: return@withContext fail(VoiceResult.Reason.MODEL, "model absent or native load failed")
         if (!hasMicPermission()) return@withContext fail(VoiceResult.Reason.PERMISSION)
 
         val vad = runCatching {
