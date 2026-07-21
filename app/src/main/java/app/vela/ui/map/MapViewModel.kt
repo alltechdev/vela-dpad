@@ -203,6 +203,11 @@ data class MapUiState(
     val voiceSpeaker: Int = 0, // chosen speaker # for the multi-speaker Vela voice (playground stepper)
     val asrDownloadPct: Float? = null,      // 0f..1f while the on-device voice-search model downloads; null = idle
     val asrInstalling: Boolean = false,     // ASR download done, unpacking
+    // Mic model PICKED in onboarding but not started yet - it waits for the voice download to
+    // finish (shared temp paths, see downloadOnboardingModels). Without this the mic button was
+    // live during that whole window, because asrDownloadPct is still null, so tapping it offered
+    // the very download that was already queued (user 2026-07-21).
+    val asrQueued: Boolean = false,
     val asrInstalled: Boolean = false,      // Whisper voice-search model present on disk (Settings shows Download vs Remove)
     val parkingSpot: LatLng? = null, // one-tap "parked here" pin - survives restarts (prefs)
     val parkedAtMillis: Long = 0L,   // when it was saved (for the sheet/history labels)
@@ -4336,14 +4341,15 @@ class MapViewModel @Inject constructor(
     /** Download the ~58 MB on-device speech-to-text model, reusing the neural-voice installer + its
      *  no-call-timeout client (the shared 12 s cap would abort a download this size). */
     fun downloadAsrModel() {
-        if (_state.value.asrDownloadPct != null) return // serialize
+        if (_state.value.asrDownloadPct != null) { _state.update { it.copy(asrQueued = false) }; return } // serialize
         val bytes = app.vela.voice.AsrModel.SIZE_MB.toLong() * 1024 * 1024
         if (appContext.filesDir.usableSpace < bytes * 13 / 10) {
             showStatus(appContext.getString(R.string.mapvm_not_enough_space, appContext.getString(R.string.settings_voice_search_model), app.vela.voice.AsrModel.SIZE_MB))
+            _state.update { it.copy(asrQueued = false) } // abandoned: never leave the mic button dead
             return
         }
         whisperRecognizer.clearQuarantine() // a fresh download replaces whatever was quarantined
-        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false) }
+        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false, asrQueued = false) }
         viewModelScope.launch {
             val ok = kokoroInstaller.download(
                 app.vela.voice.AsrModel.URL, app.vela.voice.AsrModel.dir(appContext), bytes,
@@ -4375,6 +4381,10 @@ class MapViewModel @Inject constructor(
     fun downloadOnboardingModels(voice: Boolean, mic: Boolean) {
         if (voice) downloadPiper()
         if (!mic) return
+        // Mark it queued IMMEDIATELY, before the wait. The mic is a chosen, pending download from this
+        // moment on, and the UI has to treat it as busy for the whole wait - not just once bytes start
+        // moving - or the mic button stays live and re-offers it.
+        _state.update { it.copy(asrQueued = true) }
         viewModelScope.launch {
             _state.first { it.voiceDownloadingId == null }
             downloadAsrModel()

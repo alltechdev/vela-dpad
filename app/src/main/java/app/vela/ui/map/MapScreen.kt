@@ -515,6 +515,11 @@ fun MapScreen(
     val infoCardsShown = !state.navigating && state.selected == null && !searchOpen &&
         (
             state.notices.isNotEmpty() || state.voiceDownloadingId != null ||
+                // The MIC model belongs here too. Its card was added to the block below but this gate
+                // was not updated, so a mic-only download rendered NOTHING - build green, card never
+                // on screen. Found by looking at the device, not the diff: filesDir held a complete
+                // 49 MB voice.download.tmp and a live voice.staging while the map showed no progress.
+                state.asrDownloadPct != null || state.asrQueued ||
                 state.routingDownloadingId != null || state.poiPackDownloadingId != null ||
                 state.updateInfo != null
             )
@@ -811,18 +816,46 @@ fun MapScreen(
         runCatching { voiceLauncher.launch(intent) }
         Unit
     }
+    // NEVER offer a download that is already running. The model is not on disk until it finishes, so
+    // every "is it installed" test still reads false mid-download, and the mic offered the same 58 MB
+    // again while the bar was moving (user 2026-07-21). The progress card above is the answer to the
+    // tap in that window.
+    // QUEUED counts as busy, not just in-flight. Ticking both models in setup downloads them one at a
+    // time (shared temp paths), so the mic spends the whole voice download picked-but-not-started -
+    // and gating on asrDownloadPct alone left the button live for exactly that window.
+    val asrDownloading = state.asrDownloadPct != null || state.asrQueued
+    // Tapping the mic while its model is still arriving must SAY SO. Two wrong answers were shipped
+    // before this: re-offering the same 58 MB download (nothing on disk yet, so every "installed?"
+    // test reads false), and then silently opening Google instead - which is worse, because ticking
+    // the mic was an explicit choice NOT to send speech off the phone. Reuses the progress card's own
+    // strings, so no new copy and it names the real percentage.
+    //
+    // A TOAST, not flashStatus: the status card renders in the same top stack as the download banners,
+    // so the answer to the tap appeared UNDER the very banners it was explaining and read as buried
+    // (user 2026-07-21). A toast floats at the bottom, clear of them.
+    val showMicBusyToast = {
+        android.widget.Toast.makeText(
+            context,
+            if (state.asrInstalling) context.getString(R.string.map_asr_installing)
+            else context.getString(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt()),
+            android.widget.Toast.LENGTH_SHORT,
+        ).show()
+    }
     val onMic: (() -> Unit)? = if (app.vela.ui.VoiceSearch.enabled.value) {
         {
             when (micMode) {
-                app.vela.ui.VoiceSearch.Mode.NONE -> { offerHasFallback = false; showAsrOffer = true }
+                app.vela.ui.VoiceSearch.Mode.NONE ->
+                    if (asrDownloading) showMicBusyToast()
+                    else { offerHasFallback = false; showAsrOffer = true }
                 // Offer Vela's own model BEFORE handing speech to a third party - see
                 // VoiceSearch.shouldOfferLocal for why AUTO must ask rather than assume.
-                app.vela.ui.VoiceSearch.Mode.SYSTEM ->
-                    if (app.vela.ui.VoiceSearch.shouldOfferLocal(context)) {
+                app.vela.ui.VoiceSearch.Mode.SYSTEM -> when {
+                    asrDownloading -> showMicBusyToast()
+                    app.vela.ui.VoiceSearch.shouldOfferLocal(context) -> {
                         offerHasFallback = true; showAsrOffer = true
-                    } else {
-                        launchSystemVoice()
                     }
+                    else -> launchSystemVoice()
+                }
                 app.vela.ui.VoiceSearch.Mode.LOCAL ->
                     if (vm.voiceMicGranted()) startLocalVoice()
                     else recordAudioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
@@ -2148,7 +2181,25 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (downloadingVoiceId != null) {
-                    VoiceDownloadCard(installing = state.voiceInstalling, pct = state.kokoroDownloadPct ?: 0f)
+                    VoiceDownloadCard(
+                        installing = state.voiceInstalling,
+                        pct = state.kokoroDownloadPct ?: 0f,
+                        downloadingLabel = stringResource(R.string.map_voice_downloading, ((state.kokoroDownloadPct ?: 0f) * 100).toInt()),
+                        installingLabel = stringResource(R.string.map_voice_installing),
+                    )
+                }
+                // The MIC model gets the same card. Without it the onboarding download ran with no
+                // surface outside Settings - which is the exact fault this card was added to fix for
+                // the voice. Picking both options in setup then looked like only the voice
+                // downloaded, and because nothing on screen said a download was in flight, tapping
+                // the mic mid-download OFFERED THE SAME DOWNLOAD AGAIN (user 2026-07-21).
+                if (state.asrDownloadPct != null || state.asrQueued) {
+                    VoiceDownloadCard(
+                        installing = state.asrInstalling,
+                        pct = state.asrDownloadPct ?: 0f,
+                        downloadingLabel = stringResource(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt()),
+                        installingLabel = stringResource(R.string.map_asr_installing),
+                    )
                 }
                 // A region (state/country) download: the routing graph first, then its place pack -
                 // same progress card treatment as the voice download, so a Settings-started state
@@ -3104,13 +3155,20 @@ private fun InfoCard(
     }
 }
 
-/** Voice-download progress over the map - makes the onboarding one-tap install visible (it used to
- * run with no surface outside Settings). Reads the SAME state the Settings row does, so it also
- * shows when a Settings-started download is still running after backing out to the map. The bar
+/** Speech-model download progress over the map - makes the onboarding one-tap install visible (it
+ * used to run with no surface outside Settings). Reads the SAME state the Settings row does, so it
+ * also shows when a Settings-started download is still running after backing out to the map. The bar
  * includes the extract phase (KokoroInstaller maps untar into the tail), so it no longer parks at
- * ~98% while the archive unpacks. */
+ * ~98% while the archive unpacks. Labels are passed in because BOTH on-device models use this card -
+ * the voice that speaks directions and the mic that hears searches. */
 @Composable
-private fun VoiceDownloadCard(installing: Boolean, pct: Float, modifier: Modifier = Modifier) {
+private fun VoiceDownloadCard(
+    installing: Boolean,
+    pct: Float,
+    downloadingLabel: String,
+    installingLabel: String,
+    modifier: Modifier = Modifier,
+) {
     Card(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -3119,11 +3177,7 @@ private fun VoiceDownloadCard(installing: Boolean, pct: Float, modifier: Modifie
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(
-                if (installing) stringResource(R.string.map_voice_installing)
-                else stringResource(R.string.map_voice_downloading, (pct * 100).toInt()),
-                fontWeight = FontWeight.SemiBold,
-            )
+            Text(if (installing) installingLabel else downloadingLabel, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             // Determinate while downloading; the unpack step can't report a meaningful %, so it goes
             // indeterminate under the "Installing…" label rather than crawling a frozen-looking bar.
