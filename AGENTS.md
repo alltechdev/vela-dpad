@@ -907,6 +907,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 
 ## Performance: what has been measured
 
+- **The UI is NOT the bottleneck - measure before optimising it.** An atrace across cold start plus
+  a D-pad drive on the staging build: `Choreographer#doFrame` totals 3,860 ms over **430 frames =
+  9.0 ms per frame**, against a 16.7 ms budget at 60 Hz. measure/layout/draw is 3.5 ms/frame and
+  inflate is 16 ms in total. **There is no frame-budget problem on this device.** GC, at 2,165 ms,
+  is the largest remaining cost, which is why allocation work (see the `FlockCameras` index) is the
+  productive direction and composable restructuring is not.
+  - This measurement should have come FIRST. Two `MapScreen` extractions were attempted and reverted
+    before anyone checked whether the uncompiled composable was actually costing frames. It is not.
+    A method being uncompiled only matters if it runs hot, and at 9 ms/frame this one does not hurt.
 - **`MapScreen` is too big for ART to COMPILE, so the main screen runs interpreted.** On the
   shipping build ART logs `Method exceeds compiler instruction limit: 19621 in void
   i2.r1.f(i2.E3, z3.a, Z.p, int)`, which the R8 mapping resolves to
@@ -916,8 +925,9 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 
       adb logcat -d | grep -i "exceeds compiler instruction limit"
 
-  The body spans roughly lines 192-2172 of a 3,479-line file. **This is the largest known
-  performance item in the app and it is NOT fixed.**
+  The body spans roughly lines 192-2172 of a 3,479-line file. It is the largest known code-size
+  anomaly, but per the frame measurement above it is **not** a demonstrated performance problem -
+  do not spend effort here without first showing it costs frames.
   - The fix is to extract the big `if` blocks under the root `Box` into private composables. A
     trial extraction of the largest (lines 1828-2048, the idle-map overlay block, 221 lines) was
     done and reverted, and it establishes the recipe: the function needs a **`BoxScope` receiver**
