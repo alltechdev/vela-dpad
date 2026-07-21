@@ -245,6 +245,31 @@ data class MapUiState(
     val poiPackInstalledRevs: Map<String, Int> = emptyMap(),                // installed pack revision per region
 )
 
+/** What to do with the onboarding MIC download after the voice request has been made. */
+enum class OnboardingMicAction { NONE, ABANDON, QUEUE }
+
+/**
+ * Decide the mic download's fate when both speech models are offered together in onboarding. Pure so
+ * it can be unit-tested without the ViewModel - the on-device path that reaches [ABANDON] is a
+ * disk-full voice refusal, which cannot be reproduced safely on a real device.
+ *
+ * - [NONE]    the mic was not requested - nothing to do.
+ * - [ABANDON] the mic was requested AND the voice was requested but did not start (low disk / bad
+ *   id). The two share [KokoroInstaller]'s temp paths so they cannot run at once, and a device that
+ *   just refused the voice for space is in no state for a second large download - drop the mic and
+ *   let the voice's own status message stand. Regression guard for the bug where the queue's
+ *   `voiceDownloadingId == null` wait was satisfied INSTANTLY by a refused voice and started the mic
+ *   anyway (review of PR #87).
+ * - [QUEUE]   the mic was requested and either the voice is genuinely downloading (queue behind it)
+ *   or no voice was requested (nothing to wait on).
+ */
+fun onboardingMicAction(voiceRequested: Boolean, voiceStarted: Boolean, micRequested: Boolean): OnboardingMicAction =
+    when {
+        !micRequested -> OnboardingMicAction.NONE
+        voiceRequested && !voiceStarted -> OnboardingMicAction.ABANDON
+        else -> OnboardingMicAction.QUEUE
+    }
+
 /**
  * State holder for the map experience. Nav itself lives in the shared
  * [NavSession] (driven by the foreground service so it survives backgrounding);
@@ -4387,23 +4412,29 @@ class MapViewModel @Inject constructor(
      *  voice's download state clears. Picking only the mic waits on nothing. */
     fun downloadOnboardingModels(voice: Boolean, mic: Boolean) {
         if (voice) downloadPiper()
-        // downloadVoice REFUSES silently (low disk, unknown voice id) by returning before it ever sets
-        // voiceDownloadingId - it only calls showStatus. The wait below is then satisfied instantly, so
-        // a phone that just said it lacks ~87 MB for the voice would immediately start a 58 MB mic
-        // download on the same full disk. If the voice was asked for and did not start, the device is
-        // in no state for the second model either; the space message already on screen is the reason.
-        if (voice && _state.value.voiceDownloadingId == null) {
-            _state.update { it.copy(asrQueued = false) }
-            return
-        }
-        if (!mic) return
-        // Mark it queued IMMEDIATELY, before the wait. The mic is a chosen, pending download from this
-        // moment on, and the UI has to treat it as busy for the whole wait - not just once bytes start
-        // moving - or the mic button stays live and re-offers it.
-        _state.update { it.copy(asrQueued = true) }
-        viewModelScope.launch {
-            _state.first { it.voiceDownloadingId == null }
-            downloadAsrModel()
+        // downloadVoice REFUSES silently (low disk, unknown voice id) by returning before it ever
+        // sets voiceDownloadingId - it only calls showStatus. So the actual outcome of the voice
+        // request is read back off the state, and the mic's fate decided from it by the pure
+        // [onboardingMicAction] (unit-tested; a disk-full repro is unsafe on a real device).
+        val voiceStarted = _state.value.voiceDownloadingId != null
+        when (onboardingMicAction(voiceRequested = voice, voiceStarted = voiceStarted, micRequested = mic)) {
+            OnboardingMicAction.NONE -> Unit
+            OnboardingMicAction.ABANDON ->
+                // Voice was asked for and did not start (the device just said it has no room, or the
+                // id was bad). Piling a second large download on is wrong, and asrQueued must be
+                // cleared so the mic button does not sit dead. The voice's status message is the
+                // reason already on screen.
+                _state.update { it.copy(asrQueued = false) }
+            OnboardingMicAction.QUEUE -> {
+                // Mark queued IMMEDIATELY, before the wait. The mic is a chosen, pending download
+                // from this moment, and the UI must treat it as busy for the whole wait - not just
+                // once bytes move - or the button stays live and re-offers it.
+                _state.update { it.copy(asrQueued = true) }
+                viewModelScope.launch {
+                    _state.first { it.voiceDownloadingId == null }
+                    downloadAsrModel()
+                }
+            }
         }
     }
 

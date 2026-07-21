@@ -248,6 +248,9 @@ dependencies {
     // Drives the real app in-process: Compose semantics for assertions, UiDevice.pressKeyCode for
     // REAL system-dispatcher D-pad input, androidx.test Screenshot for real-framebuffer stills
     // (includes the MapLibre GL surface). Faster AND stricter than the external uiautomator tour.
+    // Local JVM unit tests for pure app-module logic (no device). The onboarding download-plan
+    // decision lives here because its disk-full branch cannot be reproduced safely on a real phone.
+    testImplementation(libs.junit)
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:rules:1.6.1")

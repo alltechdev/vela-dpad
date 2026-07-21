@@ -95,7 +95,10 @@ jobs:
           fi
 
       - name: Unit tests
-        run: ./gradlew :core:test --no-daemon
+        # :core holds the bulk (pure logic); :app has a small local-JVM suite for pure app-module
+        # decisions whose on-device path is unsafe to reach - e.g. the onboarding download plan,
+        # whose disk-full branch would need a real phone filled to <90 MB free.
+        run: ./gradlew :core:test :app:testStandardDebugUnitTest --no-daemon
 
       - name: Check translations
         # Android lint's MissingTranslation doesn't run on assemble/test, so a missed locale
