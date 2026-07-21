@@ -143,7 +143,7 @@ class GoogleMapsDataSource @Inject constructor(
         // FAN OUT across category terms + merge: one "places" query is biased to prominent food/
         // shops, so it misses whole tiers (a strip mall's plumber, nail salon, IT shop). A handful
         // of category queries roughly DOUBLES local coverage (live: 22→52 unique within 600 m).
-        val allTerms = listOf(
+        val terms = listOf(
             "places", "restaurants", "coffee", "stores", "shopping", "services", "beauty salon", "fast food",
             // High-traffic everyday categories the food/shop-biased set above under-returns, so the map
             // shows a Google-like MIX (a gas station, a gym, a grocer) rather than mostly restaurants.
@@ -155,27 +155,26 @@ class GoogleMapsDataSource @Inject constructor(
             // their prominence low, so they surface in quiet/residential views without crowding businesses.
             "school", "park",
         )
-        // LOW-RAM: the fan-out is the app's single largest allocation burst. Each term buffers a
-        // full response String, a stripped copy, and a JsonElement DOM (GoogleResponse.parse), and
-        // 15 of those run 4-at-a-time per pan - the ~180 MB/12 s churn in AGENTS.md's memory rule.
-        // Constrained devices fetch an 8-term subset instead of 15.
+        // LOW-RAM devices fetch the SAME terms as everyone else. An earlier attempt cut this to an
+        // 8-term subset, and that was wrong twice over (issue #83 follow-up).
         //
-        // The subset is NOT just the first N. "school" and "park" are retained DELIBERATELY: while
-        // the ambient layer is active at z14+ the basemap's OSM poi layers are filter-hidden, so
-        // those categories have NO second source - dropping them makes parks and schools vanish
-        // from the map entirely, which is the exact bug the civic/green terms were added to fix
-        // (see the comment on allTerms above). Device-verified by A/B screenshot: a first attempt
-        // at a 6-term subset lost every park and school pin on the low-RAM frame.
+        // It did not save peak memory. Peak is set by [ambientFanout], a Semaphore(4), and every
+        // buffer - the response String, the stripped copy, the JsonElement DOM - is allocated INSIDE
+        // `withPermit`. At most 4 of those exist at once no matter how many terms are queued behind
+        // them, so going 15 -> 8 changes how many WAVES the fan-out takes, not how much is resident
+        // at the peak. The levers that do move the peak are the permit count and the response size,
+        // and the `!7i` pool halving below is the one being used.
         //
-        // What goes instead are the terms whose places still surface via "places"/"stores" or whose
-        // absence degrades gracefully: shopping, services, beauty salon, fast food, gym, bar,
-        // pharmacy. Fewer ambient POIs is a visible trade, and the right one on a phone that
-        // otherwise OOMs (issue #83). Roomier devices are unaffected.
-        val terms = if (LowRamMode.enabled) {
-            listOf("places", "restaurants", "coffee", "stores", "grocery store", "gas station", "school", "park")
-        } else {
-            allTerms
-        }
+        // And its stated justification was false. It kept "school" and "park" on the grounds that
+        // only they lack a second source once the ambient layer is active. In fact NOTHING has a
+        // second source then: VelaMapView sets poi_r1/poi_r7/poi_r20 to NONE wholesale whenever any
+        // ambient POI exists (`if (navMode || ambientPois.isNotEmpty())`), not per category. So the
+        // dropped terms - shopping, services, beauty salon, fast food, gym, bar, pharmacy - lost
+        // their basemap fallback exactly as school and park would have. Parks at least keep their
+        // landuse polygon, so the green area survives without the pin; a gym, a bar or a pharmacy
+        // exists ONLY as a POI pin, which makes them the worse thing to drop, not the safer one.
+        // The A/B screenshot that caught vanishing parks was real; the explanation drawn from it did
+        // not generalise, and the subset it produced was built on that explanation.
         suspend fun fetchTerm(term: String): List<Place> = ambientFanout.withPermit {
             runCatching {
                 val pb = SearchPb.build(term, center, cal.searchPb)

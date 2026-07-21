@@ -675,10 +675,23 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     Ask "can this be released when unused?" before "which devices should get less?".
   - **`MapView.onLowMemory()` must be called.** MapLibre's tile/glyph/sprite caches are native and
     that is the only way to shrink them; nothing called it before.
-  - **When you gate a category fan-out down, check what has no SECOND source.** The low-RAM ambient
-    subset keeps `school` and `park` on purpose: the ambient layer filter-hides the basemap OSM poi
-    layers at z14+, so those two would vanish entirely. A first 6-term subset did exactly that and
-    was caught by an A/B screenshot, not by any test.
+  - **Cutting the ambient TERM COUNT does not cut peak memory, and it silently deletes POIs.** The
+    low-RAM path briefly fetched 8 of the 15 category terms. Both halves of that were wrong.
+    - Peak is set by `ambientFanout`, a `Semaphore(4)`, and every buffer (response String, stripped
+      copy, `JsonElement` DOM) is allocated INSIDE `withPermit`. At most 4 exist at once however many
+      terms are queued behind them, so 15 -> 8 changes the number of WAVES, not the peak. The
+      semaphore's own KDoc already said this: "Bounding to 4 caps the peak transient heap with the
+      same final pool." The levers that DO move the peak are the permit count and the response size
+      (`!7i`), and only the latter is used.
+    - Its justification was false. It kept `school` and `park` on the grounds that only they lack a
+      second source while the ambient layer is up. NOTHING has one then: `VelaMapView` sets
+      `poi_r1/poi_r7/poi_r20` to `NONE` **wholesale** on `if (navMode || ambientPois.isNotEmpty())`,
+      not per category. The dropped terms lost their fallback identically. Parks at least keep a
+      landuse polygon so the green area survives without the pin; a gym, bar or pharmacy exists ONLY
+      as a pin, making those the worse things to drop, not the safer ones.
+    - The observation behind it was real (a 6-term subset did lose every park and school pin, caught
+      by an A/B screenshot). The GENERALISATION drawn from one observation was not. When a screenshot
+      shows category X vanishing, that is evidence about the fan-out, not about X being special.
   - **A Kotlin `release()` does NOT give memory back to the KERNEL, only to scudo.** Freeing a model
     or a WebView returns its pages to the allocator's free lists, where RSS/PSS still count them and
     lmkd still sees a fat process. `mallopt()` is the only way to hand them on and it is reachable
