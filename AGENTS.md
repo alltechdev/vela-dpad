@@ -905,6 +905,49 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     ~11 MB instead of ~111 MB, and a memory benchmark silently measures the model-absent case. Check
     `secondary` is actually ~111 MB before believing any ASR memory number.
 
+## Performance: what has been measured
+
+- **`MapScreen` is too big for ART to COMPILE, so the main screen runs interpreted.** On the
+  shipping build ART logs `Method exceeds compiler instruction limit: 19621 in void
+  i2.r1.f(i2.E3, z3.a, Z.p, int)`, which the R8 mapping resolves to
+  `MapScreenKt.MapScreen(MapViewModel, Function0, Composer, int)` (`MapScreenKt -> i2.r1`,
+  `MapScreen -> f`). ART's optimizing compiler skips methods over ~10,000 dex instructions, so the
+  composable that runs on every recomposition of the main screen is never compiled. Verify with:
+
+      adb logcat -d | grep -i "exceeds compiler instruction limit"
+
+  The body spans roughly lines 192-2172 of a 3,479-line file. **This is the largest known
+  performance item in the app and it is NOT fixed.**
+  - The fix is to extract the big `if` blocks under the root `Box` into private composables. A
+    trial extraction of the largest (lines 1828-2048, the idle-map overlay block, 221 lines) was
+    done and reverted, and it establishes the recipe: the function needs a **`BoxScope` receiver**
+    (the block uses `Modifier.align`), and it captures **23** names - `chromeLift, context,
+    darkTheme, driveFollowing, followMe, layersOpen, metersPerPixel, parkedCarLabel,
+    parkingClearedMsg, parkingMovedMsg, parkingNoFixMsg, parkingSet, parkingTapAction, resultsShown,
+    searchOpen, show, showParkingHistory, showParkingMenu, softkeyBarShown, speedOverlayArmed,
+    state, vm`.
+  - Six of those are `var ... by remember { mutableStateOf(...) }` (`followMe`, `layersOpen`,
+    `metersPerPixel`, `showParkingHistory`, `showParkingMenu`, `speedOverlayArmed`) and the block
+    WRITES them. Pass the `MutableState<T>` and re-delegate at the top of the extracted function
+    (`var showParkingMenu by showParkingMenuState`) so the 221-line body stays byte-identical.
+    Passing them by value is a compile error, not a silent break - the compiler is the safety net
+    here, which is what makes this refactor tractable.
+  - Do it ONE block at a time, rebuilding and re-checking the logcat number after each, and stop
+    when the message disappears. Screenshot the map after each step.
+- **Startup is GC-bound, not compilation-bound. Do not reach for a baseline profile.** Forcing full
+  AOT (`cmd package compile -m speed -f`) made cold start WORSE - 828 ms against 775 ms - which is
+  an upper bound on anything a profile could buy. An atrace of a cold start instead attributes
+  seconds to GC (`CopyingPhase`, `NativeAlloc concurrent copying GC`, `MarkingPhase`), so allocation
+  count at startup is the thing worth cutting. That is what motivated the `FlockCameras` CSR index.
+- **Measuring startup: control the dexopt state or measure nothing.** `adb install -r` resets it, so
+  runs straight after an install are unprofiled and slower. Comparing a fresh-install arm against a
+  warmed baseline once "showed" that REMOVING work made startup slower. Cold start on this device
+  swings 739-1552 ms even matched, so prefer a lower-variance metric (atrace GC slices) for anything
+  smaller than a few hundred ms.
+- **`dumpsys gfxinfo` does not measure this app's map.** MapLibre renders through its own GL context,
+  so HWUI frame stats cover only the Compose chrome - a D-pad drive produced 60 frames at 0% jank
+  and a swipe drive 11 frames, neither of which could have detected a regression.
+
 ## Layout
 
 - `:core` is the UI-agnostic "extractor" (NewPipeExtractor pattern). `:app` is
