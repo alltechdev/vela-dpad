@@ -907,6 +907,20 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 
 ## Performance: what has been measured
 
+- **The slowness users feel is CONTENT LATENCY, not frames. Measure that axis first.**
+  Device-measured on staging: **tapping a place to a complete gallery is 28.8 s** (35 photos). The
+  scrapers are built around 40 s and 45 s timeouts with a 7 s page-load allowance, and the photo
+  scraper's own JS polls up to 58 ticks at 500 ms, so ~30 s is the designed shape, not a stall.
+  Frame time on the same device is 9.0 ms against a 16.7 ms budget - there is nothing to win there.
+  A user reporting "the whole app is a bit slow" is far more likely describing this than jank.
+  - So performance work on Vela should start with: how long until the user sees the thing they asked
+    for? Search results, ambient POI pins, the gallery, reviews. Not `gfxinfo`, not cold start.
+  - A concrete lead nobody has pulled: `GoogleMapsDataSource.nearbyPlaces` fans out 15 category
+    terms 4-at-a-time and finishes with `awaitAll().flatten()`, so **every ambient pin appears at
+    once after the slowest term**, roughly four network waves in. Streaming each term's results as
+    they land would put first pins on screen ~4x sooner for the same total work. That is a real
+    user-visible latency change though, so it needs a before/after and a careful look, not a
+    drive-by edit.
 - **The UI is NOT the bottleneck - measure before optimising it.** An atrace across cold start plus
   a D-pad drive on the staging build: `Choreographer#doFrame` totals 3,860 ms over **430 frames =
   9.0 ms per frame**, against a 16.7 ms budget at 60 Hz. measure/layout/draw is 3.5 ms/frame and
