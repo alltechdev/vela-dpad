@@ -323,6 +323,7 @@
     <string name="root_voice_tts_desc">הנחיות מדוברות לכל פנייה. מומלץ. הורדה חד-פעמית של %1$d מ\"ב.</string> <!-- format -->
     <string name="root_voice_mic_title">חיפוש בדיבור</string>
     <string name="root_voice_mic_desc">הכתב חיפושים בלי להקליד. בלי זה, המיקרופון משתמש ב-Google. הורדה חד-פעמית של %1$d מ\"ב.</string> <!-- format -->
+    <string name="root_voice_none_picked">סמן אפשרות אחת או בחר לא עכשיו.</string>
     <string name="root_voice_download">הורד</string>
     <string name="nav_maneuver_continue">המשך</string>
     <string name="nav_gps_lost">מחפש GPS…</string>

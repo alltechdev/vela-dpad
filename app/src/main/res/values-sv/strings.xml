@@ -329,6 +329,7 @@
     <string name="root_voice_tts_desc">Talad sväng-för-sväng-guidning. Rekommenderas. Engångsnedladdning på %1$d MB.</string> <!-- format -->
     <string name="root_voice_mic_title">Sök genom att tala</string>
     <string name="root_voice_mic_desc">Diktera sökningar utan att skriva. Utan detta använder mikrofonen Google. Engångsnedladdning på %1$d MB.</string> <!-- format -->
+    <string name="root_voice_none_picked">Kryssa i ett alternativ eller välj Inte nu.</string>
     <string name="root_voice_download">Hämta</string>
     <string name="root_offline_title">Offlinekartor</string>
     <string name="root_offline_body">Vela hämtar platser, sökning och vägbeskrivningar från Google, så utan signal fungerar bara områden du har laddat ner. Ställ in ett område nu så att du är täckt när du tappar täckning.</string>

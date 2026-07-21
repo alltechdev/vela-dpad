@@ -329,6 +329,7 @@
     <string name="root_voice_tts_desc">Guidage vocal virage par virage. Recommandé. Téléchargement unique de %1$d Mo.</string> <!-- format -->
     <string name="root_voice_mic_title">Rechercher à la voix</string>
     <string name="root_voice_mic_desc">Dictez vos recherches sans taper. Sans cela, le micro utilise Google. Téléchargement unique de %1$d Mo.</string> <!-- format -->
+    <string name="root_voice_none_picked">Cochez une option ou choisissez Pas maintenant.</string>
     <string name="root_voice_download">Télécharger</string>
     <string name="root_offline_title">Cartes hors ligne</string>
     <string name="root_offline_body">Vela obtient les lieux, la recherche et les itinéraires depuis Google, donc sans réseau seules les zones que vous avez téléchargées fonctionneront. Configurez une zone maintenant pour rester couvert quand vous perdez le signal.</string>

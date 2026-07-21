@@ -343,6 +343,7 @@
     <string name="root_voice_tts_desc">語音逐向導航。建議使用。一次性下載 %1$d MB。</string> <!-- format -->
     <string name="root_voice_mic_title">說話搜尋</string>
     <string name="root_voice_mic_desc">不用打字，說話就能搜尋。若不下載，麥克風會使用 Google。一次性下載 %1$d MB。</string> <!-- format -->
+    <string name="root_voice_none_picked">請先勾選一項，或選擇「暫時不要」。</string>
     <string name="root_voice_download">下載</string>
 
     <!-- nav: NavOverlays.kt -->

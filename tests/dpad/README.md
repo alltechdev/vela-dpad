@@ -10,7 +10,11 @@ element** (read from `uiautomator dump`), so it catches the two things that matt
 
 ## Requirements
 
-- A connected device or emulator (`adb`), and `python3` on the host.
+- A connected device (`adb`), and `python3` on the host.
+- **The APK is ARM-only** (`arm64-v8a` + `armeabi-v7a`; see `abiFilters` in
+  `app/build.gradle.kts`). A standard **x86_64 AVD will not work** - the APK installs, then
+  dies at map init because MapLibre has no x86_64 `.so`, and every capture comes back empty.
+  Use a real device, or an **arm64 system image** if you want an emulator.
 - The Vela app installed (build a release APK and `adb install -r` it).
 - The device is best driven with a real or virtual **D-pad**; the tests only send D-pad keys.
 
@@ -20,7 +24,7 @@ element** (read from `uiautomator dump`), so it catches the two things that matt
 cd tests/dpad
 ./run_all.sh                      # setup + all tests, prints a pass/fail summary
 ./run_all.sh 01 02                # only tests whose name starts 01 / 02
-ADB="adb -s emulator-5554" ./run_all.sh   # pick a device
+ADB="adb -s <serial>" ./run_all.sh        # pick a device (arm only - see Requirements)
 ```
 
 `run_all.sh` first calls `setup.sh` (grants location + notifications, installs a mock GPS provider

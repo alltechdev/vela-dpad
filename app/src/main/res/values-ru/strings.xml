@@ -331,6 +331,7 @@
     <string name="root_voice_tts_desc">Голосовые подсказки на каждом повороте. Рекомендуем. Разовая загрузка %1$d МБ.</string> <!-- format -->
     <string name="root_voice_mic_title">Поиск голосом</string>
     <string name="root_voice_mic_desc">Диктуйте запросы без набора текста. Без этого микрофон использует Google. Разовая загрузка %1$d МБ.</string> <!-- format -->
+    <string name="root_voice_none_picked">Выберите вариант или нажмите «Не сейчас».</string>
     <string name="root_voice_download">Загрузить</string>
     <string name="root_offline_title">Офлайн-карты</string>
     <string name="root_offline_body">Vela получает места, поиск и маршруты из Google, поэтому без сигнала будут работать только загруженные вами области. Настройте область сейчас, чтобы оставаться на связи при потере сети.</string>

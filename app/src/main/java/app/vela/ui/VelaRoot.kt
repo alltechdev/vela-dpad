@@ -74,6 +74,17 @@ fun VelaRoot(vm: MapViewModel = hiltViewModel()) {
                         vm.downloadOnboardingModels(voice, mic)
                         Onboarding.dismissVoicePrompt(context)
                     },
+                    // Pressing a button labelled "Download" with NOTHING ticked used to download
+                    // nothing, say nothing, and retire this one-time prompt forever - the user was
+                    // left waiting for a progress card that could never appear. Keep the dialog open
+                    // and say so instead; "Not now" is right there for anyone who wants out.
+                    onNothingPicked = {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.root_voice_none_picked),
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    },
                     onSkip = { Onboarding.dismissVoicePrompt(context) },
                 )
             } else if (Onboarding.showOfflinePrompt.value) {
@@ -206,6 +217,7 @@ private fun VoicePrompt(
     micSizeMb: Int,
     onChoose: (voice: Boolean, mic: Boolean) -> Unit,
     onSkip: () -> Unit,
+    onNothingPicked: () -> Unit,
 ) {
     // rememberSaveable, not remember: a rotation or a config change mid-dialog must not silently
     // reset the user's ticks back to the defaults (the diagnostics prompt has the same hazard).
@@ -215,9 +227,12 @@ private fun VoicePrompt(
         onDismissRequest = onSkip,
         title = stringResource(R.string.root_voice_title),
         confirmText = stringResource(R.string.root_voice_download),
-        onConfirm = { onChoose(voice, mic) },
+        onConfirm = { if (voice || mic) onChoose(voice, mic) else onNothingPicked() },
         // "Not now" rather than the old "Use system voice": with two checkboxes the dismiss button
-        // can no longer name one model's fallback. The body carries that sentence instead.
+        // can no longer name one model's fallback. NOTE the old copy said skipping still leaves
+        // navigation speaking through a system TTS engine (and silent on a ROM with none); that
+        // sentence is currently NOT restated anywhere - a deliberate cut for the 240x320 line budget,
+        // not an oversight. Do not re-add this comment claiming the body covers it; it does not.
         dismissText = stringResource(R.string.root_not_now),
         onDismiss = onSkip,
         dismissLowEmphasis = true,

@@ -343,6 +343,7 @@
     <string name="root_voice_tts_desc">音声のターンバイターン案内。おすすめです。初回のみ %1$d MB のダウンロード。</string> <!-- format -->
     <string name="root_voice_mic_title">話して検索する</string>
     <string name="root_voice_mic_desc">入力せずに音声で検索できます。なしの場合、マイクは Google を使います。初回のみ %1$d MB のダウンロード。</string> <!-- format -->
+    <string name="root_voice_none_picked">どちらかを選ぶか、「後で」を押してください。</string>
     <string name="root_voice_download">ダウンロード</string>
 
     <!-- nav: NavOverlays.kt -->

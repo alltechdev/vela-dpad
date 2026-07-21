@@ -329,6 +329,7 @@
     <string name="root_voice_tts_desc">Indicazioni vocali svolta per svolta. Consigliata. Download unico di %1$d MB.</string> <!-- format -->
     <string name="root_voice_mic_title">Cercare parlando</string>
     <string name="root_voice_mic_desc">Detta le ricerche senza scrivere. Senza, il microfono usa Google. Download unico di %1$d MB.</string> <!-- format -->
+    <string name="root_voice_none_picked">Seleziona un\'opzione o scegli Non ora.</string>
     <string name="root_voice_download">Scarica</string>
     <string name="root_offline_title">Mappe offline</string>
     <string name="root_offline_body">Vela ottiene luoghi, ricerca e indicazioni da Google, quindi senza segnale funzioneranno solo le aree che hai scaricato. Configura un\'area ora per restare coperto quando perdi la rete.</string>

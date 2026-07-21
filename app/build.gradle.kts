@@ -52,9 +52,11 @@ android {
         // Ship ARM only. Vela runs on phones, and every phone we support is arm64 or (on the cheap
         // feature phones this fork exists for) 32-bit ARM - so x86/x86_64 was 22 MB of MapLibre
         // carried for nothing. The sherpa-onnx packaging{} block below drops its OWN x86 copies;
-        // this catches everything else. Safe for CI, which is host-side only - the on-device suites
-        // need real hardware and an emulator was already dropped as a flaky download (ci.yml). If
-        // you ever DO want an x86_64 emulator locally, comment this out for that build.
+        // this catches everything else. x86/x86_64 are NOT built back in anywhere, debug included -
+        // no phone uses them. The cost is that the local suites can no longer run on a standard
+        // x86_64 AVD (they installed and then died at map init with no MapLibre .so); they need a
+        // real device or an arm64 system image, and tests/dpad + tests/small_screen say so. CI is
+        // unaffected - it is host-side only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 
         // MapTiler key injected from the CI secret (-PmaptilerKey); empty for

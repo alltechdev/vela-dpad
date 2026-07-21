@@ -378,6 +378,7 @@
     <string name="root_voice_tts_desc">Spoken turn-by-turn. Recommended. One-time %1$d MB download.</string>  <!-- format -->
     <string name="root_voice_mic_title">Search by speaking</string>
     <string name="root_voice_mic_desc">Dictate searches without typing. Without it, the mic uses Google. One-time %1$d MB download.</string>  <!-- format -->
+    <string name="root_voice_none_picked">Tick an option first, or choose Not now.</string>
     <string name="root_voice_download">Download</string>
     <string name="root_offline_title">Offline maps</string>
     <string name="root_offline_body">Vela gets places, search and directions from Google, so with no signal only areas you have downloaded will work. Set up an area now so you are covered when you lose service.</string>

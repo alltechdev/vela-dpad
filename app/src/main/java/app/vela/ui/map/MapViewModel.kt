@@ -4342,6 +4342,13 @@ class MapViewModel @Inject constructor(
      *  no-call-timeout client (the shared 12 s cap would abort a download this size). */
     fun downloadAsrModel() {
         if (_state.value.asrDownloadPct != null) { _state.update { it.copy(asrQueued = false) }; return } // serialize
+        // The collision this really has to avoid is a VOICE download running at the same time:
+        // KokoroInstaller stages every download through the same filesDir/voice.download.tmp +
+        // voice.staging, so two in flight overwrite each other's archive and the first to finish
+        // deletes the other's staging mid-extract. Guarding only asrDownloadPct left every other
+        // entry point (the Settings button, the map offer) able to start one anyway. Stay queued
+        // rather than clearing the flag - the onboarding waiter will call back when the voice is done.
+        if (_state.value.voiceDownloadingId != null) return
         val bytes = app.vela.voice.AsrModel.SIZE_MB.toLong() * 1024 * 1024
         if (appContext.filesDir.usableSpace < bytes * 13 / 10) {
             showStatus(appContext.getString(R.string.mapvm_not_enough_space, appContext.getString(R.string.settings_voice_search_model), app.vela.voice.AsrModel.SIZE_MB))
@@ -4380,6 +4387,15 @@ class MapViewModel @Inject constructor(
      *  voice's download state clears. Picking only the mic waits on nothing. */
     fun downloadOnboardingModels(voice: Boolean, mic: Boolean) {
         if (voice) downloadPiper()
+        // downloadVoice REFUSES silently (low disk, unknown voice id) by returning before it ever sets
+        // voiceDownloadingId - it only calls showStatus. The wait below is then satisfied instantly, so
+        // a phone that just said it lacks ~87 MB for the voice would immediately start a 58 MB mic
+        // download on the same full disk. If the voice was asked for and did not start, the device is
+        // in no state for the second model either; the space message already on screen is the reason.
+        if (voice && _state.value.voiceDownloadingId == null) {
+            _state.update { it.copy(asrQueued = false) }
+            return
+        }
         if (!mic) return
         // Mark it queued IMMEDIATELY, before the wait. The mic is a chosen, pending download from this
         // moment on, and the UI has to treat it as busy for the whole wait - not just once bytes start

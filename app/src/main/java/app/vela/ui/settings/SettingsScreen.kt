@@ -726,8 +726,17 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             // when Download becomes the progress readout and again when Remove appears.
             val asrKeeper = rememberDpadFocusKeeper()
             when {
-                state.asrDownloadPct != null -> {
+                // QUEUED counts as busy here too. Gating this row on asrDownloadPct alone left a live
+                // "Download (58 MB)" button through the whole voice download when both models were
+                // picked in setup - and downloadAsrModel's own guard checks the same field, so the
+                // tap sailed through and ran a SECOND download concurrently. Both stream through
+                // KokoroInstaller's shared voice.download.tmp/voice.staging, so they overwrite each
+                // other's archive and the first to finish deletes the other's staging mid-extract:
+                // two failed installs. Closing the map mic button was not enough; this is the other
+                // door into the same collision.
+                state.asrDownloadPct != null || state.asrQueued -> {
                     val pct = state.asrDownloadPct ?: 0f
+                    val queued = state.asrDownloadPct == null
                     DpadFocusHandoff(asrKeeper)
                     Column(
                         Modifier
@@ -737,12 +746,17 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                             .focusable(),
                     ) {
                         Text(
-                            if (state.asrInstalling) stringResource(R.string.settings_voice_search_installing)
-                            else stringResource(R.string.settings_voice_search_downloading, (pct * 100).toInt()),
+                            when {
+                                queued -> stringResource(R.string.map_asr_waiting)
+                                state.asrInstalling -> stringResource(R.string.settings_voice_search_installing)
+                                else -> stringResource(R.string.settings_voice_search_downloading, (pct * 100).toInt())
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Spacer(Modifier.height(6.dp))
-                        LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+                        // Indeterminate while queued: nothing has started, so a 0% bar would read as stuck.
+                        if (queued) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        else LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
                     }
                 }
                 state.asrInstalled -> {
@@ -759,7 +773,7 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                     }
                 }
             }
-            LaunchedEffect(state.asrDownloadPct != null, state.asrInstalled) { asrKeeper.retarget() }
+            LaunchedEffect(state.asrDownloadPct != null, state.asrQueued, state.asrInstalled) { asrKeeper.retarget() }
             // The engine picker only matters when there's actually a choice (the model AND a voice app,
             // or two voice apps): "Vela Voice" = AUTO (the model wins, provider as graceful fallback),
             // "Android default" = the implicit intent Android routes, or each installed app pinned by name

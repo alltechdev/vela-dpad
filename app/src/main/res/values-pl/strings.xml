@@ -331,6 +331,7 @@
     <string name="root_voice_tts_desc">Wskazówki głosowe przy każdym zakręcie. Polecane. Jednorazowe pobranie %1$d MB.</string> <!-- format -->
     <string name="root_voice_mic_title">Wyszukiwanie głosem</string>
     <string name="root_voice_mic_desc">Dyktuj zapytania bez pisania. Bez tego mikrofon korzysta z Google. Jednorazowe pobranie %1$d MB.</string> <!-- format -->
+    <string name="root_voice_none_picked">Zaznacz opcję lub wybierz Nie teraz.</string>
     <string name="root_voice_download">Pobierz</string>
     <string name="root_offline_title">Mapy offline</string>
     <string name="root_offline_body">Vela pobiera miejsca, wyszukiwanie i trasy z Google, więc bez sygnału zadziałają tylko obszary, które pobrałeś. Skonfiguruj obszar teraz, aby mieć pokrycie, gdy stracisz zasięg.</string>

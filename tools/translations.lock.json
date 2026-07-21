@@ -5148,6 +5148,25 @@
    "zh-rTW": "20da8fa76fb28da2"
   }
  },
+ "root_voice_none_picked": {
+  "en": "6b231cb0ba85c173",
+  "loc": {
+   "de": "6f8832f07d336417",
+   "es": "82d74a6babbcd780",
+   "fr": "007acab652efc092",
+   "it": "f6b4940d7b1763ae",
+   "iw": "43f2845c28c79a94",
+   "ja": "32a55bd14f59b3c4",
+   "nl": "132a30e7881dd642",
+   "pl": "7b8fa193236bc73c",
+   "pt": "5d32b6d0ae068ab1",
+   "ru": "ea125cd4224810b8",
+   "sv": "4f0f0934d4ff92f3",
+   "uk": "73948b2839f740c0",
+   "zh": "eca1505bd986f7b6",
+   "zh-rTW": "a88031953f4e85a6"
+  }
+ },
  "root_voice_title": {
   "en": "da722021ec967df6",
   "loc": {

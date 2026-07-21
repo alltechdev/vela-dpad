@@ -23,13 +23,19 @@ Three checks, all against res/values/strings.xml as the source of truth:
    updating the locales, run --update to re-record and commit the lock with the change.
 
    A locale whose translation legitimately does not change when English does (a brand name, an
-   identical loanword) will be flagged once; confirm it reads correctly and --update. That is the
-   intended cost - the check's job is to make an English edit impossible to land SILENTLY, not to
-   guess which locales needed to move.
+   identical loanword) is flagged; confirm it reads correctly and re-run --update --accept-stale.
+   That is the intended cost - the check's job is to make an English edit impossible to land
+   SILENTLY, not to guess which locales needed to move.
 
-Run: python3 tools/check-translations.py            (exit 1 on any gap)
-     python3 tools/check-translations.py --update   (re-record the lock after translating)
-     python3 tools/check-translations.py --selftest (frozen negative control; needs no repo state)
+   A MISSING lock is a failure, not a pass: an off-switch that reports green is exactly the shape of
+   the bug this gate exists to stop. And --update runs the presence and placeholder checks first and
+   refuses to write while anything is stale, because it re-records EVERY key at once - blessing one
+   legitimately-unchanged string would otherwise silently bless every forgotten one alongside it.
+
+Run: python3 tools/check-translations.py                        (exit 1 on any gap)
+     python3 tools/check-translations.py --update               (re-record after translating)
+     python3 tools/check-translations.py --update --accept-stale (also bless unchanged-on-purpose)
+     python3 tools/check-translations.py --selftest             (frozen negative control, no repo state)
 
 Wired into CI before the build.
 """
@@ -149,13 +155,7 @@ def main():
         print("could not read default strings.xml", file=sys.stderr)
         return 1
 
-    if "--update" in sys.argv:
-        with open(LOCK, "w", encoding="utf-8") as fh:
-            json.dump(build_lock(base, locales), fh, indent=1, sort_keys=True, ensure_ascii=True)
-            fh.write("\n")
-        print(f"Recorded {len(base)} keys x {len(locales)} locales into {os.path.basename(LOCK)}.")
-        return 0
-
+    updating = "--update" in sys.argv
     problems = []
     for lang in sorted(locales):
         loc = locales[lang]
@@ -166,15 +166,51 @@ def main():
                 problems.append(
                     f"{lang}: '{name}' placeholders {sorted(loc[name]['ph'])} != default {sorted(entry['ph'])}")
     if problems:
+        # --update runs these FIRST and refuses to write. It is the command the docs tell people to
+        # run, so letting it return early meant it happily blessed a tree with a missing locale or a
+        # drifted %1$d - a placeholder mismatch is a runtime crash, and --update was reporting success.
         print("Translation check FAILED:\n  " + "\n  ".join(problems))
         print("\nFix: add the key to every values-<lang>/strings.xml, or mark it "
               'translatable="false" in the default file if it is intentionally English-only.')
         return 1
 
-    lock = {}
-    if os.path.exists(LOCK):
+    # A MISSING lock is a failure, not a pass. Leaving it as a green NOTE gave the gate a silent
+    # off-switch: delete the file (a bad merge, a stray .gitignore) and an English-only rename ships
+    # with CI reporting PASS - the exact bug this exists to stop.
+    if not os.path.exists(LOCK):
+        if updating:
+            lock = {}
+        else:
+            print(f"Translation check FAILED: {os.path.basename(LOCK)} is missing, so staleness "
+                  f"cannot be checked at all.\nIt is committed alongside the strings - restore it from "
+                  f"git rather than regenerating, or the current translations are blessed unreviewed. "
+                  f"To deliberately re-create it: python3 tools/check-translations.py --update")
+            return 1
+    else:
         lock = json.load(open(LOCK, encoding="utf-8"))
     stale = stale_entries(base, locales, lock)
+    if stale and updating and "--accept-stale" not in sys.argv:
+        # build_lock() re-records EVERY key at once, so an --update run to bless one legitimately
+        # unchanged translation also silently re-blessed any string the contributor had simply
+        # forgotten to translate. Name them and make accepting them explicit.
+        keys = sorted({name for _, name in stale})
+        print(f"Refusing to --update: {len(stale)} translation(s) would be blessed while still on "
+              f"their old wording:")
+        for name in keys:
+            langs = " ".join(lang for lang, n in stale if n == name)
+            print(f"  '{name}' unchanged in: {langs}")
+        print("\nTranslate them and re-run --update. If they are genuinely correct unchanged (a brand "
+              "name), re-run with --accept-stale to record them as reviewed.")
+        return 1
+
+    if updating:
+        with open(LOCK, "w", encoding="utf-8") as fh:
+            json.dump(build_lock(base, locales), fh, indent=1, sort_keys=True, ensure_ascii=True)
+            fh.write("\n")
+        note = " (including --accept-stale overrides)" if stale else ""
+        print(f"Recorded {len(base)} keys x {len(locales)} locales into {os.path.basename(LOCK)}{note}.")
+        return 0
+
     if stale:
         keys = sorted({name for _, name in stale})
         print(f"Translation check FAILED: {len(stale)} STALE translation(s) - "
@@ -190,10 +226,6 @@ def main():
               "confirming it reads right.")
         return 1
 
-    if not lock:
-        print(f"Translation check OK: {len(base)} translatable keys present in every locale."
-              f"\nNOTE: no {os.path.basename(LOCK)} yet - staleness is unchecked. Run --update to create it.")
-        return 0
     print(f"Translation check OK: {len(base)} translatable keys present in every locale, "
           f"placeholders match, no stale translations.")
     return 0

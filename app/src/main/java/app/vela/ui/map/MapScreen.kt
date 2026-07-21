@@ -900,9 +900,10 @@ fun MapScreen(
         )
     }
     if (showAsrOffer) {
-        // Declining is remembered ONLY when there was a provider to fall back to, so this asks once
-        // on an ordinary phone but keeps offering on one whose mic cannot work any other way.
-        val dismissOffer = {
+        // "Not now" is an ANSWER: remember it (only when a provider exists to fall back on, so a
+        // phone whose mic cannot work any other way keeps being offered the thing that would fix it)
+        // and carry out the tap the user made by handing off to that provider.
+        val answerNotNow = {
             showAsrOffer = false
             if (offerHasFallback) {
                 app.vela.ui.VoiceSearch.declineOffer(context)
@@ -910,12 +911,17 @@ fun MapScreen(
             }
         }
         app.vela.ui.VelaDialog(
-            onDismissRequest = dismissOffer,
+            // BACK / outside tap is a CANCEL, not an answer, and must do neither of those things.
+            // Wiring it to the same handler meant one Back press permanently persisted the decline
+            // AND opened the third-party recogniser - speech leaving the phone straight after an
+            // explicit cancel, with the on-device offer never shown again short of clearing app
+            // data. On a feature phone Back IS the natural cancel, so this was the likely path.
+            onDismissRequest = { showAsrOffer = false },
             title = stringResource(R.string.map_asr_offer_title),
             confirmText = stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB),
             onConfirm = { showAsrOffer = false; vm.downloadAsrModel() },
             dismissText = stringResource(R.string.root_not_now),
-            onDismiss = dismissOffer,
+            onDismiss = answerNotNow,
             text = { Text(stringResource(R.string.map_asr_offer_body)) },
         )
     }
