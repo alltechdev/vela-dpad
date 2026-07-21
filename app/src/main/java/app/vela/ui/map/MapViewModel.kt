@@ -1180,8 +1180,14 @@ class MapViewModel @Inject constructor(
         // popular times AND the photo gallery land faster when the user taps a result
         // (both idempotent; the photo warm primes the renderer + HTTP/2 sockets + cache
         // so the first place page skips the cold start).
-        viewModelScope.launch { runCatching { webPopularTimes.prewarm() } }
-        runCatching { webPhotos.warm() }
+        // Skipped on low-RAM devices: each warm spins up a Chromium renderer SPECULATIVELY, on the
+        // guess that a search predicts a place tap. When memory is the scarce resource that trade is
+        // backwards - the user pays two renderers on every search whether or not they open anything
+        // (issue #83). Those phones build the WebView on first real use instead.
+        if (!app.vela.ui.MemoryPressure.lowRam) {
+            viewModelScope.launch { runCatching { webPopularTimes.prewarm() } }
+            runCatching { webPhotos.warm() }
+        }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             // A fresh typed search leaves any along-route browse: picks open places normally again.
@@ -4360,6 +4366,10 @@ class MapViewModel @Inject constructor(
     }
 
     fun deleteAsrModel() {
+        // Free the loaded model BEFORE removing its files. Deleting the directory alone left the
+        // native recognizer resident for the rest of the process (~267 MB measured, issue #83), so
+        // "Remove" reclaimed disk but no memory at all.
+        whisperRecognizer.release()
         app.vela.voice.AsrModel.dir(appContext).deleteRecursively()
         _state.update { it.copy(asrInstalled = false) }
     }

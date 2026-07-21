@@ -627,9 +627,56 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   (raises the ceiling ~2x); don't remove it. (2) **Any Overpass / large-HTTP-body reader MUST
   stream-parse** - `Json.decodeFromStream(body.byteStream())` into a tiny `@Serializable` DTO, NEVER
   `resp.body.string()` + `parseToJsonElement` (that held ~5-10x the wire size in transient heap and
-  OOM'd mid-read - the Flock `out body` fetch per pan did this; fixed in `OverpassAlprCameras`,
-  `OverpassTrafficSignals`/`OverpassPois` are the same pattern + a pending follow-up). And NEVER lower a
+  OOM'd mid-read - the Flock `out body` fetch per pan did this). And NEVER lower a
   per-viewport Overpass fetch's min-zoom without shrinking the box.
+  **The Overpass follow-up is DONE (audited 2026-07-20):** `OverpassAlprCameras`, `OverpassTrafficSignals`
+  AND `OverpassPois` all `decodeFromStream` today. This line previously said the latter two were pending,
+  which sent a low-RAM investigation chasing already-fixed code. The remaining fully-buffered hot reader
+  is the GOOGLE ambient path, not Overpass: `GoogleMapsDataSource.get()` ends in `.string()`, and
+  `GoogleResponse.parse` then makes a `substring` copy plus a full `JsonElement` DOM - times a 15-term
+  fan-out per pan. That, not Overpass, is the ~180 MB/12 s. It cannot simply `decodeFromStream`: the
+  payload is a positional nameless array walked by `at(0,1,3)` paths, so there is no DTO to decode into.
+  The levers that DO move it are the term count and the `!7i` pool size.
+
+- **Low-RAM devices are a FIRST-CLASS target, and the app now adapts to them (issue #83, 2026-07-20).**
+  D-pad-first means feature-phone-first, and those phones are memory-poor as well as small.
+  - **`app/ui/MemoryPressure.kt` is the one seam.** `init()` from `VelaApp` classifies the device
+    (`ActivityManager.isLowRamDevice` OR heap class <= 127 MB) and `VelaApp.onTrimMemory` fans every
+    `TRIM_MEMORY_*` out to registered holders. **Anything that allocates something large or NATIVE
+    must register a release callback.** Registration, never a Hilt entry point: reaching a singleton
+    from a trim would CONSTRUCT it, so the trim would allocate the very thing it is freeing.
+  - `LowRamMode.enabled` (`:core`) is the `:core`-visible mirror, pushed in by `VelaApp` - same seam
+    as `CategoryFilter.enabled`, because `:core` must never read an `:app` holder.
+  - **Verify the low-RAM path or it ships unverified.** Every dev phone we own reports
+    `lowRam=false heapClassMb=256`, so those branches are dead code locally. Debug builds honour
+    `adb shell setprop debug.vela.lowram true` (then relaunch); `setprop debug.vela.lowram false`
+    restores real detection. NB `setprop <name> ""` is a syntax error, not a reset.
+  - **Measuring: `am send-trim-memory` REFUSES background levels on a foreground process**
+    ("Unable to set a background trim level on a foreground process"). Press HOME first. A harness
+    that discards that stderr measures NOTHING and reports a clean baseline - this happened here and
+    produced a whole benchmark of void numbers before the error was noticed. Always check it.
+  - Measured on an M5 (2.9 GB, Android 13, standardDebug, median of 5 cold starts) main vs the fix,
+    low-RAM path: peak PSS 831 MB -> 581 MB (-30%), post-trim 397 MB -> 246 MB (-38%), native heap
+    223 MB -> 95 MB (-57%), cold start 4811 ms -> 4333 ms. Idle PSS run-to-run variance is +-60 MB,
+    so single idle readings prove nothing; compare post-trim, which is paired within a run.
+  - **The ASR model is the single largest reclaimable allocation: ~267 MB PSS** (~101 MB of weights
+    in `scudo:secondary` plus ~146 MB of onnxruntime arena in `scudo:primary`). It releases on a
+    severe trim, is NOT warmed at startup on a low-RAM device, and - on EVERY device - is dropped
+    after `REAP_IDLE_MS` (120 s) unused and rebuilt on next use. `WhisperRecognizer.release()`
+    declines while a listen is in flight - freeing the native recognizer under a running decode is a
+    use-after-free that takes the process down rather than throwing.
+  - **Do not reach for a device gate when an IDLE gate will do.** The warm-at-startup behaviour was
+    first made low-RAM-conditional, which protected the instant-first-mic-tap UX on roomier phones
+    but left them holding 267 MB all session. Reaping on idle keeps that UX AND reclaims the memory
+    everywhere: device-verified on the 2.9 GB M5, `scudo:secondary` 111 MB -> 9 MB at the 120 s mark
+    with the model rebuilding on next use. Idle PSS 421 MB -> 299 MB (-29%) on a NON-low-RAM device.
+    Ask "can this be released when unused?" before "which devices should get less?".
+  - **`MapView.onLowMemory()` must be called.** MapLibre's tile/glyph/sprite caches are native and
+    that is the only way to shrink them; nothing called it before.
+  - **When you gate a category fan-out down, check what has no SECOND source.** The low-RAM ambient
+    subset keeps `school` and `park` on purpose: the ambient layer filter-hides the basemap OSM poi
+    layers at z14+, so those two would vanish entirely. A first 6-term subset did exactly that and
+    was caught by an A/B screenshot, not by any test.
 
 ## Layout
 

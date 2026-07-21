@@ -217,12 +217,18 @@ android {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         // The neural-TTS runtime (ONNX Runtime + sherpa-onnx, from the vendored AAR) ships its .so
         // for all 4 ABIs; Vela targets arm64 phones, so drop the other ABIs' copies - they'd add
-        // ~65 MB for no device we support. MapLibre and other libs stay multi-ABI (untouched).
+        // ~65 MB for no device we support.
+        //
+        // x86/x86_64 go for EVERY native lib, not just the TTS ones (issue #83). Those two ABIs
+        // exist for emulators; no phone Vela targets can execute them, and libmaplibre.so alone
+        // shipped 11.6 MB of x86_64 plus 11.6 MB of x86 in every install. armeabi-v7a is KEPT:
+        // it is a real 32-bit ARM target and dropping it would silently strand those phones,
+        // which is the opposite of this issue's goal.
         jniLibs {
             excludes += listOf(
                 "**/armeabi-v7a/libonnxruntime.so", "**/armeabi-v7a/libsherpa-onnx*.so",
-                "**/x86/libonnxruntime.so", "**/x86/libsherpa-onnx*.so",
-                "**/x86_64/libonnxruntime.so", "**/x86_64/libsherpa-onnx*.so",
+                "**/x86/*.so",
+                "**/x86_64/*.so",
             )
         }
     }

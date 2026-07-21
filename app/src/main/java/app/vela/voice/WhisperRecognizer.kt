@@ -34,9 +34,11 @@ import kotlin.math.sqrt
  * the end of speech, and returns the transcript. Nothing leaves the phone and no third-party voice
  * app is needed (that's tier-2 - the RECOGNIZE_SPEECH intent handoff in MapScreen).
  *
- * The Whisper recognizer loads lazily and is kept for the process lifetime (~1 s to load); the VAD is
- * created per listen (it's tiny and holds streaming state). R8 must keep `com.k2fsa.sherpa.onnx.**`
- * (JNI resolves classes by name) - already in `consumer-rules`/`proguard` for Piper.
+ * The Whisper recognizer loads lazily (~1 s) and is NO LONGER kept for the process lifetime: it costs
+ * ~267 MB PSS, so it is dropped after [REAP_IDLE_MS] of quiet and on any severe memory trim, and
+ * rebuilt on the next use (issue #83). The VAD is created per listen (it's tiny and holds streaming
+ * state). R8 must keep `com.k2fsa.sherpa.onnx.**` (JNI resolves classes by name) - already in
+ * `consumer-rules`/`proguard` for Piper.
  */
 @Singleton
 class WhisperRecognizer @Inject constructor(
@@ -45,6 +47,67 @@ class WhisperRecognizer @Inject constructor(
     private val loadLock = Any()
     @Volatile private var recognizer: OfflineRecognizer? = null
     @Volatile private var loadedLang: String? = null
+
+    /** Non-zero while a [listen] is inside the native recognizer. [release] refuses to free the
+     *  model while this is set: `OfflineRecognizer.release()` frees C++ memory that an in-flight
+     *  decode is still reading, which is a use-after-free that takes the process down rather than
+     *  throwing. A trim arriving mid-utterance simply keeps the model until the utterance ends. */
+    private val inFlight = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Idle-reap timer, same idea as the web fetchers' `REAP_IDLE_MS` (issue #182). One daemon
+     *  thread, shared, created lazily so a device that never loads the model never starts it. */
+    private val reaper by lazy {
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "asr-reaper").apply { isDaemon = true }
+        }
+    }
+    @Volatile private var reapTask: java.util.concurrent.ScheduledFuture<*>? = null
+
+    init {
+        // Measured on an M5 (2.9 GB, standardDebug, issue #83): the loaded Whisper tiny int8 model
+        // costs ~267 MB PSS - ~101 MB of weights in scudo:secondary plus ~146 MB of onnxruntime
+        // arena in scudo:primary. That was resident for the whole process with no way to reclaim it,
+        // and it survived deleteAsrModel(). It is by far the largest single reclaimable allocation
+        // in the app, so it releases on any severe trim and reloads (~1 s) on the next listen.
+        app.vela.ui.MemoryPressure.register { level ->
+            if (app.vela.ui.MemoryPressure.isSevere(level)) release()
+        }
+    }
+
+    /**
+     * Drop the model after a quiet period, on EVERY device, not just low-RAM ones.
+     *
+     * Warming at startup buys an instant first mic tap (a user asked for it, 2026-07-10) but the app
+     * was then holding ~267 MB for the whole session on the CHANCE of a tap that many users never
+     * make. Reaping after idle keeps the instant first tap and stops the model outliving the user's
+     * interest in it; a later tap pays the same ~1 s load the very first one used to. Every load and
+     * every listen re-arms the timer, so an active dictation session never reaps mid-use.
+     */
+    private fun armIdleReap() {
+        reapTask?.cancel(false)
+        reapTask = runCatching {
+            reaper.schedule({ release() }, REAP_IDLE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }.getOrNull()
+    }
+
+    /**
+     * Free the native recognizer. Safe to call any time: no-op when nothing is loaded, and declines
+     * while a listen is in flight (see [inFlight]). The next [listen]/[warmUp] rebuilds it.
+     */
+    fun release() {
+        if (inFlight.get() > 0) {
+            Timber.tag(TAG).i("release skipped, listen in flight")
+            return
+        }
+        synchronized(loadLock) {
+            val r = recognizer ?: return
+            recognizer = null
+            loadedLang = null
+            runCatching { r.release() }
+                .onFailure { Timber.tag(TAG).w(it, "recognizer release failed") }
+            Timber.tag(TAG).i("recognizer released")
+        }
+    }
 
     private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     @Volatile private var focusRequest: AudioFocusRequest? = null
@@ -85,6 +148,10 @@ class WhisperRecognizer @Inject constructor(
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
         const val MAX_SECONDS = 15            // hard cap on one utterance
+        // Drop the loaded model after this quiet period (issue #83). Matches the web
+        // fetchers' REAP_IDLE_MS: long enough that a dictation session never reaps between
+        // utterances, short enough that a session-long 267 MB hold cannot happen.
+        const val REAP_IDLE_MS = 120_000L
     }
 
     fun isInstalled(): Boolean =
@@ -123,6 +190,14 @@ class WhisperRecognizer @Inject constructor(
      *  lazily on the next listen (rare enough not to chase). */
     fun warmUp() {
         if (!AsrModel.isInstalled(context)) return
+        // On a low-RAM device the warm-up is a bad trade: it spends ~267 MB (measured, issue #83) at
+        // EVERY launch to save ~1 s on a mic tap the user may never make, and refreshAsr() calls this
+        // from VM init plus two LaunchedEffects. Those phones load on first listen instead. Roomier
+        // devices keep the instant-mic behaviour they have always had.
+        if (app.vela.ui.MemoryPressure.lowRam) {
+            Timber.tag(TAG).i("skipping ASR warm-up on a low-RAM device, will load on first listen")
+            return
+        }
         Thread({ runCatching { ensureRecognizer() } }, "asr-warmup").start()
     }
 
@@ -184,6 +259,7 @@ class WhisperRecognizer @Inject constructor(
             prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).apply()
             recognizer = r
             loadedLang = lang
+            if (r != null) armIdleReap() // start the quiet-period countdown from the load
             return r
         }
     }
@@ -195,8 +271,27 @@ class WhisperRecognizer @Inject constructor(
      * (the user tapped done/close). Runs off the main thread; safe to cancel via coroutine too.
      */
     /** Listen, transcribe, and say WHY when it does not work - see [VoiceResult]. Every failure exit
-     *  logs under `VELAASR` so a tester's logcat names the cause without another round-trip. */
+     *  logs under `VELAASR` so a tester's logcat names the cause without another round-trip.
+     *
+     *  Thin wrapper over [listenInner] that marks the recognizer busy, so a memory trim arriving
+     *  mid-utterance cannot free the native model out from under the decode (see [inFlight]). The
+     *  inner function keeps its many early returns; this keeps the guard exception-safe. */
     suspend fun listen(
+        onLevel: (Float) -> Unit,
+        onListening: () -> Unit,
+        cancelled: () -> Boolean,
+    ): VoiceResult {
+        inFlight.incrementAndGet()
+        reapTask?.cancel(false) // never reap mid-utterance
+        try {
+            return listenInner(onLevel, onListening, cancelled)
+        } finally {
+            inFlight.decrementAndGet()
+            armIdleReap() // restart the quiet period from the END of this utterance
+        }
+    }
+
+    private suspend fun listenInner(
         onLevel: (Float) -> Unit,
         onListening: () -> Unit,
         cancelled: () -> Boolean,
