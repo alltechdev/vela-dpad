@@ -918,9 +918,18 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   - A concrete lead nobody has pulled: `GoogleMapsDataSource.nearbyPlaces` fans out 15 category
     terms 4-at-a-time and finishes with `awaitAll().flatten()`, so **every ambient pin appears at
     once after the slowest term**, roughly four network waves in. Streaming each term's results as
-    they land would put first pins on screen ~4x sooner for the same total work. That is a real
-    user-visible latency change though, so it needs a before/after and a careful look, not a
-    drive-by edit.
+    they land would put first pins on screen ~4x sooner for the same total work.
+  - **But it is NOT a drive-by edit, and here is the trap.** `nearbyPlaces` post-processes the whole
+    fan-out with the SLIM-FLAVOR HEAL: for the first ~3 s of a session Google serves per-place blocks
+    with the review count ABSENT, which zeroes `ambientProminence` and, in the code's own words,
+    "silently broke everything keyed on it: prominence ranking, dot sizing, label tiers - all flat".
+    The heal detects that flavour across the merged pool and refetches. Painting each term as it
+    lands would put pins on screen BEFORE the heal can run, i.e. exactly the flat-ranking bug that
+    was already fixed once. There is no `onPartial` on `MapDataSource.nearbyPlaces` today (photos and
+    reviews have one; ambient does not), so the interface, the ViewModel call site at
+    MapViewModel.kt:3659, the heal, `rankAmbientPlaces` and the take-N cap all have to be worked out
+    together. Collision priority is at least already stable across uploads (prominence, not list
+    index - upstream c35eea33), so repeated uploads will not reshuffle placement.
 - **The UI is NOT the bottleneck - measure before optimising it.** An atrace across cold start plus
   a D-pad drive on the staging build: `Choreographer#doFrame` totals 3,860 ms over **430 frames =
   9.0 ms per frame**, against a 16.7 ms budget at 60 Hz. measure/layout/draw is 3.5 ms/frame and
