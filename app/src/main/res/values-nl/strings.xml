@@ -162,6 +162,7 @@
     <string name="map_voice_installing">Vela-stem wordt geïnstalleerd…</string>
     <string name="map_asr_downloading">Vela Voice-micro wordt gedownload · %1$d %%</string>
     <string name="map_asr_installing">Vela Voice-micro wordt geïnstalleerd…</string>
+    <string name="map_asr_waiting">Vela Voice-micro · wacht op de Vela-stem</string>
     <string name="map_region_downloading">Routes voor %1$s downloaden · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">Plaatsen in %1$s opslaan voor offline zoeken · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">Plaatsen in %1$s zijn nu offline doorzoekbaar</string> <!-- format -->

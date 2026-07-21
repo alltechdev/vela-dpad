@@ -62,6 +62,7 @@
     <string name="map_voice_installing">正在安装 Vela 语音…</string>
     <string name="map_asr_downloading">正在下载 Vela Voice 麦克风 · %1$d%%</string>
     <string name="map_asr_installing">正在安装 Vela Voice 麦克风…</string>
+    <string name="map_asr_waiting">Vela Voice 麦克风 · 等待 Vela 语音</string>
     <string name="map_region_downloading">正在下载 %1$s 路线数据 · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">正在保存 %1$s 的地点用于离线搜索 · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">%1$s 的地点现在可以离线搜索了</string> <!-- format -->

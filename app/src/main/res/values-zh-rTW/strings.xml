@@ -62,6 +62,7 @@
     <string name="map_voice_installing">正在安裝 Vela 語音…</string>
     <string name="map_asr_downloading">正在下載 Vela Voice 麥克風 · %1$d%%</string>
     <string name="map_asr_installing">正在安裝 Vela Voice 麥克風…</string>
+    <string name="map_asr_waiting">Vela Voice 麥克風 · 等待 Vela 語音</string>
     <string name="map_region_downloading">正在下載 %1$s 的路線規劃資料 · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">正在儲存 %1$s 的地點供離線搜尋 · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">%1$s 的地點現在可以離線搜尋了</string> <!-- format -->

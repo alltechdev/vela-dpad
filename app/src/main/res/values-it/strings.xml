@@ -162,6 +162,7 @@
     <string name="map_voice_installing">Installazione della voce Vela…</string>
     <string name="map_asr_downloading">Download del micro Vela Voice · %1$d %%</string>
     <string name="map_asr_installing">Installazione del micro Vela Voice…</string>
+    <string name="map_asr_waiting">Micro Vela Voice · attende la voce Vela</string>
     <string name="map_region_downloading">Download instradamento %1$s · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">Salvataggio dei luoghi di %1$s per la ricerca offline · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">I luoghi di %1$s ora sono ricercabili offline</string> <!-- format -->

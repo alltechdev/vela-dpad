@@ -836,8 +836,11 @@ fun MapScreen(
     val showMicBusyToast = {
         android.widget.Toast.makeText(
             context,
-            if (state.asrInstalling) context.getString(R.string.map_asr_installing)
-            else context.getString(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt()),
+            when {
+                state.asrDownloadPct == null -> context.getString(R.string.map_asr_waiting)
+                state.asrInstalling -> context.getString(R.string.map_asr_installing)
+                else -> context.getString(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt())
+            },
             android.widget.Toast.LENGTH_SHORT,
         ).show()
     }
@@ -2182,10 +2185,10 @@ fun MapScreen(
             ) {
                 if (downloadingVoiceId != null) {
                     VoiceDownloadCard(
-                        installing = state.voiceInstalling,
+                        label = if (state.voiceInstalling) stringResource(R.string.map_voice_installing)
+                        else stringResource(R.string.map_voice_downloading, ((state.kokoroDownloadPct ?: 0f) * 100).toInt()),
                         pct = state.kokoroDownloadPct ?: 0f,
-                        downloadingLabel = stringResource(R.string.map_voice_downloading, ((state.kokoroDownloadPct ?: 0f) * 100).toInt()),
-                        installingLabel = stringResource(R.string.map_voice_installing),
+                        indeterminate = state.voiceInstalling,
                     )
                 }
                 // The MIC model gets the same card. Without it the onboarding download ran with no
@@ -2194,11 +2197,17 @@ fun MapScreen(
                 // downloaded, and because nothing on screen said a download was in flight, tapping
                 // the mic mid-download OFFERED THE SAME DOWNLOAD AGAIN (user 2026-07-21).
                 if (state.asrDownloadPct != null || state.asrQueued) {
+                    // Three states, three honest labels: WAITING (picked, but the voice download has
+                    // the shared staging paths), downloading with a real %, then installing.
+                    val micQueued = state.asrDownloadPct == null
                     VoiceDownloadCard(
-                        installing = state.asrInstalling,
+                        label = when {
+                            micQueued -> stringResource(R.string.map_asr_waiting)
+                            state.asrInstalling -> stringResource(R.string.map_asr_installing)
+                            else -> stringResource(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt())
+                        },
                         pct = state.asrDownloadPct ?: 0f,
-                        downloadingLabel = stringResource(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt()),
-                        installingLabel = stringResource(R.string.map_asr_installing),
+                        indeterminate = micQueued || state.asrInstalling,
                     )
                 }
                 // A region (state/country) download: the routing graph first, then its place pack -
@@ -3163,10 +3172,9 @@ private fun InfoCard(
  * the voice that speaks directions and the mic that hears searches. */
 @Composable
 private fun VoiceDownloadCard(
-    installing: Boolean,
+    label: String,
     pct: Float,
-    downloadingLabel: String,
-    installingLabel: String,
+    indeterminate: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -3177,11 +3185,13 @@ private fun VoiceDownloadCard(
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(if (installing) installingLabel else downloadingLabel, fontWeight = FontWeight.SemiBold)
+            Text(label, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
-            // Determinate while downloading; the unpack step can't report a meaningful %, so it goes
-            // indeterminate under the "Installing…" label rather than crawling a frozen-looking bar.
-            if (installing) {
+            // Determinate only while bytes are actually moving. The unpack step can't report a
+            // meaningful %, and a QUEUED download has not started at all - both would otherwise sit at
+            // a frozen-looking number (the queued mic parked at "0%" for the whole voice download and
+            // read as stuck, user 2026-07-21). Indeterminate says "working, no number" honestly.
+            if (indeterminate) {
                 androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else {
                 androidx.compose.material3.LinearProgressIndicator(

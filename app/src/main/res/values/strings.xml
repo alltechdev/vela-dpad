@@ -79,6 +79,7 @@
     <string name="map_voice_installing">Installing Vela voice…</string>
     <string name="map_asr_downloading">Downloading Vela Voice mic · %1$d%%</string>  <!-- format -->
     <string name="map_asr_installing">Installing Vela Voice mic…</string>
+    <string name="map_asr_waiting">Vela Voice mic · waiting for the voice</string>
     <string name="map_region_downloading">Downloading %1$s routing · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">Saving %1$s places for offline search · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">Places in %1$s are now searchable offline</string> <!-- format -->

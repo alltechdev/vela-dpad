@@ -162,6 +162,7 @@
     <string name="map_voice_installing">מתקין את Vela Voice…</string>
     <string name="map_asr_downloading">מוריד את מיקרופון Vela Voice · %1$d%%</string>
     <string name="map_asr_installing">מתקין את מיקרופון Vela Voice…</string>
+    <string name="map_asr_waiting">מיקרופון Vela Voice · ממתין לקול Vela</string>
     <string name="map_region_downloading">מוריד ניתוב עבור %1$s · %2$d%%</string>
     <string name="map_region_places_downloading">שומר מקומות ב%1$s לחיפוש לא מקוון · %2$d%%</string>
     <string name="mapvm_poipack_ready">מקומות ב%1$s ניתנים כעת לחיפוש לא מקוון</string>

@@ -62,6 +62,7 @@
     <string name="map_voice_installing">Vela 音声をインストール中…</string>
     <string name="map_asr_downloading">Vela Voice マイクをダウンロード中 · %1$d%%</string>
     <string name="map_asr_installing">Vela Voice マイクをインストール中…</string>
+    <string name="map_asr_waiting">Vela Voice マイク · Vela 音声を待機中</string>
     <string name="map_region_downloading">%1$s の経路データをダウンロード中 · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">%1$s の場所をオフライン検索用に保存中 · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">%1$s の場所がオフラインで検索できるようになりました</string> <!-- format -->

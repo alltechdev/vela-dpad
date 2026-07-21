@@ -162,6 +162,7 @@
     <string name="map_voice_installing">Instalowanie głosu Vela…</string>
     <string name="map_asr_downloading">Pobieranie mikrofonu Vela Voice · %1$d %%</string>
     <string name="map_asr_installing">Instalowanie mikrofonu Vela Voice…</string>
+    <string name="map_asr_waiting">Mikrofon Vela Voice · czeka na głos Vela</string>
     <string name="map_region_downloading">Pobieranie tras: %1$s · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">Zapisywanie miejsc regionu %1$s do wyszukiwania offline · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">Miejsca regionu %1$s można teraz wyszukiwać offline</string> <!-- format -->

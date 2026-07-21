@@ -162,6 +162,7 @@
     <string name="map_voice_installing">Установка голоса Vela…</string>
     <string name="map_asr_downloading">Загрузка микрофона Vela Voice · %1$d %%</string>
     <string name="map_asr_installing">Установка микрофона Vela Voice…</string>
+    <string name="map_asr_waiting">Микрофон Vela Voice · ждёт голос Vela</string>
     <string name="map_region_downloading">Загрузка маршрутов: %1$s · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">Сохранение мест региона %1$s для офлайн-поиска · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">Места региона %1$s теперь доступны для офлайн-поиска</string> <!-- format -->
