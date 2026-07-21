@@ -49,6 +49,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
+        // libvelamem: the mallopt() purge shim (app/src/main/cpp). Built ONLY for the two ABIs the
+        // app actually ships - the packaging block below drops x86/x86_64 for every other native
+        // lib, so building them here would just produce artifacts that get deleted again.
+        externalNativeBuild {
+            cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        }
+
         // MapTiler key injected from the CI secret (-PmaptilerKey); empty for
         // local builds, in which case the app falls back to the keyless
         // OpenFreeMap basemap. Never stored in the repo.
@@ -190,6 +197,16 @@ android {
             applicationIdSuffix = ".restricted"
             versionNameSuffix = "-restricted"
             buildConfigField("boolean", "RESTRICTED", "true")
+        }
+    }
+
+    // The app's only native code: the mallopt() purge shim. Pinned NDK/CMake versions so a
+    // developer with a different NDK installed gets the same libvelamem.so as CI.
+    ndkVersion = "27.0.12077973"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 

@@ -649,8 +649,10 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     as `CategoryFilter.enabled`, because `:core` must never read an `:app` holder.
   - **Verify the low-RAM path or it ships unverified.** Every dev phone we own reports
     `lowRam=false heapClassMb=256`, so those branches are dead code locally. Debug builds honour
-    `adb shell setprop debug.vela.lowram true` (then relaunch); `setprop debug.vela.lowram false`
-    restores real detection. NB `setprop <name> ""` is a syntax error, not a reset.
+    `adb shell setprop debug.vela.lowram true` (then relaunch). NB `false` FORCES the normal path,
+    it does NOT clear the override - clearing needs an unparseable value, so use
+    `setprop debug.vela.lowram none`. The two only look equivalent because every dev phone we own
+    detects as normal anyway. `setprop <name> ""` is a shell syntax error, not a reset.
   - **Measuring: `am send-trim-memory` REFUSES background levels on a foreground process**
     ("Unable to set a background trim level on a foreground process"). Press HOME first. A harness
     that discards that stderr measures NOTHING and reports a clean baseline - this happened here and
@@ -677,6 +679,44 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     subset keeps `school` and `park` on purpose: the ambient layer filter-hides the basemap OSM poi
     layers at z14+, so those two would vanish entirely. A first 6-term subset did exactly that and
     was caught by an A/B screenshot, not by any test.
+  - **A Kotlin `release()` does NOT give memory back to the KERNEL, only to scudo.** Freeing a model
+    or a WebView returns its pages to the allocator's free lists, where RSS/PSS still count them and
+    lmkd still sees a fat process. `mallopt()` is the only way to hand them on and it is reachable
+    only from C, which is why `app/src/main/cpp/velamem.cpp` exists - the app's ONLY native module,
+    ~4 KB per ABI, built for `arm64-v8a` + `armeabi-v7a` only. `MemoryPressure.dispatch` schedules
+    it 750 ms after every trim (the delay matters: the WebView reapers post `destroy()` to the main
+    looper and `VelaApp` clears Coil after `dispatch` returns, so an inline purge would run before
+    the memory it is meant to reclaim was actually freed).
+    - Measured on the M5, 3 alternating A/B pairs, ASR-model-release scenario: with the purge
+      suppressed `scudo:primary` moved 60/32/28 KB in the 7 s after a severe trim, i.e. NOTHING;
+      with it on, 3704/3008/2792 KB. No overlap. A second 8-pair A/B over map/POI churn showed the
+      same shape, 3345 KB -> 6931 KB mean reclaimed (Mann-Whitney U=7, n=8/8, p<0.05).
+    - Do NOT expect this to reclaim the onnxruntime arena. It is worth a consistent ~3 MB, not tens.
+      The ASR model's ~111 MB lives in `scudo:secondary`, which is mmap-backed and comes back on
+      `free()` with no purge needed - measured 111 MB -> 7 MB in BOTH arms. The purge only moves
+      `scudo:primary`, which stays around 75 MB either way.
+    - `M_PURGE_ALL` is API 34+. On the Android 13 dev phone it returns 0 and the code falls back to
+      `M_PURGE` (API 28+). The logged `mode=` says which actually took (2, 1, or 0 for neither);
+      do not assume `M_PURGE_ALL` ran just because `all=true` was passed.
+  - **Backgrounding delivers `TRIM_MEMORY_UI_HIDDEN` (20), NOT `TRIM_MEMORY_BACKGROUND` (40).**
+    Measured on the M5: pressing HOME logs `dispatch level=20` and nothing more; 40 arrives only
+    later, once the process sinks in the LRU list under real pressure. `isSevere` starts at 40, so
+    it is deliberately FALSE at the single most common moment the app is handed. That is right for
+    releasing (do not thrash a model on every HOME press) and wrong for purging, which is why the
+    purge triggers from `TRIM_MEMORY_RUNNING_LOW` (10) up. Anything that should happen "when the
+    user leaves the app" must key off 20, not 40.
+  - **A/B a memory change on ONE binary or the arms differ in more than the change.** Two builds
+    also differ in background settling, and idle PSS swings +-60 MB run to run, so a cross-build
+    comparison cannot attribute a few MB to anything. `adb shell setprop debug.vela.nopurge true`
+    suppresses the purge at runtime, which makes the delta a paired within-run measurement. Verify
+    the gate really gates before trusting either arm: one arm must log `native purge suppressed`
+    and the other `native purge all=... mode=...`, or the A/B is measuring one thing twice.
+  - **A quarantined ASR model makes `warmUp()` a silent no-op.** `WhisperRecognizer.isInstalled()`
+    is `AsrModel.isInstalled() && !asr_model_bad`, and the corrupt-model quarantine (`asr_model_bad`
+    in `vela_settings`) is only ever lifted by the installer's `clearQuarantine()`. Side-loading the
+    model files by hand leaves the flag set, so the model never loads, `scudo:secondary` sits at
+    ~11 MB instead of ~111 MB, and a memory benchmark silently measures the model-absent case. Check
+    `secondary` is actually ~111 MB before believing any ASR memory number.
 
 ## Layout
 
