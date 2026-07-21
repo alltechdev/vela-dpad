@@ -721,6 +721,32 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
       the two scraper WebViews exist. That is the offscreen layouts (`WV_WIDTH`x`WV_HEIGHT`, e.g.
       1200x3200) allocating graphics buffers charged to OUR process. Chromium logs
       `tile memory limits exceeded` at that size. Cutting the offscreen viewport is a real lead.
+  - **Do not LAY OUT a scraper WebView until it is actually scraping.** `WebPhotoFetcher` sized its
+    view inside `ensureWebView`, i.e. at construction, and `warm()` goes through `ensureWebView` - so
+    a speculative warm built a full 1200x3200 composited surface over `maps?hl=en`, a page with zero
+    scrapeable content, and held it for the entire 300 s warm window on a 480x640 phone. Sizing moved
+    into `sizeForScrape(wv)`, called immediately before `loadUrl` in `fetch()`. Matched A/B, same
+    harness, 3 runs per arm, search-then-browse with no place opened:
+    **`GL mtrack` 448/427/441 MB -> 77/71/72 MB (-365 MB) and TOTAL PSS 866/854/852 MB ->
+    485/460/459 MB (-390 MB)**, with the scrape byte-for-byte unaffected (28/28/28 photos on the
+    same place in both arms).
+    - This fetcher is the ONLY one that lays out during a warm. `WebPopularTimesFetcher.prewarm`,
+      `WebDirectionsFetcher` and `WebStopDeparturesFetcher` never call measure/layout at all, and
+      `WebReviewsFetcher` has no warm. That is why every GL number in this codebase tracks THIS view,
+      and why a reviews-side change looked like it helped when it could not have.
+    - The size itself is load-bearing at scrape time - the grids virtualize, so at 0x0 a category tab
+      renders about one tile and the scrape comes back nearly empty. Size BEFORE `loadUrl` so the
+      page's first layout is already at scrape geometry. Deferring the layout is safe precisely
+      because it leaves scrape-time geometry identical; SHRINKING it is not the same bet.
+    - Gate any viewport change on scrape COUNT, not memory. Both fetchers log
+      `scraped N photos/reviews for <featureId>` for exactly this. A change that halves memory and
+      quietly halves the gallery is a regression no memory metric shows.
+    - **A quality metric stuck at zero cannot fail, so it proves nothing.** A 720 px width was tried
+      and reverted: on the photo side it held (28 -> 28) but on the reviews side the scrape returns 0
+      for every place tried at 1200 AND at 720 - a pre-existing failure - so that arm was
+      unfalsifiable. Check the control can produce a non-zero result before trusting an A/B.
+    - `GL mtrack` at place-open is BIMODAL (~490 MB laid out and alive, ~71 MB not), so single
+      readings there mean nothing. Measure the warm window, repeat, and report the spread.
   - **BOTH speculative warms have to be bounded or neither helps.** The renderer is SHARED by every
     WebView in the process, so one un-reaped view keeps it alive for all of them. `WebPhotoFetcher`
     had no idle reaper at all, and `WebPopularTimesFetcher.prewarm()` created a view and never

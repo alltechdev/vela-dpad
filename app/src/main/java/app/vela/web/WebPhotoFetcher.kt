@@ -235,6 +235,9 @@ class WebPhotoFetcher @Inject constructor(
                         // DOM that yields an empty result (safe) instead of the previous place's photos
                         // being returned for THIS featureId (cross-place data).
                         wv.evaluateJavascript("try{document.documentElement.innerHTML=''}catch(e){}", null)
+                        // Size BEFORE navigating, so the ?cid= page's first layout is already at
+                        // scrape geometry and the virtualized grids materialize exactly as before.
+                        sizeForScrape(wv)
                         wv.loadUrl("https://www.google.com/maps?cid=$cid&hl=en&gl=us")
                         main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, MAX_LOAD_MS)
                         ready.await()
@@ -250,6 +253,9 @@ class WebPhotoFetcher @Inject constructor(
                 scheduleReap(REAP_IDLE_MS) // start the quiet period from the END of the scrape
             }
             val out = raw?.let { parseLines(it) } ?: emptyList()
+            // Result count, so a change to the offscreen viewport (WV_WIDTH/WV_HEIGHT drive how much
+            // of the virtualized grid renders) can be A/B'd against scrape QUALITY, not just memory.
+            android.util.Log.i("WebPhotoFetcher", "scraped ${out.size} photos for $featureId")
             if (out.isNotEmpty()) synchronized(cache) { cache[featureId] = out } // cache only real results
             out
         }
@@ -282,15 +288,37 @@ class WebPhotoFetcher @Inject constructor(
         wv.settings.domStorageEnabled = true
         wv.settings.userAgentString = VelaConfig.USER_AGENT
         wv.addJavascriptInterface(Bridge(), "VelaBridge")
-        // Real offscreen viewport - the category grids are VIRTUALIZED (like the reviews list); at 0×0 a
-        // category tab renders only ~1 tile, so a tall viewport is what makes each category populate fully.
+        // NOT laid out here on purpose - see [sizeForScrape]. The WebView stays 0x0 until a real
+        // fetch needs the grids to materialize.
+        webView = wv
+        return wv
+    }
+
+    /**
+     * Give the WebView its real offscreen viewport, immediately before a scrape navigates.
+     *
+     * The size itself is load-bearing: the category grids are VIRTUALIZED (like the reviews list),
+     * so at 0x0 a category tab renders only about one tile and the scrape comes back nearly empty.
+     * That is why the viewport exists at all.
+     *
+     * But it only has to exist for a SCRAPE. This used to run in `ensureWebView`, i.e. at
+     * construction, and [warm] goes through `ensureWebView` - so a speculative warm created a full
+     * WV_WIDTH x WV_HEIGHT composited surface over `maps?hl=en`, a page with zero scrapeable content,
+     * and held it for the whole WARM_REAP_IDLE_MS window. Measured on the M5: `GL mtrack` is bimodal,
+     * ~490 MB with this view laid out and alive versus ~71 MB without, on a 480x640 phone screen.
+     * This fetcher is the only one that lays out during a warm at all (the other four either never
+     * call layout or have no warm), which is why every GL number tracked THIS view.
+     *
+     * Idempotent, and called before `loadUrl` so the `?cid=` page's FIRST layout is already at scrape
+     * geometry - that ordering is what keeps the scrape identical.
+     */
+    private fun sizeForScrape(wv: WebView) {
+        if (wv.width == WV_WIDTH && wv.height == WV_HEIGHT) return
         wv.measure(
             android.view.View.MeasureSpec.makeMeasureSpec(WV_WIDTH, android.view.View.MeasureSpec.EXACTLY),
             android.view.View.MeasureSpec.makeMeasureSpec(WV_HEIGHT, android.view.View.MeasureSpec.EXACTLY),
         )
         wv.layout(0, 0, WV_WIDTH, WV_HEIGHT)
-        webView = wv
-        return wv
     }
 
     /** Self-polling DOM scraper: open the gallery, then VISIT EACH CATEGORY TAB (Menu / Food & drink /
@@ -367,6 +395,14 @@ class WebPhotoFetcher @Inject constructor(
         const val SETTLE_MS = 1_200L
         const val MAX_LOAD_MS = 7_000L
         // Offscreen viewport so the virtualized category grids render a full batch (not ~1 tile).
+        //
+        // Applied by [sizeForScrape] immediately before a scrape navigates, NOT at construction.
+        //
+        // These are deliberately UNCHANGED from stock. Shrinking the width to 720 was tried and did
+        // hold the photo count on the one place it was A/B'd (28 -> 28), but scrape geometry governs
+        // how much of a virtualized grid materializes, and one place is not enough evidence to risk a
+        // quieter gallery in a locale or layout nobody sampled. Deferring the layout wins the same
+        // memory back without changing anything the scraper sees, so the size stays stock.
         const val WV_WIDTH = 1200
         const val WV_HEIGHT = 3200
         // Destroy the idle WebView after this quiet period, same value as the other four fetchers.

@@ -121,7 +121,11 @@ class WebReviewsFetcher @Inject constructor(
         return mutex.withLock {
             cancelReap()
             try {
+                // Result count, so a change to the offscreen viewport (WV_WIDTH/WV_HEIGHT drive how
+                // much of the virtualized list renders) can be A/B'd against scrape QUALITY, not
+                // just memory.
                 fetchLocked(cid, onProgress, onPartial)
+                    .also { android.util.Log.i("WebReviewsFetcher", "scraped ${it.size} reviews for $featureId") }
             } finally {
                 scheduleReap()
             }
@@ -417,6 +421,16 @@ class WebReviewsFetcher @Inject constructor(
         const val MAX_LOAD_MS = 7_000L
         // Offscreen viewport for the headless WebView - tall so the virtualized review list renders a
         // healthy batch per scroll position.
+        //
+        // Left at STOCK. A 720 px width was tried and reverted: the reviews scrape returns 0 on the
+        // test device for every place tried, at 1200 AND at 720 - a pre-existing failure, not caused
+        // by the width - so the quality metric was pinned at zero and the A/B could not fail. An
+        // unfalsifiable check is not evidence, and scrape geometry governs how much of the
+        // virtualized list materializes. Do not narrow this until the scrape works again and
+        // `scraped N reviews` can be compared on a place with hundreds of them.
+        //
+        // Unlike WebPhotoFetcher this fetcher lays out only inside a real fetch (it has no warm), so
+        // it never contributed to the idle/warm-window cost that the deferred layout there fixes.
         const val WV_WIDTH = 1200
         const val WV_HEIGHT = 6000
     }
