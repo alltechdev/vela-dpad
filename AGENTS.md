@@ -711,6 +711,38 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     suppresses the purge at runtime, which makes the delta a paired within-run measurement. Verify
     the gate really gates before trusting either arm: one arm must log `native purge suppressed`
     and the other `native purge all=... mode=...`, or the A/B is measuring one thing twice.
+  - **The hidden WebViews are the single largest thing Vela costs, and app PSS CANNOT SEE IT.**
+    Android runs the WebView renderer OUT OF PROCESS. Measured on the M5 after one search:
+    `sandboxed_process0` at 305-347 MB PSS, plus `webview_service` 21 MB and `webview_apk` 37 MB,
+    none of it in the app's own `dumpsys meminfo`. Every issue-#83 number was app-PSS only, so the
+    largest item in the app was invisible to the whole exercise. **When measuring memory here,
+    always `adb shell ps -A | grep sandboxed_process` and total the WebView processes too.**
+    - The app-side half is `GL mtrack`, and it is huge: 26 MB with no WebView alive, 396-461 MB once
+      the two scraper WebViews exist. That is the offscreen layouts (`WV_WIDTH`x`WV_HEIGHT`, e.g.
+      1200x3200) allocating graphics buffers charged to OUR process. Chromium logs
+      `tile memory limits exceeded` at that size. Cutting the offscreen viewport is a real lead.
+  - **BOTH speculative warms have to be bounded or neither helps.** The renderer is SHARED by every
+    WebView in the process, so one un-reaped view keeps it alive for all of them. `WebPhotoFetcher`
+    had no idle reaper at all, and `WebPopularTimesFetcher.prewarm()` created a view and never
+    called `scheduleReap()` (only `fetch()` did). `MapViewModel` warms both on every search, so one
+    search pinned the renderer for the session. Device-verified the hard way: reaping only the photo
+    view left the renderer alive at ~200 MB because the popular-times view still held it. Fixing
+    both, with no trim involved, took the renderer to zero and app PSS 744 MB -> 351 MB.
+    - A speculative warm gets a LONGER reap window than a real fetch (`WARM_REAP_IDLE_MS` 300 s vs
+      `REAP_IDLE_MS` 120 s). The warm exists so the first place tap skips the cold start; reaping it
+      at 120 s would expire during an ordinary browse and waste the warm entirely. Bounded, not
+      short, is the goal - the bug was session-long, not "not aggressive enough".
+  - **A reap must drain `pending`, exactly like `rendererGone` does.** Destroying the view kills the
+    injected scraper, so nothing will ever complete those deferreds; a reap landing mid-fetch parks
+    the fetch in `deferred.await()` for the full `TOTAL_TIMEOUT_MS` (40 s) while it HOLDS the
+    fetcher's `Mutex`, stalling everything queued behind it. An empty result is the documented
+    best-effort failure; a 40 s hang is not.
+  - **Verifying a reap needs a LOG, not a process check.** `WebView.destroy()` does not kill the
+    renderer promptly - measured 220 MB still resident 8 s after a destroy and the process gone only
+    minutes later - and an OS trim can kill it for unrelated reasons, so "the process went away" does
+    not mean your timer fired. The first attempt to verify this was unfalsifiable for exactly that
+    reason: the renderer vanished at t+60 s and the logs showed `dispatch level=15`/`40`, i.e. a real
+    trim, not the reaper. Log the reap, then assert the log AND assert no severe trim fired.
   - **A quarantined ASR model makes `warmUp()` a silent no-op.** `WhisperRecognizer.isInstalled()`
     is `AsrModel.isInstalled() && !asr_model_bad`, and the corrupt-model quarantine (`asr_model_bad`
     in `vela_settings`) is only ever lifted by the installer's `clearQuarantine()`. Side-loading the

@@ -54,14 +54,24 @@ class WebPopularTimesFetcher @Inject constructor(
     @Volatile private var warm: CompletableDeferred<Unit>? = null
     private var reap: Runnable? = null
 
+    /** Run [block] on the main thread, inline when already there. [reap] is touched from the trim
+     *  listener (main) and from [fetch]/[prewarm] (the caller's dispatcher), and scheduling is a
+     *  read-modify-write that @Volatile would not make safe. */
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+    }
+
     /** Free the WebView after a quiet period (issue #182): the warm session pins a full
      *  maps.google.com page for the rest of the session otherwise. The next fetch after a
-     *  reap re-warms (google.com -> maps), a one-off few-second cost after minutes idle. */
-    private fun scheduleReap() {
+     *  reap re-warms (google.com -> maps), a one-off few-second cost after minutes idle.
+     *
+     *  [delayMs] is longer for a speculative [prewarm] than for a real fetch - see
+     *  [WARM_REAP_IDLE_MS]. */
+    private fun scheduleReap(delayMs: Long = REAP_IDLE_MS) = onMain {
         reap?.let(main::removeCallbacks)
-        val r = Runnable { reapNow() }
+        val r = Runnable { reap = null; reapNow() }
         reap = r
-        main.postDelayed(r, REAP_IDLE_MS)
+        main.postDelayed(r, delayMs)
     }
 
     /** Destroy the WebView immediately. Must run on the main thread (WebView requirement). */
@@ -80,7 +90,7 @@ class WebPopularTimesFetcher @Inject constructor(
         }
     }
 
-    private fun cancelReap() {
+    private fun cancelReap() = onMain {
         reap?.let(main::removeCallbacks)
         reap = null
     }
@@ -136,6 +146,12 @@ class WebPopularTimesFetcher @Inject constructor(
      * idempotent (a warm already in progress is awaited, not restarted). */
     suspend fun prewarm() {
         runCatching { withTimeoutOrNull(MAX_WARM_MS + 2_000L) { ensureWarm() } }
+        // Bound the speculative warm. Without this a prewarm-only WebView was never reaped at all -
+        // scheduleReap() is called only from fetch() - so one search pinned the SHARED Chromium
+        // renderer for the whole session. Device-verified: reaping WebPhotoFetcher's view alone left
+        // the renderer alive at ~200 MB PSS because this fetcher still held one. A real fetch
+        // cancels this and re-arms the shorter window in its own finally.
+        scheduleReap(WARM_REAP_IDLE_MS)
     }
 
     private suspend fun ensureWarm() = withContext(Dispatchers.Main) {
@@ -219,6 +235,10 @@ class WebPopularTimesFetcher @Inject constructor(
     private companion object {
         const val TOTAL_TIMEOUT_MS = 22_000L
         const val REAP_IDLE_MS = 120_000L // destroy the idle WebView after this quiet period (issue #182)
+        // A speculative prewarm gets a longer leash than a real fetch: it is spent so the first
+        // place tap is fast, and 120 s would expire during an ordinary browse and waste it. Bounded
+        // is the point - before this a prewarm-only view was never reaped at all.
+        const val WARM_REAP_IDLE_MS = 300_000L
         const val SETTLE_MS = 1_200L
         const val MAX_WARM_MS = 9_000L
     }

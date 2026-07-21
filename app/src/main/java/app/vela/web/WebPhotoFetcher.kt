@@ -54,23 +54,73 @@ class WebPhotoFetcher @Inject constructor(
     @Volatile private var webView: WebView? = null
     @Volatile private var warmed = false
 
+    /** Pending idle-reap callback. Only ever read or written on the main thread - see [onMain]. */
+    private var reap: Runnable? = null
+
     init {
-        // Unlike the other four web fetchers this one has NO idle reaper, so a warmed gallery
-        // renderer was pinned for the whole session with only renderer-death to clear it. A
-        // Chromium renderer is one of the largest things the app holds, and this fetcher is one of
-        // the two warmed speculatively on every search, so it releases under pressure (issue #83).
+        // A trim is the OS asking for memory NOW, far sooner than any idle timer (issue #83).
         app.vela.ui.MemoryPressure.register { level ->
-            if (app.vela.ui.MemoryPressure.isSevere(level)) main.post { reapNow() }
+            if (app.vela.ui.MemoryPressure.isSevere(level)) main.post { cancelReap(); reapNow() }
         }
     }
 
+    /**
+     * Run [block] on the main thread, inline when already there.
+     *
+     * All reap bookkeeping goes through here because [reap] is touched from two places on
+     * different threads - the trim listener (main) and [fetch]/[warm] (the caller's dispatcher).
+     * Making every mutation main-thread-only removes the race by construction; @Volatile would not,
+     * since scheduling is a read-modify-write. Running inline when already on main keeps the
+     * cancel-then-navigate ordering inside [fetch]'s `Dispatchers.Main` block intact.
+     */
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+    }
+
+    /**
+     * Free the WebView after a quiet period, like the other four fetchers (issue #182) - this one
+     * never had it, so a single search pinned a Chromium renderer for the WHOLE session and only
+     * renderer death or a trim could clear it. Measured on the M5: after a search the shared
+     * sandboxed renderer sat at 327 MB PSS, in a SEPARATE process, so it never showed up in the
+     * app's own PSS and every issue-#83 measurement missed it.
+     *
+     * [delayMs] differs by caller on purpose. A real fetch uses the siblings' [REAP_IDLE_MS]; a
+     * speculative [warm] uses the longer [WARM_REAP_IDLE_MS], because the warm exists precisely so
+     * a later place tap skips the cold start, and reaping it at 120 s would undo it for the ordinary
+     * search-then-browse-then-tap flow. Longer, but still bounded: the point is that it cannot be
+     * session-long.
+     */
+    private fun scheduleReap(delayMs: Long) = onMain {
+        reap?.let(main::removeCallbacks)
+        val r = Runnable { reap = null; reapNow() }
+        reap = r
+        main.postDelayed(r, delayMs)
+    }
+
+    private fun cancelReap() = onMain {
+        reap?.let(main::removeCallbacks)
+        reap = null
+    }
+
     /** Destroy the WebView immediately. Main thread only (WebView requirement). The next
-     *  [warm]/fetch rebuilds it via `ensureWebView`, exactly as after a renderer death. */
+     *  [warm]/fetch rebuilds it via `ensureWebView`, exactly as after a renderer death.
+     *
+     *  Drains [pending] for the same reason [rendererGone] does: the injected scraper dies with the
+     *  view, so nothing will ever complete those deferreds. Without this a reap landing mid-fetch
+     *  leaves the fetch parked in `deferred.await()` for the full [TOTAL_TIMEOUT_MS] while it HOLDS
+     *  [mutex], stalling every queued gallery behind it. An empty result is the documented
+     *  best-effort failure mode; a 40 s hang is not. */
     private fun reapNow() {
         val wv = webView ?: return
         webView = null
         warmed = false
         runCatching { wv.loadUrl("about:blank"); wv.destroy() }
+        val stranded = pending.keys.toList()
+        stranded.forEach { id -> pending.remove(id)?.complete("") }
+        // The renderer is shared and lives in ANOTHER process, so its cost is invisible in this
+        // app's PSS - without a log there is no way to tell an idle reap from an OS trim killing
+        // the renderer, which made the first attempt to verify this unfalsifiable.
+        android.util.Log.i("WebPhotoFetcher", "photo WebView reaped (stranded fetches: ${stranded.size})")
     }
 
     // featureId → its scraped gallery. Re-tapping a place (or bouncing back from directions) then
@@ -118,6 +168,10 @@ class WebPhotoFetcher @Inject constructor(
                     }
                 }
                 wv.loadUrl("https://www.google.com/maps?hl=en")
+                // Bound the speculative warm. Reached only when THIS call created the view (the
+                // re-check above returns early when a fetch already owns it, and that fetch arms its
+                // own reap in `finally`), so this never shortens a real fetch's window.
+                scheduleReap(WARM_REAP_IDLE_MS)
             }
         }
     }
@@ -144,6 +198,7 @@ class WebPhotoFetcher @Inject constructor(
         val cid = cidOf(featureId) ?: return emptyList()
         synchronized(cache) { cache[featureId] }?.let { return it } // instant on revisit - skip the scrape
         return mutex.withLock {
+            cancelReap() // a reap mid-scrape would destroy the view this fetch is about to drive
             val id = "p" + seq.incrementAndGet()
             val deferred = CompletableDeferred<String>()
             pending[id] = deferred
@@ -192,6 +247,7 @@ class WebPhotoFetcher @Inject constructor(
             } finally {
                 pending.remove(id)
                 partials.remove(id)
+                scheduleReap(REAP_IDLE_MS) // start the quiet period from the END of the scrape
             }
             val out = raw?.let { parseLines(it) } ?: emptyList()
             if (out.isNotEmpty()) synchronized(cache) { cache[featureId] = out } // cache only real results
@@ -313,5 +369,11 @@ class WebPhotoFetcher @Inject constructor(
         // Offscreen viewport so the virtualized category grids render a full batch (not ~1 tile).
         const val WV_WIDTH = 1200
         const val WV_HEIGHT = 3200
+        // Destroy the idle WebView after this quiet period, same value as the other four fetchers.
+        const val REAP_IDLE_MS = 120_000L
+        // The speculative warm gets a longer leash: it is spent so the first place tap is instant,
+        // and 120 s would expire during an ordinary browse and waste the warm entirely. Still
+        // bounded, which is the whole point - before this the warm was held for the session.
+        const val WARM_REAP_IDLE_MS = 300_000L
     }
 }
