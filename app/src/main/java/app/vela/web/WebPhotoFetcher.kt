@@ -220,6 +220,13 @@ class WebPhotoFetcher @Inject constructor(
                                 return !(host == "google.com" || host.endsWith(".google.com"))
                             }
                             override fun onPageFinished(view: WebView?, url: String?) {
+                                // IGNORE about:blank. [blankAfterScrape] parks the view there after the
+                                // previous scrape, and that navigation can still be settling when this
+                                // client is installed - its onPageFinished then opens the load gate
+                                // early, the scraper injects into an empty document, and the fetch
+                                // returns 0 photos. Device-caught: the same place scraped 33 photos as
+                                // the first place opened and 0 as the second, until this guard.
+                                if (url == null || url.startsWith("about:")) return
                                 main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, SETTLE_MS)
                             }
                             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
@@ -250,6 +257,7 @@ class WebPhotoFetcher @Inject constructor(
             } finally {
                 pending.remove(id)
                 partials.remove(id)
+                blankAfterScrape() // the scraped page is dead weight from here until the next scrape
                 scheduleReap(REAP_IDLE_MS) // start the quiet period from the END of the scrape
             }
             val out = raw?.let { parseLines(it) } ?: emptyList()
@@ -319,6 +327,29 @@ class WebPhotoFetcher @Inject constructor(
             android.view.View.MeasureSpec.makeMeasureSpec(WV_HEIGHT, android.view.View.MeasureSpec.EXACTLY),
         )
         wv.layout(0, 0, WV_WIDTH, WV_HEIGHT)
+    }
+
+    /**
+     * Throw the scraped page away the moment the scrape returns, rather than carrying it until the
+     * reap 120 s later.
+     *
+     * The scrape is the only thing that needed the page and it is over - the result is already
+     * parsed out of the bridge payload. What follows is the user reading the place sheet, which is
+     * minutes of a fully rasterized Google Maps document serving nobody.
+     *
+     * It has to be a NAVIGATION, not a resize. Shrinking the view back to 0x0 was tried first and
+     * measured to reclaim nothing at all (GL mtrack 494/496/497 MB against a 497/498 MB control):
+     * Chromium keeps the tiles it has already rasterized for a live document regardless of the
+     * view's size. Discarding the document is what frees them.
+     *
+     * Costs nothing functionally: the next `fetch` blanks the DOM and navigates to its own `?cid=`
+     * page anyway, so this page was never going to be read again. The WebView itself stays alive, so
+     * the renderer, HTTP/2 sockets, cookies and JS cache that make the next place fast are all kept -
+     * which is exactly what destroying it early would have thrown away.
+     */
+    private fun blankAfterScrape() = onMain {
+        val wv = webView ?: return@onMain
+        runCatching { wv.loadUrl("about:blank") }
     }
 
     /** Self-polling DOM scraper: open the gallery, then VISIT EACH CATEGORY TAB (Menu / Food & drink /

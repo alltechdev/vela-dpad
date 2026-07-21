@@ -721,6 +721,25 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
       the two scraper WebViews exist. That is the offscreen layouts (`WV_WIDTH`x`WV_HEIGHT`, e.g.
       1200x3200) allocating graphics buffers charged to OUR process. Chromium logs
       `tile memory limits exceeded` at that size. Cutting the offscreen viewport is a real lead.
+  - **Throw the scraped DOCUMENT away when the scrape ends; the viewport is not the lever.** After
+    a scrape the photo fetcher used to hold a fully rasterized Google Maps page until the 120 s reap,
+    i.e. through the whole time the user reads the place sheet. `blankAfterScrape()` navigates to
+    `about:blank` in `fetch()`'s `finally`. Measured at place-open + 75 s: **`GL mtrack` ~497 MB ->
+    64-70 MB and TOTAL PSS ~950 MB -> 410-508 MB**, photo counts unchanged.
+    - Resizing does NOT work, and this was measured before believing it: shrinking the view to 0x0
+      after a scrape reclaimed nothing at all (494/496/497 MB against a 497/498 MB control). Chromium
+      keeps the tiles it has rasterized for a live document regardless of view size. **Document
+      lifetime is the only lever with leverage here** - the 1200x3200 viewport is 3.84 Mpx = 15 MB at
+      4 B/px, yet GL mtrack was ~490 MB, so the number is a whole composited layer tree against a
+      tile budget, not one viewport buffer. Stop spending device time on geometry.
+  - **`about:blank` opens the next fetch's load gate early unless you guard for it.** Parking the
+    view at `about:blank` broke the NEXT scrape: its `onPageFinished` fires on the freshly installed
+    `webViewClient`, completes the `ready` gate before the real page commits, and the scraper injects
+    into an empty document. **Caught only by opening a SECOND place** - the same place scraped 33
+    photos as the first place opened and 0 as the second. `onPageFinished` now ignores `about:` URLs.
+    - Test the second place, every time. A one-place test cannot see any bug in WebView REUSE, and
+      re-tapping the SAME place is served from the LRU cache without scraping at all, so it cannot
+      see one either. Confirm from the log that two DIFFERENT featureIds actually scraped.
   - **Do not LAY OUT a scraper WebView until it is actually scraping.** `WebPhotoFetcher` sized its
     view inside `ensureWebView`, i.e. at construction, and `warm()` goes through `ensureWebView` - so
     a speculative warm built a full 1200x3200 composited surface over `maps?hl=en`, a page with zero
