@@ -511,4 +511,11 @@
     <string name="softkey_unmute">Activar sonido</string>
     <string name="softkey_move_map">Mover mapa</string>
     <string name="softkey_stop_zoom">Salir del zoom</string>
+    <string name="voice_error_title">La búsqueda por voz no se inició</string>
+    <string name="voice_error_retry">Reintentar</string>
+    <string name="voice_error_model">El modelo de voz no está listo. Vuelve a descargarlo en Ajustes \u2192 Búsqueda.</string>
+    <string name="voice_error_permission">Vela necesita permiso de micrófono para escuchar. Concédelo en los ajustes de la aplicación de Android.</string>
+    <string name="voice_error_vad">Falta parte del modelo de voz. Vuelve a descargarlo en Ajustes \u2192 Búsqueda.</string>
+    <string name="voice_error_audio">Este teléfono no abrió su micrófono para Vela. Cierra cualquier otra app que grabe audio e inténtalo de nuevo.</string>
+    <string name="voice_error_recording">La grabación se detuvo inesperadamente. Inténtalo de nuevo.</string>
 </resources>

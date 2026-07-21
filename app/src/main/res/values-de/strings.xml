@@ -511,4 +511,11 @@
     <string name="softkey_unmute">Ton an</string>
     <string name="softkey_move_map">Karte bewegen</string>
     <string name="softkey_stop_zoom">Zoom beenden</string>
+    <string name="voice_error_title">Sprachsuche konnte nicht starten</string>
+    <string name="voice_error_retry">Erneut versuchen</string>
+    <string name="voice_error_model">Das Sprachmodell ist nicht bereit. Lade es unter Einstellungen \u2192 Suche erneut herunter.</string>
+    <string name="voice_error_permission">Vela braucht die Mikrofonberechtigung zum Zuhören. Erteile sie in den App-Einstellungen von Android.</string>
+    <string name="voice_error_vad">Ein Teil des Sprachmodells fehlt. Lade es unter Einstellungen \u2192 Suche erneut herunter.</string>
+    <string name="voice_error_audio">Dieses Telefon hat sein Mikrofon nicht für Vela geöffnet. Schließe andere Apps, die Audio aufnehmen, und versuche es erneut.</string>
+    <string name="voice_error_recording">Die Aufnahme wurde unerwartet beendet. Versuche es erneut.</string>
 </resources>

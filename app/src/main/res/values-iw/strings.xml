@@ -514,4 +514,11 @@
     <string name="softkey_unmute">ביטול השתקה</string>
     <string name="softkey_move_map">הזז מפה</string>
     <string name="softkey_stop_zoom">הפסק זום</string>
+    <string name="voice_error_title">חיפוש קולי לא התחיל</string>
+    <string name="voice_error_retry">נסה שוב</string>
+    <string name="voice_error_model">מודל הקול לא מוכן. הורד אותו שוב בהגדרות \u2192 חיפוש.</string>
+    <string name="voice_error_permission">Vela צריכה הרשאת מיקרופון כדי להאזין. אשר אותה בהגדרות האפליקציות של Android.</string>
+    <string name="voice_error_vad">חלק ממודל הקול חסר. הורד אותו שוב בהגדרות \u2192 חיפוש.</string>
+    <string name="voice_error_audio">הטלפון לא פתח את המיקרופון עבור Vela. סגור אפליקציות אחרות שמקליטות ונסה שוב.</string>
+    <string name="voice_error_recording">ההקלטה נעצרה באופן לא צפוי. נסה שוב.</string>
 </resources>

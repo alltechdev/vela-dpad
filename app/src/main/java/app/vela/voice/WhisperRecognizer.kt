@@ -10,6 +10,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
+import timber.log.Timber
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
@@ -73,12 +74,30 @@ class WhisperRecognizer @Inject constructor(
     }
 
     private companion object {
+        // Grep target for a tester's logcat: every listen() failure logs under this tag with its
+        // VoiceResult.Reason, so "it doesn't work" arrives already diagnosed (issue #81).
+        const val TAG = "VELAASR"
+        // Set across the native model load, cleared once it returns. Still set at the next attempt =
+        // the process died inside it. KEY_MODEL_BAD latches the quarantine so a bad model is not
+        // retried on every launch; a fresh download clears it (see AsrModel.clearQuarantine)."
+        const val KEY_LOAD_INFLIGHT = "asr_load_inflight"
+        const val KEY_MODEL_BAD = "asr_model_bad"
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
         const val MAX_SECONDS = 15            // hard cap on one utterance
     }
 
-    fun isInstalled(): Boolean = AsrModel.isInstalled(context)
+    fun isInstalled(): Boolean =
+        AsrModel.isInstalled(context) &&
+            !context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+                .getBoolean(KEY_MODEL_BAD, false)
+
+    /** Lift the quarantine after a fresh download - the bad files are gone, so the next load is
+     *  allowed to try again. Called by the installer path, never automatically. */
+    fun clearQuarantine() {
+        context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_MODEL_BAD, false).putBoolean(KEY_LOAD_INFLIGHT, false).apply()
+    }
 
     fun hasMicPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
@@ -117,6 +136,28 @@ class WhisperRecognizer @Inject constructor(
             recognizer?.let { if (loadedLang == lang) return it else runCatching { it.release() } }
             recognizer = null
             if (!AsrModel.isInstalled(context)) return null
+
+            // CRASH SENTINEL around the native load. sherpa-onnx parses the .onnx files in C++, and a
+            // TRUNCATED-but-non-empty model segfaults inside libsherpa-onnx-jni rather than throwing -
+            // `runCatching` cannot catch a native abort, it takes the whole process down. That is
+            // reachable in the real world: the installer deletes destDir BEFORE moving staging into
+            // place, so a copy that stops partway (storage full on a flip phone, process killed) can
+            // leave a short file that isInstalled()'s present-and-non-empty test happily accepts.
+            // Because warmUp() runs at STARTUP, the result was an unrecoverable crash loop - the user
+            // cannot even reach Settings to delete the model, since the app dies before any UI.
+            // So: mark before the load, clear after. Finding the mark still set means the previous
+            // attempt never returned - quarantine the model, tell the UI it is not installed, and let
+            // the app start. Same idiom as the map's two-crash sentinel in VelaMapView.
+            val prefs = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+            if (prefs.getBoolean(KEY_LOAD_INFLIGHT, false)) {
+                Timber.tag(TAG).e("previous ASR load never returned (native crash) - quarantining the model")
+                prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).putBoolean(KEY_MODEL_BAD, true).apply()
+                runCatching { AsrModel.dir(context).deleteRecursively() }
+                return null
+            }
+            if (prefs.getBoolean(KEY_MODEL_BAD, false)) return null
+            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, true).apply()
+
             val dir = AsrModel.dir(context)
             val r = runCatching {
                 OfflineRecognizer(
@@ -137,6 +178,10 @@ class WhisperRecognizer @Inject constructor(
                     ),
                 )
             }.getOrNull()
+            // The load RETURNED (success or a catchable failure), so the process survived it: clear
+            // the sentinel. Only a native abort leaves it set, which is exactly the case we want the
+            // next launch to notice.
+            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).apply()
             recognizer = r
             loadedLang = lang
             return r
@@ -149,13 +194,20 @@ class WhisperRecognizer @Inject constructor(
      * [onListening] fires once recording actually starts, and [cancelled] lets the UI stop early
      * (the user tapped done/close). Runs off the main thread; safe to cancel via coroutine too.
      */
+    /** Listen, transcribe, and say WHY when it does not work - see [VoiceResult]. Every failure exit
+     *  logs under `VELAASR` so a tester's logcat names the cause without another round-trip. */
     suspend fun listen(
         onLevel: (Float) -> Unit,
         onListening: () -> Unit,
         cancelled: () -> Boolean,
-    ): String? = withContext(Dispatchers.Default) {
-        val rec = ensureRecognizer() ?: return@withContext null
-        if (!hasMicPermission()) return@withContext null
+    ): VoiceResult = withContext(Dispatchers.Default) {
+        fun fail(reason: VoiceResult.Reason, detail: String? = null): VoiceResult.Failed {
+            Timber.tag(TAG).e("listen failed: $reason${detail?.let { " ($it)" } ?: ""}")
+            return VoiceResult.Failed(reason, detail)
+        }
+        val rec = ensureRecognizer()
+            ?: return@withContext fail(VoiceResult.Reason.MODEL, "model absent or native load failed")
+        if (!hasMicPermission()) return@withContext fail(VoiceResult.Reason.PERMISSION)
 
         val vad = runCatching {
             Vad(
@@ -172,7 +224,7 @@ class WhisperRecognizer @Inject constructor(
                     numThreads = 1,
                 ),
             )
-        }.getOrNull() ?: return@withContext null
+        }.getOrNull() ?: return@withContext fail(VoiceResult.Reason.VAD, "silero VAD would not construct")
 
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -187,7 +239,9 @@ class WhisperRecognizer @Inject constructor(
             )
         }.getOrNull()
         if (audio == null || audio.state != AudioRecord.STATE_INITIALIZED) {
-            audio?.release(); vad.release(); return@withContext null
+            val detail = if (audio == null) "constructor threw" else "state=${audio.state} minBuf=$minBuf"
+            audio?.release(); vad.release()
+            return@withContext fail(VoiceResult.Reason.AUDIO_INIT, detail)
         }
 
         val buf = ShortArray(VAD_WINDOW)
@@ -215,7 +269,8 @@ class WhisperRecognizer @Inject constructor(
                 }
             }
         } catch (t: Throwable) {
-            return@withContext null
+            runCatching { vad.release() }
+            return@withContext fail(VoiceResult.Reason.RECORDING, t.message ?: t::class.java.simpleName)
         } finally {
             // Abandon focus FIRST so the music resumes even if a later call throws; every step is
             // guarded so one failure can't skip the rest and leave playback paused forever.
@@ -227,7 +282,7 @@ class WhisperRecognizer @Inject constructor(
         // Prefer the VAD-trimmed segment (leading/trailing silence stripped -> cleaner transcript);
         // fall back to everything captured if the user stopped before a segment closed.
         val samples = segment ?: run {
-            if (!sawSpeech && total < SAMPLE_RATE / 2) { vad.release(); return@withContext null }
+            if (!sawSpeech && total < SAMPLE_RATE / 2) { vad.release(); return@withContext VoiceResult.NoSpeech }
             val out = FloatArray(total)
             var off = 0
             for (c in chunks) { c.copyInto(out, off, 0, min(c.size, out.size - off)); off += c.size }
@@ -247,7 +302,8 @@ class WhisperRecognizer @Inject constructor(
         // Whisper writes prose ("Coffee shops near me.") and, on non-speech audio, bracketed sound
         // tags ("[music]", "[thud]"). :core's SpeechText.cleanSearchTranscript strips those into a
         // clean query (or "" -> null below = heard nothing, no search). Unit-tested there.
-        app.vela.core.voice.SpeechText.cleanSearchTranscript(text).ifBlank { null }
+        val query = app.vela.core.voice.SpeechText.cleanSearchTranscript(text).ifBlank { null }
+        if (query == null) VoiceResult.NoSpeech else VoiceResult.Text(query)
     }
 
     private fun rms(f: FloatArray): Float {

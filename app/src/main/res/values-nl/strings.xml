@@ -511,4 +511,11 @@
     <string name="softkey_unmute">Dempen opheffen</string>
     <string name="softkey_move_map">Kaart verplaatsen</string>
     <string name="softkey_stop_zoom">Stop zoomen</string>
+    <string name="voice_error_title">Zoeken met spraak startte niet</string>
+    <string name="voice_error_retry">Opnieuw proberen</string>
+    <string name="voice_error_model">Het spraakmodel is niet gereed. Download het opnieuw via Instellingen \u2192 Zoeken.</string>
+    <string name="voice_error_permission">Vela heeft microfoontoestemming nodig om te luisteren. Geef die in de app-instellingen van Android.</string>
+    <string name="voice_error_vad">Een deel van het spraakmodel ontbreekt. Download het opnieuw via Instellingen \u2192 Zoeken.</string>
+    <string name="voice_error_audio">Deze telefoon opende de microfoon niet voor Vela. Sluit andere apps die audio opnemen en probeer opnieuw.</string>
+    <string name="voice_error_recording">De opname stopte onverwacht. Probeer opnieuw.</string>
 </resources>

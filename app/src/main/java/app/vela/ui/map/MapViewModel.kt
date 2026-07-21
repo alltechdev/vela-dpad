@@ -4342,6 +4342,7 @@ class MapViewModel @Inject constructor(
             showStatus(appContext.getString(R.string.mapvm_not_enough_space, appContext.getString(R.string.settings_voice_search_model), app.vela.voice.AsrModel.SIZE_MB))
             return
         }
+        whisperRecognizer.clearQuarantine() // a fresh download replaces whatever was quarantined
         _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false) }
         viewModelScope.launch {
             val ok = kokoroInstaller.download(
@@ -4367,7 +4368,11 @@ class MapViewModel @Inject constructor(
 
     /** Record + transcribe on-device (tier-1); returns the heard text or null. Driven by the capture
      *  dialog, which supplies the loudness sink, a start callback and an early-stop check. */
-    suspend fun voiceListen(onLevel: (Float) -> Unit, onListening: () -> Unit, cancelled: () -> Boolean): String? =
+    suspend fun voiceListen(
+        onLevel: (Float) -> Unit,
+        onListening: () -> Unit,
+        cancelled: () -> Boolean,
+    ): app.vela.voice.VoiceResult =
         whisperRecognizer.listen(onLevel, onListening, cancelled)
 
     /** Apply a transcript from either voice tier as the query and run the search. */

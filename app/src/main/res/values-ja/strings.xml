@@ -531,4 +531,11 @@
     <string name="softkey_unmute">ミュート解除</string>
     <string name="softkey_move_map">地図を移動</string>
     <string name="softkey_stop_zoom">ズームを終了</string>
+    <string name="voice_error_title">音声検索を開始できませんでした</string>
+    <string name="voice_error_retry">再試行</string>
+    <string name="voice_error_model">音声モデルの準備ができていません。設定 \u2192 検索 から再ダウンロードしてください。</string>
+    <string name="voice_error_permission">聆くにはマイクの許可が必要です。Android のアプリ設定で許可してください。</string>
+    <string name="voice_error_vad">音声モデルの一部が不足しています。設定 \u2192 検索 から再ダウンロードしてください。</string>
+    <string name="voice_error_audio">この端末でマイクを開けませんでした。録音中の他のアプリを閉じて再試行してください。</string>
+    <string name="voice_error_recording">録音が予期せず停止しました。もう一度お試しください。</string>
 </resources>
