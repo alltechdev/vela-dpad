@@ -934,6 +934,18 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     here, which is what makes this refactor tractable.
   - Do it ONE block at a time, rebuilding and re-checking the logcat number after each, and stop
     when the message disappears. Screenshot the map after each step.
+  - **A naive extraction makes it WORSE, and this was measured, not guessed.** The 221-line block
+    above was fully extracted into `BoxScope.MapIdleOverlays` with all 21 captures passed and the
+    six `MutableState`s re-delegated. It compiled, ran and did not crash - and MapScreen went
+    **19,621 -> 20,351 instructions**. Compose emits `$changed`/`$changed1` bitmask plumbing per
+    parameter at the call site, and for a capture set that size it costs more than the body removes.
+    The change was reverted.
+  - So the rule is: **extract blocks with FEW captures, not the biggest blocks.** Before extracting,
+    count the captures (comment out the block, compile, read the unresolved references - that is
+    the exact list, and it takes one build). A 100-line block taking 4 parameters will beat a
+    220-line block taking 21. Recomputing composable-local values inside the extracted function
+    (`LocalContext.current`, `stringResource`, `isAppInDarkTheme()`, `VelaSoftkeys.isActive()`)
+    rather than passing them also drops the count without changing behaviour.
 - **Startup is GC-bound, not compilation-bound. Do not reach for a baseline profile.** Forcing full
   AOT (`cmd package compile -m speed -f`) made cold start WORSE - 828 ms against 775 ms - which is
   an upper bound on anything a profile could buy. An atrace of a cold start instead attributes
