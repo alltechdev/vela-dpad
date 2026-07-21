@@ -934,6 +934,26 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     here, which is what makes this refactor tractable.
   - Do it ONE block at a time, rebuilding and re-checking the logcat number after each, and stop
     when the message disappears. Screenshot the map after each step.
+  - **EXTRACTION DOES NOT WORK. Two controlled experiments, both worse. Do not try a third.**
+    Extracting a block into a private composable consistently INCREASES MapScreen's instruction
+    count, and the effect is not explained by how many values the block captures:
+
+    | block extracted | lines | captures | lines/capture | MapScreen after |
+    |---|---|---|---|---|
+    | (baseline) | - | - | - | **19,621** |
+    | 1828-2048 idle overlays | 221 | 23 | 9.6 | 20,351 (+730) |
+    | 991-1104 dpad overlay | 114 | 9 | 12.7 | **21,638 (+2,017)** |
+
+    The second was chosen precisely because it had a far better lines-per-capture ratio, on the
+    theory that Compose's per-parameter `$changed` plumbing was the cost. It came out WORSE than the
+    first. Both compiled, installed and ran without crashing, so this is a code-size result, not a
+    correctness one; both were reverted. Whatever dominates the count, adding a composable call
+    layer costs more than the body it removes. **Shrinking MapScreen under the ~10,000 limit is not
+    reachable by pulling blocks out of it**, and anyone trying should have a different hypothesis
+    and measure it in one build before doing the work.
+  - The stale earlier advice below is kept only for the mechanics it records (BoxScope receiver,
+    passing `MutableState` and re-delegating with `by` so the body stays byte-identical). Those
+    techniques are correct; the strategy they serve is not.
   - **A naive extraction makes it WORSE, and this was measured, not guessed.** The 221-line block
     above was fully extracted into `BoxScope.MapIdleOverlays` with all 21 captures passed and the
     six `MutableState`s re-delegated. It compiled, ran and did not crash - and MapScreen went
