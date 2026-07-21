@@ -100,9 +100,18 @@ jobs:
       - name: Check translations
         # Android lint's MissingTranslation doesn't run on assemble/test, so a missed locale
         # backfill ships silently (English shown for that key). Fail fast if any translatable
-        # string is absent from a locale or its placeholders drifted. Intentionally-English-only
-        # strings are marked translatable="false" in res/values/strings.xml and skipped.
-        run: python3 tools/check-translations.py
+        # string is absent from a locale, its placeholders drifted, or its translation went STALE
+        # because the English was edited without it. Intentionally-English-only strings are marked
+        # translatable="false" in res/values/strings.xml and skipped.
+        #
+        # --selftest FIRST, and it is the point of this step as much as the check is: presence and
+        # placeholders both passed green through an English-only rename that left all 14 locales on
+        # the old wording (2026-07-21), so the staleness rule exists because this step lied once.
+        # The selftest is a frozen negative control on synthetic data - it fails if the rule stops
+        # detecting that exact shape - and it runs without touching the repo, in milliseconds.
+        run: |
+          python3 tools/check-translations.py --selftest
+          python3 tools/check-translations.py
 
       - name: Derive build version
         id: ver

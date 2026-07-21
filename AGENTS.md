@@ -536,6 +536,22 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     a pass, which is how a walk over a completely unringed map came back clean. Needs no device, takes
     a second. **Run it after touching the colour match, and wire it into CI** - it is the one check
     that fails when the checker itself breaks.
+- **Translation gate (`tools/check-translations.py`, in CI).** Three checks against
+  `res/values/strings.xml`: every translatable key PRESENT in all 14 locales, PLACEHOLDERS matching
+  (a `%d` fed a String is a crash), and translations not STALE.
+  - Staleness exists because this gate was green for a real bug. Five strings were renamed in
+    English so the speech-to-text model stopped sharing the name "Vela Voice" with the text-to-speech
+    voice; all 14 locales kept the old wording, so the collision the rename existed to remove
+    survived for every non-English user - and presence and placeholders both passed. **Editing
+    English text had no gate at all.** `tools/translations.lock.json` records a hash of each English
+    value and of each locale's value; when English moves and a locale does not, that locale is named.
+  - **Workflow when you edit English copy:** update the locales, then
+    `python3 tools/check-translations.py --update` and commit the lock with the change. A translation
+    that is legitimately unchanged (a brand name) is flagged once - confirm it reads right, --update.
+  - `--selftest` is the frozen negative control, on synthetic data, wired into CI ahead of the check
+    itself: it asserts the rule FAILS on an English-only edit and passes on the four look-alike cases
+    (both sides edited, nothing edited, a brand-new key, a pure re-indent). Same role as
+    `ring_walk.sh --selftest` - the check that fails when the checker breaks.
 - **Dead-code gate (three engines, all in CI, `main`).** ACCURACY IS THE CONTRACT: none may flag
   anything actually needed (a false positive is a bug; a false negative is tolerated).
   - `./gradlew :core:detekt :app:detekt` - parser-level dead code detekt finds and grep CANNOT:
