@@ -49,6 +49,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
 
+        // Ship ARM only. Vela runs on phones, and every phone we support is arm64 or (on the cheap
+        // feature phones this fork exists for) 32-bit ARM - so x86/x86_64 was 22 MB of MapLibre
+        // carried for nothing. The sherpa-onnx packaging{} block below drops its OWN x86 copies;
+        // this catches everything else. Safe for CI, which is host-side only - the on-device suites
+        // need real hardware and an emulator was already dropped as a flaky download (ci.yml). If
+        // you ever DO want an x86_64 emulator locally, comment this out for that build.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+
         // MapTiler key injected from the CI secret (-PmaptilerKey); empty for
         // local builds, in which case the app falls back to the keyless
         // OpenFreeMap basemap. Never stored in the repo.
@@ -215,12 +223,17 @@ android {
     }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-        // The neural-TTS runtime (ONNX Runtime + sherpa-onnx, from the vendored AAR) ships its .so
-        // for all 4 ABIs; Vela targets arm64 phones, so drop the other ABIs' copies - they'd add
-        // ~65 MB for no device we support. MapLibre and other libs stay multi-ABI (untouched).
+        // The neural-TTS/ASR runtime (ONNX Runtime + sherpa-onnx, from the vendored AAR) ships its
+        // .so for all 4 ABIs. Drop x86/x86_64 (~30 MB compressed, no phone we support), but KEEP
+        // armeabi-v7a: this line arrived from upstream reading "Vela targets arm64 phones", which is
+        // true for upstream and FALSE for this fork - feature phones are the whole reason it exists,
+        // and the cheap ones ship 32-bit userspace. With v7a stripped, every sherpa-onnx feature
+        // (Vela voice TTS *and* on-device voice search) dies on those phones with an
+        // UnsatisfiedLinkError that WhisperRecognizer swallowed into "the voice model isn't ready,
+        // re-download it" - advice that could never work, on the exact hardware we target. Costs
+        // ~12 MB compressed. MapLibre and other libs stay multi-ABI (untouched).
         jniLibs {
             excludes += listOf(
-                "**/armeabi-v7a/libonnxruntime.so", "**/armeabi-v7a/libsherpa-onnx*.so",
                 "**/x86/libonnxruntime.so", "**/x86/libsherpa-onnx*.so",
                 "**/x86_64/libonnxruntime.so", "**/x86_64/libsherpa-onnx*.so",
             )

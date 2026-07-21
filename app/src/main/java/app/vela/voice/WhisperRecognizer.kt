@@ -177,6 +177,13 @@ class WhisperRecognizer @Inject constructor(
                         ),
                     ),
                 )
+            }.onFailure {
+                // NAME the throwable. #84 fixed "the reason was discarded at the point of failure"
+                // for listen(), but left it here: getOrNull() ate the one fact that separates a
+                // missing .so (UnsatisfiedLinkError - the v7a strip, see app/build.gradle.kts) from
+                // an OOM on a small phone, and both surfaced as "re-download the model". A tester
+                // re-downloaded 47 MB twice on that advice. The class name alone decides it.
+                Timber.tag(TAG).e(it, "native ASR load failed: ${it::class.java.simpleName}")
             }.getOrNull()
             // The load RETURNED (success or a catchable failure), so the process survived it: clear
             // the sentinel. Only a native abort leaves it set, which is exactly the case we want the
