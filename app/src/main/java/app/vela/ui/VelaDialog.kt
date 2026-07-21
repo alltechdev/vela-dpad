@@ -79,18 +79,29 @@ fun VelaDialog(
             // checkboxes) never pushes the buttons off a small screen - the title stays pinned at
             // the top and the buttons at the bottom, only the middle scrolls. Without this, on a
             // feature-phone-sized display the Confirm/Dismiss buttons fell off-screen, unreachable.
+            // Feature-phone screens get a tighter shell: 24dp of padding + a 24sp headline + two 16/24dp
+            // gaps is ~90dp of chrome, which on a 240x320 panel is most of the dialog. The voice prompt
+            // (title + intro + two option rows + buttons) clipped its last line there until this
+            // shrank. AdaptiveDensity.applied is the ONLY correct test - a screenHeightDp comparison
+            // reads FALSE on exactly these phones, because shrinking the density inflates reported dp
+            // (see AdaptiveDensity's own warning). Normal phones keep the roomy Material metrics.
+            val compact = AdaptiveDensity.applied
             Column(
                 Modifier
                     .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
-                    .padding(24.dp),
+                    .padding(if (compact) 16.dp else 24.dp),
                 horizontalAlignment = if (icon != null) Alignment.CenterHorizontally else Alignment.Start,
             ) {
                 if (icon != null) {
                     icon()
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
                 }
-                Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(16.dp))
+                Text(
+                    title,
+                    style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
                 // weight(1f, fill = false) + verticalScroll: the body takes only what it needs, but
                 // when the whole dialog would exceed the cap it shrinks and scrolls instead of
                 // shoving the buttons off-screen. Focusable body content (checkboxes) scrolls into
@@ -100,7 +111,7 @@ fun VelaDialog(
                         text()
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(if (compact) 12.dp else 24.dp))
                 // FlowRow, not Row: confirm is a filled pill (higher-emphasis action), dismiss a
                 // plain text button. When the two labels don't fit on one line - a long "Download
                 // Vela voice" pill beside "Use system voice", or a small screen - the pill wraps to

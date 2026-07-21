@@ -792,24 +792,37 @@ fun MapScreen(
     // With nothing installed the mic still shows (when the toggle is on) and tapping it OFFERS the
     // Vela voice download - a hidden mic made the whole feature undiscoverable on a fresh install.
     var showAsrOffer by remember { mutableStateOf(false) }
+    // True when the offer was raised INSTEAD of a working voice app. "Not now" then still does what
+    // the tap asked for (hand off to the provider) rather than wasting the press; with no provider
+    // to fall back on, dismissing just closes.
+    var offerHasFallback by remember { mutableStateOf(false) }
+    val launchSystemVoice = {
+        val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            // Pin the voice app the user picked in Settings; with no pick, defer to
+            // Android's own default app, and only pin the first installed one when
+            // Android has no default either (else its chooser interrupts dictation).
+            app.vela.ui.VoiceSearch.launchComponent(context)?.let { component = it }
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, app.vela.ui.AppLocale.effective().toLanguageTag())
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+        }
+        // The resolver check can go stale (provider uninstalled since launch); catch so a
+        // tap can never crash - it just does nothing.
+        runCatching { voiceLauncher.launch(intent) }
+        Unit
+    }
     val onMic: (() -> Unit)? = if (app.vela.ui.VoiceSearch.enabled.value) {
         {
             when (micMode) {
-                app.vela.ui.VoiceSearch.Mode.NONE -> showAsrOffer = true
-                app.vela.ui.VoiceSearch.Mode.SYSTEM -> {
-                    val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        // Pin the voice app the user picked in Settings; with no pick, defer to
-                        // Android's own default app, and only pin the first installed one when
-                        // Android has no default either (else its chooser interrupts dictation).
-                        app.vela.ui.VoiceSearch.launchComponent(context)?.let { component = it }
-                        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, app.vela.ui.AppLocale.effective().toLanguageTag())
-                        putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                app.vela.ui.VoiceSearch.Mode.NONE -> { offerHasFallback = false; showAsrOffer = true }
+                // Offer Vela's own model BEFORE handing speech to a third party - see
+                // VoiceSearch.shouldOfferLocal for why AUTO must ask rather than assume.
+                app.vela.ui.VoiceSearch.Mode.SYSTEM ->
+                    if (app.vela.ui.VoiceSearch.shouldOfferLocal(context)) {
+                        offerHasFallback = true; showAsrOffer = true
+                    } else {
+                        launchSystemVoice()
                     }
-                    // The resolver check can go stale (provider uninstalled since launch); catch so a
-                    // tap can never crash - it just does nothing.
-                    runCatching { voiceLauncher.launch(intent) }
-                }
                 app.vela.ui.VoiceSearch.Mode.LOCAL ->
                     if (vm.voiceMicGranted()) startLocalVoice()
                     else recordAudioLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
@@ -851,13 +864,22 @@ fun MapScreen(
         )
     }
     if (showAsrOffer) {
+        // Declining is remembered ONLY when there was a provider to fall back to, so this asks once
+        // on an ordinary phone but keeps offering on one whose mic cannot work any other way.
+        val dismissOffer = {
+            showAsrOffer = false
+            if (offerHasFallback) {
+                app.vela.ui.VoiceSearch.declineOffer(context)
+                launchSystemVoice()
+            }
+        }
         app.vela.ui.VelaDialog(
-            onDismissRequest = { showAsrOffer = false },
+            onDismissRequest = dismissOffer,
             title = stringResource(R.string.map_asr_offer_title),
             confirmText = stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB),
             onConfirm = { showAsrOffer = false; vm.downloadAsrModel() },
             dismissText = stringResource(R.string.root_not_now),
-            onDismiss = { showAsrOffer = false },
+            onDismiss = dismissOffer,
             text = { Text(stringResource(R.string.map_asr_offer_body)) },
         )
     }

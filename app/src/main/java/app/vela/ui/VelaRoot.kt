@@ -4,8 +4,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -66,12 +68,13 @@ fun VelaRoot(vm: MapViewModel = hiltViewModel()) {
                     // The Vela voice is recommended for EVERYONE - the same prompt regardless of
                     // whether the phone has a system TTS engine, so every install ends up on the
                     // same consistent voice unless they deliberately change it in Settings.
-                    sizeMb = vm.defaultVoiceSizeMb(),
-                    onDownload = {
-                        vm.downloadPiper()
+                    ttsSizeMb = vm.defaultVoiceSizeMb(),
+                    micSizeMb = app.vela.voice.AsrModel.SIZE_MB,
+                    onChoose = { voice, mic ->
+                        vm.downloadOnboardingModels(voice, mic)
                         Onboarding.dismissVoicePrompt(context)
                     },
-                    onUseExisting = { Onboarding.dismissVoicePrompt(context) },
+                    onSkip = { Onboarding.dismissVoicePrompt(context) },
                 )
             } else if (Onboarding.showOfflinePrompt.value) {
                 OfflinePrompt(
@@ -152,30 +155,95 @@ private fun DiagPrompt(onChoose: (diagnostics: Boolean, trips: Boolean) -> Unit,
     )
 }
 
-/** One-time, first-run offer of Vela's on-device neural voice - RECOMMENDED for everyone, the same
- * prompt whether or not the phone has a system TTS engine (consistency: every install lands on the
- * same voice unless the user deliberately changes it). Skipping still leaves nav working via the
- * system voice if one exists; a different voice - including a system engine - is one tap away in
- * Settings → Voice. [sizeMb] is the actual download size of the voice that will be fetched, so the
- * number can never go stale. */
+/**
+ * One tick-able option in [VoicePrompt]: the ROW is the single focus stop, not the checkbox.
+ *
+ * The checkbox is display-only (`onCheckedChange = null`). A separately-focusable Checkbox makes the
+ * row TWO focus stops, and a horizontal D-pad move into that nested target clears focus with no way
+ * back - the same defect the 2026-07-08 audit found on the Settings radio rows, whose fix is the
+ * `dpadClickable` row + display-only indicator pattern copied here. It also gets the app-wide ORANGE
+ * ring: a bare Material Checkbox self-indicates with a faint grey state layer, which on a 240x320
+ * screen is nearly invisible and disagrees with every other focusable surface in the app (one ring
+ * colour everywhere, no exceptions). `dpadClickable` rather than `clickable` so the row does not
+ * draw the grey ripple layer AND the ring at once while a key user is driving.
+ */
 @Composable
-private fun VoicePrompt(sizeMb: Int, onDownload: () -> Unit, onUseExisting: () -> Unit) {
+private fun VoiceOptionRow(checked: Boolean, title: String, desc: String, onToggle: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .dpadHighlight(RoundedCornerShape(6.dp))
+            .dpadClickable { onToggle() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Column(Modifier.padding(start = 4.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** One-time, first-run offer of Vela's TWO on-device speech models: the neural VOICE that speaks
+ * directions, and the MIC that dictates searches. Both are offered to everyone, on ONE screen
+ * rather than two consecutive dialogs.
+ *
+ * That is deliberate. The two share the "Vela Voice" name, and a user who downloaded the voice in
+ * setup then found the search mic still handing off to Google reported it as the setup download
+ * being broken (2026-07-21) - it was not, it was the other model. Split across two dialogs the pair
+ * reads as the same question asked twice; side by side, the FUNCTION labels ("Speak directions
+ * aloud" / "Search by speaking") disambiguate them by layout, which no wording alone achieved.
+ *
+ * The voice is checked by default - recommended for everyone, and it preserves the old one-tap
+ * behaviour for anyone who just confirms. The mic is NOT: it is a [micSizeMb] MB download that
+ * lands far bigger on disk, and opt-OUT is the wrong default for that on a feature phone. Skipping
+ * either leaves it one tap away in Settings, and the mic re-offers itself on the first mic tap.
+ * [ttsSizeMb]/[micSizeMb] are the real download sizes, so neither number can go stale. */
+@Composable
+private fun VoicePrompt(
+    ttsSizeMb: Int,
+    micSizeMb: Int,
+    onChoose: (voice: Boolean, mic: Boolean) -> Unit,
+    onSkip: () -> Unit,
+) {
+    // rememberSaveable, not remember: a rotation or a config change mid-dialog must not silently
+    // reset the user's ticks back to the defaults (the diagnostics prompt has the same hazard).
+    var voice by rememberSaveable { mutableStateOf(true) }
+    var mic by rememberSaveable { mutableStateOf(false) }
     VelaDialog(
-        onDismissRequest = onUseExisting,
+        onDismissRequest = onSkip,
         title = stringResource(R.string.root_voice_title),
         confirmText = stringResource(R.string.root_voice_download),
-        onConfirm = onDownload,
-        dismissText = stringResource(R.string.root_voice_use_system),
-        onDismiss = onUseExisting,
+        onConfirm = { onChoose(voice, mic) },
+        // "Not now" rather than the old "Use system voice": with two checkboxes the dismiss button
+        // can no longer name one model's fallback. The body carries that sentence instead.
+        dismissText = stringResource(R.string.root_not_now),
+        onDismiss = onSkip,
         dismissLowEmphasis = true,
         text = {
-            // Two short paragraphs: the pitch, then the alternative + where to change it. The blank
-            // line keeps the block from reading as one dense wall on a small screen.
-            Text(
-                stringResource(R.string.root_voice_body_intro, sizeMb) + "\n\n" +
-                    stringResource(R.string.root_voice_body_system) + " " +
-                    stringResource(R.string.root_voice_body_outro),
-            )
+            // Same shape as DiagPrompt above (checkbox + title + small description per row), which
+            // is the one in-dialog checkbox layout already proven D-pad-correct on a 240x320 screen.
+            // On a feature phone the two option rows are what matter; the intro is context. Tighten
+            // the gaps there so the second row's third line cannot be pushed under the fold.
+            val compact = AdaptiveDensity.applied
+            Column {
+                Text(stringResource(R.string.root_voice_body_intro))
+                Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+                VoiceOptionRow(
+                    checked = voice,
+                    title = stringResource(R.string.root_voice_tts_title),
+                    desc = stringResource(R.string.root_voice_tts_desc, ttsSizeMb),
+                    onToggle = { voice = !voice },
+                )
+                Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
+                VoiceOptionRow(
+                    checked = mic,
+                    title = stringResource(R.string.root_voice_mic_title),
+                    desc = stringResource(R.string.root_voice_mic_desc, micSizeMb),
+                    onToggle = { mic = !mic },
+                )
+            }
         },
     )
 }

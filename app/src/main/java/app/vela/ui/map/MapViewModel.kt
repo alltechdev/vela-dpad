@@ -4364,6 +4364,23 @@ class MapViewModel @Inject constructor(
         _state.update { it.copy(asrInstalled = false) }
     }
 
+    /** Onboarding offers BOTH on-device speech models on one screen, so a user can pick both at once.
+     *  They must NOT download concurrently: [KokoroInstaller] stages every download through the same
+     *  `filesDir/voice.download.tmp` + `voice.staging` paths, and the two callers guard different
+     *  state ([MapUiState.voiceDownloadingId] vs [MapUiState.asrDownloadPct]), so nothing else stops
+     *  them overlapping. Two in flight would overwrite each other's archive, and the `finally` of
+     *  whichever finished first would delete the other's staging mid-extract - two failed installs
+     *  from one tap. So queue them: the voice first (it is the default pick), the mic once the
+     *  voice's download state clears. Picking only the mic waits on nothing. */
+    fun downloadOnboardingModels(voice: Boolean, mic: Boolean) {
+        if (voice) downloadPiper()
+        if (!mic) return
+        viewModelScope.launch {
+            _state.first { it.voiceDownloadingId == null }
+            downloadAsrModel()
+        }
+    }
+
     fun voiceMicGranted(): Boolean = whisperRecognizer.hasMicPermission()
 
     /** Record + transcribe on-device (tier-1); returns the heard text or null. Driven by the capture
