@@ -95,10 +95,10 @@ jobs:
           fi
 
       - name: Unit tests
-        # :core holds the bulk (pure logic); :app has a small local-JVM suite for pure app-module
-        # decisions whose on-device path is unsafe to reach - e.g. the onboarding download plan,
-        # whose disk-full branch would need a real phone filled to <90 MB free.
-        run: ./gradlew :core:test :app:testStandardDebugUnitTest --no-daemon
+        # Only :core here - it needs no AAR. The :app local-JVM suite runs AFTER the TTS-runtime AAR
+        # fetch below, because configuring :app extracts that AAR (an earlier run of it here failed
+        # with "Failed to transform sherpa-onnx-1.13.3.aar" - the file is fetched further down).
+        run: ./gradlew :core:test --no-daemon
 
       - name: Check translations
         # Android lint's MissingTranslation doesn't run on assemble/test, so a missed locale
@@ -146,6 +146,12 @@ jobs:
           # instead - this is the check whose absence let the original bug ship.
           unzip -l app/libs/sherpa-onnx-1.13.3.aar | grep -q "jni/armeabi-v7a/libsherpa-onnx-jni.so" \
             || { echo "::error::tts-runtime AAR has no armeabi-v7a sherpa-onnx - 32-bit phones would lose voice search + neural TTS"; exit 1; }
+
+      - name: App unit tests
+        # The :app local-JVM suite (pure app-module decisions with no safe on-device path, e.g. the
+        # onboarding download plan's disk-full branch). Here, not in the "Unit tests" step above,
+        # because configuring :app extracts the TTS-runtime AAR fetched just above.
+        run: ./gradlew :app:testStandardDebugUnitTest --no-daemon
 
       - name: Dead-code analysis (detekt)
         # Parser-level dead code detekt finds and grep cannot: unused imports (delegate-aware, so
