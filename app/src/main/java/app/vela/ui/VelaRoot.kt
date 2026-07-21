@@ -138,36 +138,33 @@ private fun DiagPrompt(onChoose: (diagnostics: Boolean, trips: Boolean) -> Unit,
             Column {
                 Text(stringResource(R.string.root_diag_body))
                 Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = diag, onCheckedChange = { diag = it })
-                    Column(Modifier.padding(start = 4.dp)) {
-                        Text(stringResource(R.string.root_diag_share_title), style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.root_diag_share_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                // Same single-focus-stop rows as the voice prompt. This screen carried the ORIGINAL
+                // defect that pattern was written for: a bare Checkbox is its own focus target, so
+                // each row was TWO stops and a horizontal D-pad move into the nested one cleared
+                // focus with no way back (the 2026-07-08 audit's finding on the Settings radio rows),
+                // and it self-indicated with Material's faint grey state layer instead of the
+                // app-wide orange ring - nearly invisible at 240x320.
+                CheckOptionRow(
+                    checked = diag,
+                    title = stringResource(R.string.root_diag_share_title),
+                    desc = stringResource(R.string.root_diag_share_desc),
+                    onToggle = { diag = !diag },
+                )
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = trips, onCheckedChange = { trips = it })
-                    Column(Modifier.padding(start = 4.dp)) {
-                        Text(stringResource(R.string.root_diag_trips_title), style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            stringResource(R.string.root_diag_trips_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                CheckOptionRow(
+                    checked = trips,
+                    title = stringResource(R.string.root_diag_trips_title),
+                    desc = stringResource(R.string.root_diag_trips_desc),
+                    onToggle = { trips = !trips },
+                )
             }
         },
     )
 }
 
 /**
- * One tick-able option in [VoicePrompt]: the ROW is the single focus stop, not the checkbox.
+ * One tick-able option in [VoicePrompt] / [DiagPrompt]: the ROW is the single focus stop, not
+ * the checkbox.
  *
  * The checkbox is display-only (`onCheckedChange = null`). A separately-focusable Checkbox makes the
  * row TWO focus stops, and a horizontal D-pad move into that nested target clears focus with no way
@@ -179,7 +176,7 @@ private fun DiagPrompt(onChoose: (diagnostics: Boolean, trips: Boolean) -> Unit,
  * draw the grey ripple layer AND the ring at once while a key user is driving.
  */
 @Composable
-private fun VoiceOptionRow(checked: Boolean, title: String, desc: String, onToggle: () -> Unit) {
+private fun CheckOptionRow(checked: Boolean, title: String, desc: String, onToggle: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -245,14 +242,14 @@ private fun VoicePrompt(
             Column {
                 Text(stringResource(R.string.root_voice_body_intro))
                 Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
-                VoiceOptionRow(
+                CheckOptionRow(
                     checked = voice,
                     title = stringResource(R.string.root_voice_tts_title),
                     desc = stringResource(R.string.root_voice_tts_desc, ttsSizeMb),
                     onToggle = { voice = !voice },
                 )
                 Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
-                VoiceOptionRow(
+                CheckOptionRow(
                     checked = mic,
                     title = stringResource(R.string.root_voice_mic_title),
                     desc = stringResource(R.string.root_voice_mic_desc, micSizeMb),
