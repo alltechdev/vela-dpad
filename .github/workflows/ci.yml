@@ -116,16 +116,24 @@ jobs:
           echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch TTS runtime AAR
-        # sherpa-onnx neural-TTS runtime (Kokoro voice). It's a 57 MB prebuilt AAR (no Maven
-        # artifact) hosted on the fixed-tag `tts-runtime` release, gitignored out of the repo -
-        # fetch it into app/libs/ so :app can package the arm64 .so. Verify the size so a truncated
-        # download fails loud instead of producing a runtime-crashing APK.
+        # sherpa-onnx neural-TTS + ASR runtime (Kokoro voice, Whisper voice search). It's a 57 MB
+        # prebuilt AAR (no Maven artifact) hosted on the fixed-tag `tts-runtime` release, gitignored
+        # out of the repo - fetch it into app/libs/ so :app can package the arm64 AND armeabi-v7a
+        # .so. Verify the size so a truncated download fails loud instead of producing a
+        # runtime-crashing APK.
         run: |
           mkdir -p app/libs
           # Hosted on this repo's fixed-tag `tts-runtime` release (a one-time manual upload).
           curl -fSL -o app/libs/sherpa-onnx-1.13.3.aar \
             "https://github.com/${{ github.repository }}/releases/download/tts-runtime/sherpa-onnx-1.13.3.aar"
           test "$(stat -c%s app/libs/sherpa-onnx-1.13.3.aar)" -gt 50000000
+          # The hosted AAR must actually CARRY 32-bit ARM, not just be big enough. If it is ever
+          # replaced with an arm64-only build, the v7a strip fix (#81) silently reverts: the APK
+          # still builds, still installs on a TCL Flip 2, and voice search + Vela voice are dead
+          # again with an UnsatisfiedLinkError nobody sees until a tester reports it. Fail here
+          # instead - this is the check whose absence let the original bug ship.
+          unzip -l app/libs/sherpa-onnx-1.13.3.aar | grep -q "jni/armeabi-v7a/libsherpa-onnx-jni.so" \
+            || { echo "::error::tts-runtime AAR has no armeabi-v7a sherpa-onnx - 32-bit phones would lose voice search + neural TTS"; exit 1; }
 
       - name: Dead-code analysis (detekt)
         # Parser-level dead code detekt finds and grep cannot: unused imports (delegate-aware, so
@@ -163,6 +171,36 @@ jobs:
           -PappVersionName=${{ steps.ver.outputs.name }}
           -PappVersionCode=${{ steps.ver.outputs.code }}
           -PmaptilerKey=${{ secrets.MAPTILER_KEY }}
+
+      - name: Verify shipped ABIs
+        # THE check whose absence let #81 ship. A packaging{}/abiFilters edit can drop an ABI's
+        # native libs while everything still compiles, the APK still installs, and the map still
+        # draws - the loss only shows as a native feature dying on hardware no CI job owns. That is
+        # exactly how 32-bit phones lost voice search AND the Vela neural voice: the AAR carried
+        # armeabi-v7a the whole time, the packaging block threw it away, and the failure surfaced to
+        # a tester as "re-download the model", advice that could not work. Assert the shipped set
+        # instead of trusting a diff to be read carefully. arm64 = normal phones, v7a = the feature
+        # phones this fork exists for; x86 stays OUT (22 MB for no phone at all).
+        run: |
+          APK=app/build/outputs/apk/standard/release/app-standard-release.apk
+          abis() { unzip -l "$APK" | sed -n 's#.*lib/\([^/]*\)/.*#\1#p' | sort -u; }
+          echo "shipped ABIs: $(abis | tr '\n' ' ')"
+          # `if !` throughout, never `cmd || { }` / `cmd && { }` - under the default `bash -e` a
+          # grep that correctly finds nothing would otherwise fail the step on the GOOD path.
+          for want in arm64-v8a armeabi-v7a; do
+            if ! abis | grep -qx "$want"; then
+              echo "::error::$APK ships no $want native libs"; exit 1
+            fi
+            if ! unzip -l "$APK" | grep -q "lib/$want/libsherpa-onnx-jni.so"; then
+              echo "::error::$APK has $want but no $want sherpa-onnx - voice search + neural TTS are dead there"; exit 1
+            fi
+          done
+          for unwanted in x86 x86_64; do
+            if abis | grep -qx "$unwanted"; then
+              echo "::error::$APK ships $unwanted native libs - dead weight, no phone uses them"; exit 1
+            fi
+          done
+          echo "OK: arm64-v8a + armeabi-v7a with sherpa-onnx, no x86"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
