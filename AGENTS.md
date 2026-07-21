@@ -662,6 +662,42 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
       phone reads ~1900 MB and a 3 GB phone ~2800 MB. The M5 reads 2878 MB and stays on the normal
       path, which is what keeps every measurement in this file comparable - there is a test asserting
       exactly that, so if it ever flips you will be told.
+  - **`resetprop` exercises REAL low-RAM detection, and is the ONLY way to do it on a release
+    build.** `debug.vela.lowram` is `BuildConfig.DEBUG`-gated, so it is inert on `staging`/`release`
+    - the low-RAM branches had therefore never run on a minified build at all.
+
+        adb shell su -c "resetprop dalvik.vm.heapgrowthlimit 96m"   # then relaunch
+        adb shell su -c "resetprop dalvik.vm.heapgrowthlimit 256m"  # restore
+
+    `ActivityManager.staticGetMemoryClass()` reads that property per call, so the app sees the new
+    heap class immediately and `LowRamMode.classify` runs for real (`forced=no`). Magisk's
+    `resetprop` is what makes a `ro.`-style property writable. RESTORE IT - it changes the heap
+    growth limit for every app started afterwards.
+    - **Verify by BEHAVIOUR, not by log, on staging.** `Timber.plant(DebugTree)` is DEBUG-gated, so
+      `MemoryPressure init` never reaches logcat on a production build. Use the renderer count
+      instead: low-RAM skips the speculative WebView warm, so
+      `adb shell ps -A | grep -c sandboxed_process` is 0 after a search on the low-RAM path and 1 on
+      the normal one. That signal was 0/0/0 versus 1/1/1 across three pairs - perfectly separated,
+      unlike PSS.
+    - Measured this way on `staging`, the low-RAM path is worth about **148 MB**: 166/169/173 MB
+      against 287/372/295 MB. It also proves R8 did not break those branches (0 crashes).
+  - **Simulating memory pressure: the pages must stay HOT or you measure nothing.** A hog that
+    allocates once is simply compressed into this device's 1.6 GB of zram, and `MemAvailable` goes
+    UP - the first attempt at this "applied" 1500 MB and freed 148 MB. Re-touch every page in a loop
+    to deny them to the swapper. Then it bites: `MemAvailable` fell to ~130 MB and lmkd began
+    killing on "direct reclaim and thrashing".
+    - **What that revealed, and it matters for the whole design: trims are not a reliable defence.**
+      Under real pressure `staging` received **zero** `onTrimMemory` callbacks and was killed 20 s
+      in (`oom_score_adj 0`, reason "device is not responding"); the debug build at a gentler 1.6 GB
+      got **exactly one** `level=15`, released and purged in 1 ms, and was killed 8 s later. lmkd
+      kills on thrash-driven unresponsiveness before AMS gets round to asking anyone to release.
+      **Proactive reclaim - the idle reapers, not warming what will not be used, not holding a
+      document after a scrape - is what actually protects a constrained phone.** A release that only
+      happens on trim mostly does not happen.
+    - Do not push past ~1.6 GB on this device. At 1.9 GB the launcher enters a kill loop and the app
+      dies before `MemoryPressure.init` even runs, so the test stops discriminating between good and
+      bad memory behaviour and only says "the device is broken". A continuously-rewritten 1.9 GB is
+      a pathological workload, not a small phone.
   - **Verify the low-RAM path or it ships unverified.** Every dev phone we own reports
     `lowRam=false heapClassMb=256`, so those branches are dead code locally. Debug builds honour
     `adb shell setprop debug.vela.lowram true` (then relaunch). NB `false` FORCES the normal path,
