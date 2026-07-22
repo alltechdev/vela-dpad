@@ -78,6 +78,39 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
   dozen realistic cases, including the ones where the same token means two different things.
   Whatever the probe catches becomes a permanent test before the probe is deleted.
 
+## Fix the harness, never work around it (HARD RULE, NO EXCEPTIONS)
+
+When the verification harness (`tests/devices/full_coverage.sh`, `tests/dpad/nav.sh`,
+`run_all.sh`, the small-screen suites) flakes or cannot reach a feature you built, the ONLY
+acceptable response is to **make the harness accommodate the feature** - never hand-capture the
+frames with ad-hoc `adb` commands and call it verified. Hand-grabbing frames leaves the harness
+permanently unable to prove the feature, so the next run flakes exactly the same way and the proof
+is gone the moment you stop babysitting it.
+
+- **Every new user-visible feature adds its own capture/`mark` step** in the relevant phase of
+  `full_coverage.sh`, wired to a check that can fail (see the section below). If the feature isn't
+  driven by the harness, it isn't done.
+- **Harden nav, don't route around it.** When the chip-search path raced the overlay and missed at
+  240x320, the fix was a typed-search fallback inside `run_coffee` (`type_search` in `nav.sh`) - the
+  reliable path a real user takes - NOT a one-off manual screenshot. Nav that races timing gets a
+  dump+find+tap loop or a fallback path, in the harness, so every future run benefits.
+- **A green harness is the deliverable, not a pile of PNGs.** If you found yourself typing `adb
+  input`/`screencap` by hand to prove something works, stop and put that flow into the harness first.
+
+## Refactors must not orphan resources (HARD RULE)
+
+The CI `Dead-resource audit (lint)` step fails the build on any unused `R.string`/drawable/etc. When
+a refactor removes the LAST usage of a string (e.g. the ASR rework dropped
+`settings_voice_search_model*`), you MUST in the same commit:
+
+- delete the string from `values/strings.xml` **and all 14 locale files** (`grep -rn <name>
+  app/src/main/res/values*/strings.xml` to catch every copy), then
+- re-run `python3 tools/check-translations.py --update` to re-record the lock, and
+- run `./gradlew :app:lintStandardDebug` locally - the same gate CI runs - before pushing.
+
+Removing a string's usage without removing the string turns CI red. Adding a string without wiring it
+into all locales turns the translation gate red. Do both halves, every time.
+
 ## Prove the check CAN fail (HARD RULE, NO EXCEPTIONS)
 
 The section above says look at the pixels. This one is about a different and worse failure: a check

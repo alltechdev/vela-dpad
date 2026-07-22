@@ -472,8 +472,6 @@
     <string name="voice_capture_done">Concluído</string>
     <string name="mapvm_asr_ready">O micro Vela Voice está pronto</string>
     <string name="mapvm_asr_download_failed">Não foi possível transferir o modelo de voz. Verifica a ligação e tenta novamente.</string>
-    <string name="settings_voice_search_model">Micro Vela Voice</string>
-    <string name="settings_voice_search_model_hint">O micro Vela Voice transforma a fala numa pesquisa diretamente no telemóvel: sem outra app e sem enviar nada. Transferência única de %1$d MB.</string>  <!-- format -->
     <string name="settings_asr_engines_hint">A fala torna-se uma pesquisa diretamente no telemóvel: sem outra app e sem enviar nada. Transfere um ou mais motores e escolhe qual o micro usa.</string>
     <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
     <string name="settings_asr_langs_whisper">Todos os idiomas suportados pelo Vela</string>

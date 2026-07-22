@@ -75,26 +75,53 @@ open_settings() {
   return 1
 }
 
-# run_coffee - from the bare map, run a category chip search; waits for results. Leaves focus in the
-# results list. Returns 0 if "N results" appeared. Under soft-keys (dpad forced) the search bar is
-# decluttered away (#76), so the FIRST down lands straight on the category chips row (Restaurants) -
-# no search bar to pass first. Any category yields a result set; RIGHT moves to Coffee for the name.
-run_coffee() {
-  # Run a category chip search. Under soft-keys the search bar is decluttered so the FIRST down IS the
-  # chips row - D-pad to Coffee and OK. In the touch layout the chips sit UNDER the on-screen search
-  # bar, and a D-pad DOWN would focus that bar and auto-EXPAND it into the overlay (hiding the chips),
-  # so TAP the chip directly instead. Either way a category search yields the same result set.
-  if softkeys_shown; then
-    key "$K_DOWN"; key "$K_RIGHT"; key "$K_OK" 5
-  else
-    tap_center "Coffee" || tap_center "Restaurants"; sleep 4
-  fi
+# results_present - true once the results overlay's "N results" count is on screen. Central so both
+# the chip nav and the typed fallback agree on what "done" means. Tolerates pagination (upstream
+# b3bb48fa merges nearby-ambient hits, so the count is now a variable 40-60+, not a fixed number).
+results_present() {
   for _ in 1 2 3 4 5 6; do
     ui_dump
     if $ADB shell cat /sdcard/ui.xml 2>/dev/null | grep -qE 'text="[0-9]+ results"'; then return 0; fi
     sleep 1
   done
   return 1
+}
+
+# type_search <query> - open the search overlay and type <query>, then submit. This is the harness's
+# GROUND-TRUTH search path: it drives the field the same way a user does, so it exercises pagination
+# AND leaves <query> in recents (feeding the search-as-you-type history check). Under soft-keys the
+# RIGHT soft key ("Search") opens the overlay with the field focused; on touch, tap the search bar.
+# We commit the field before submitting so IME text lands, then ENTER (66) fires the query.
+type_search() {
+  local q="$1"
+  if softkeys_shown; then
+    key "$K_SOFT_RIGHT" 2                 # "Search" soft key -> overlay, field focused
+  else
+    tap_center "Search" || { key "$K_DOWN"; key "$K_OK" 1.5; }   # focus + expand the search bar
+  fi
+  $ADB shell input text "$q" >/dev/null 2>&1; sleep 1
+  $ADB shell input keyevent 66 >/dev/null 2>&1   # KEYCODE_ENTER - submit the query
+  sleep 4
+}
+
+# run_coffee - from the bare map, get a coffee result set on screen. Leaves focus/results up. Returns
+# 0 if "N results" appeared. Tries the fast category-chip path first; if that flakes (the chip focus
+# ring can race the overlay at small sizes - the 240x320 chip-nav miss), FALLS BACK to a typed search,
+# which is the reliable path a real user takes and also seeds "coffee" into recents for the history
+# check. Under soft-keys (dpad forced) the search bar is decluttered away (#76) so the FIRST down lands
+# on the category chips row; RIGHT moves to Coffee. On touch the chips sit under the bar, so TAP them.
+run_coffee() {
+  if softkeys_shown; then
+    key "$K_DOWN"; key "$K_RIGHT"; key "$K_OK" 5
+  else
+    tap_center "Coffee" || tap_center "Restaurants"; sleep 4
+  fi
+  results_present && return 0
+  # Chip path flaked - drive the search field directly. goto_map first so the overlay opens clean
+  # (a half-open chip overlay would swallow the soft key).
+  goto_map
+  type_search "coffee"
+  results_present
 }
 
 # open_first_place - from the results list, open the first result's place sheet (handle focused).

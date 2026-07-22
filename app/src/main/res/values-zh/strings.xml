@@ -479,8 +479,6 @@
     <string name="voice_capture_done">完成</string>
     <string name="mapvm_asr_ready">Vela Voice 麦克风已就绪</string>
     <string name="mapvm_asr_download_failed">无法下载语音模型。请检查网络连接后重试。</string>
-    <string name="settings_voice_search_model">Vela Voice 麦克风</string>
-    <string name="settings_voice_search_model_hint">Vela Voice 麦克风直接在您的手机上将语音转为搜索：无需其他应用，也不会上传任何内容。一次性下载 %1$d MB。</string>  <!-- format -->
     <string name="settings_asr_engines_hint">语音直接在您的手机上变成搜索：无需其他应用，也不会上传任何内容。下载一个或多个引擎，并选择麦克风使用哪一个。</string>
     <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
     <string name="settings_asr_langs_whisper">Vela 支持的所有语言</string>

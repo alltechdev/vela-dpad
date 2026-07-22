@@ -478,8 +478,6 @@
     <string name="voice_capture_done">Gotowe</string>
     <string name="mapvm_asr_ready">Mikrofon Vela Voice jest gotowy</string>
     <string name="mapvm_asr_download_failed">Nie udało się pobrać modelu głosu. Sprawdź połączenie i spróbuj ponownie.</string>
-    <string name="settings_voice_search_model">Mikrofon Vela Voice</string>
-    <string name="settings_voice_search_model_hint">Mikrofon Vela Voice zamienia mowę w wyszukiwanie bezpośrednio na telefonie: bez innej aplikacji i bez wysyłania czegokolwiek. Jednorazowe pobranie %1$d MB.</string>  <!-- format -->
     <string name="settings_asr_engines_hint">Mowa staje się wyszukiwaniem bezpośrednio na telefonie: bez innej aplikacji i bez wysyłania czegokolwiek. Pobierz jeden lub więcej silników i wybierz, którego używa mikrofon.</string>
     <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
     <string name="settings_asr_langs_whisper">Wszystkie języki obsługiwane przez Vela</string>

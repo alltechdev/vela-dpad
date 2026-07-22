@@ -459,8 +459,6 @@
     <string name="voice_capture_done">סיום</string>
     <string name="mapvm_asr_ready">מיקרופון Vela Voice מוכן</string>
     <string name="mapvm_asr_download_failed">לא ניתן להוריד את מודל הקול. בדוק את החיבור ונסה שוב.</string>
-    <string name="settings_voice_search_model">מיקרופון Vela Voice</string>
-    <string name="settings_voice_search_model_hint">מיקרופון Vela Voice הופך דיבור לחיפוש ישירות בטלפון שלך: לא צריך אפליקציה אחרת ושום דבר לא מועלה. הורדה חד-פעמית של %1$d מ\"ב.</string>
     <string name="settings_asr_engines_hint">הדיבור הופך לחיפוש ישירות בטלפון שלך: לא צריך אפליקציה אחרת ושום דבר לא מועלה. הורד מנוע אחד או יותר ובחר באיזה המיקרופון ישתמש.</string>
     <string name="settings_asr_engine_meta">%1$s · %2$d מ\"ב</string>
     <string name="settings_asr_langs_whisper">כל השפות ש-Vela תומכת בהן</string>

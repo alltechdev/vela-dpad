@@ -472,8 +472,6 @@
     <string name="voice_capture_done">Klaar</string>
     <string name="mapvm_asr_ready">De Vela Voice-micro is klaar</string>
     <string name="mapvm_asr_download_failed">Kan het spraakmodel niet downloaden. Controleer je verbinding en probeer opnieuw.</string>
-    <string name="settings_voice_search_model">Vela Voice-micro</string>
-    <string name="settings_voice_search_model_hint">De Vela Voice-micro zet spraak direct op je telefoon om in een zoekopdracht: geen andere app nodig en er wordt niets geüpload. Eenmalige download van %1$d MB.</string>  <!-- format -->
     <string name="settings_asr_engines_hint">Spraak wordt direct op je telefoon een zoekopdracht: geen andere app nodig en er wordt niets geüpload. Download een of meer engines en kies welke de micro gebruikt.</string>
     <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
     <string name="settings_asr_langs_whisper">Alle talen die Vela ondersteunt</string>
