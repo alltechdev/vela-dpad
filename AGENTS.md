@@ -1177,22 +1177,36 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     verify-gated, re-runnable) - never re-downloads.
   - **Voice search (speak a query into the search bar), two tiers.** `ui/VoiceSearch` (process-wide
     reactive holder, `init` in `VelaApp`) resolves the mic mode. **tier-1 on-device** =
-    `voice/WhisperRecognizer` (Whisper tiny int8 + Silero VAD via the SAME bundled sherpa-onnx AAR as
-    Piper - `OfflineRecognizer`/`Vad`; the wholesale `com.k2fsa.sherpa.onnx.**` R8 keep already covers
-    it) recording through `AudioRecord`; the model is `voice/AsrModel` (~58 MB, files in
-    `filesDir/asr/whisper-tiny/`). **tier-2** = a `RECOGNIZE_SPEECH` intent hand-off to an installed
-    voice-input app. The mic lives in `ui/search/SearchBar` (`onMic`, shown only when the mode isn't
-    NONE); the listening sheet is `ui/VoiceCaptureDialog` (raw D-pad-focusable `Dialog`, Done
-    auto-focuses); wiring + the RECORD_AUDIO launcher + the download-offer are in `MapScreen`; the
-    Settings -> Search section (toggle, model download/remove, engine picker) is in `SettingsScreen`.
+    `voice/WhisperRecognizer` (despite the name, it now loads ANY engine via the SAME bundled
+    sherpa-onnx AAR as Piper - `OfflineRecognizer`/`Vad`; the wholesale `com.k2fsa.sherpa.onnx.**` R8
+    keep already covers it) recording through `AudioRecord`. **tier-2** = a `RECOGNIZE_SPEECH` intent
+    hand-off to an installed voice-input app. The mic lives in `ui/search/SearchBar` (`onMic`, shown
+    only when the mode isn't NONE); the listening sheet is `ui/VoiceCaptureDialog` (raw
+    D-pad-focusable `Dialog`, Done auto-focuses); wiring + the RECORD_AUDIO launcher + the
+    download-offer are in `MapScreen`; the Settings -> Search per-engine picker is in `SettingsScreen`.
     Needs `RECORD_AUDIO` (manifest; asked at the mic tap).
+    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 / 118e7e8c /
+      137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`), `SENSE_VOICE`
+      (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Each is an OPTIONAL download to
+      `filesDir/asr/<id>/`; `active()` is the picked engine (pref `asr_engine`), `forRecognition(lang)`
+      falls back to Whisper when the pick can't do the app language. **Whisper stays the default and
+      the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =
+      `downloadAsrEngine(DEFAULT)`) so a feature phone is never pushed a heavier model. `isInstalled()`
+      = any engine installed AND not quarantined.
+    - **The crash-sentinel quarantine (issue #81) is PER ENGINE.** `WhisperRecognizer` marks
+      `asr_load_inflight_<id>` before the native load and clears it after; a mark still set next launch
+      = the process died inside sherpa-onnx's C++ parse, so it latches `asr_model_bad_<id>` and deletes
+      **that engine's** dir only. A truncated SenseVoice must never quarantine or delete Whisper. A
+      fresh download of an engine clears its own keys (`clearQuarantine(engine)`).
     - **Model hosting: the `asr-models` GitHub release on THIS repo** (fixed-tag prerelease, like
-      `routing-graphs`/`building-overlays`; `AsrModel.URL`). **The archive MUST be a `.tar.bz2` whose
-      single top-level folder holds the 4 files** (`tiny-encoder.int8.onnx`, `tiny-decoder.int8.onnx`,
-      `tiny-tokens.txt`, `silero_vad.onnx`) - `KokoroInstaller.download` (reused for the ASR download)
-      unpacks bzip2 and RENAMES that inner folder to `AsrModel.dir`, so a `.tar.gz` or a flat/no-folder
-      archive would fail to install. (The mirror was re-packed from upstream's `.tar.gz`; drop the macOS
-      `._*` resource forks when re-packing.)
+      `routing-graphs`/`building-overlays`; `AsrEngine.url`). **Each archive MUST be a `.tar.bz2` whose
+      single top-level folder holds that engine's `files` list** (e.g. Whisper's `tiny-*.onnx` +
+      `silero_vad.onnx`; SenseVoice's `model.int8.onnx` + `tokens.txt` + VAD; Moonshine's
+      preprocess/encode/decode set + tokens + VAD) - `KokoroInstaller.download` unpacks bzip2 and
+      RENAMES that inner folder to `AsrEngine.dir`, so a `.tar.gz` or a flat/no-folder archive fails to
+      install. **The `silero_vad.onnx` VAD ships INSIDE every engine's archive** so each is
+      self-contained. The three mirrors were re-packed from upstream's `.tar.gz` to `.tar.bz2` (drop
+      the macOS `._*` resource forks when re-packing).
   - **Any large download (voice model, routing graph, building overlay) MUST NOT use the shared OkHttp
     client** - its `callTimeout(12s)` (scrape-bounding) aborts the body read mid-stream, `runCatching`
     eats it, and the asset SILENTLY never installs (no crash, no log). `KokoroInstaller`,
