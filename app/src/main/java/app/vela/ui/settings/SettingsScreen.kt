@@ -151,7 +151,11 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                         // focused) - the mirror of the UP-from-top trap. So route DOWN straight to the
                         // first content row via requestFocus (proven to land; never moveFocus, which
                         // clears at a container edge).
+                        // The ring, not just the focus: auto-focus landed here but without
+                        // dpadHighlight the screen LOOKED unfocused - the visible half of
+                        // issue #77 (the search overlay's Back has the same CircleShape ring).
                         modifier = Modifier
+                            .dpadHighlight(androidx.compose.foundation.shape.CircleShape)
                             .dpadAutoFocus(settingsAutoFocus)
                             .onKeyEvent { ev ->
                                 if (ev.key == Key.DirectionDown && ev.type == KeyEventType.KeyDown) {
