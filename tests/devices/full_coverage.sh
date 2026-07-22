@@ -127,6 +127,14 @@ cover_one() {
   # decluttered, #76), else DOWN onto the on-screen search bar + OK - so touch runs still pass too.
   goto_map; open_search; on_screen "Home" || on_screen_contains "Search"; mark "search-overlay" 1; key "$K_BACK" 1
   goto_map; if run_coffee; then haveResults=1; mark "search-results" 1; else mark "search-results" 0; fi
+  # Search-as-you-type against your OWN history (upstream 40873d96): the coffee search above left
+  # "coffee" in recents, so typing a prefix now surfaces it as a local (History-icon) match ABOVE the
+  # network suggestions - instant, offline, no fetch. Best-effort: only assert when the recent exists.
+  if [ "$haveResults" = 1 ]; then
+    goto_map; open_search; $ADB shell input text "cof" >/dev/null 2>&1; sleep 1.5
+    if on_screen "coffee"; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
+    key "$K_BACK" 1
+  else mark "search-history-astype" 0; fi
   fi
 
   # --- place sheet (+ expand) -----------------------------------------------------------------
@@ -201,8 +209,15 @@ cover_one() {
       if open_settings && swipe_up_to "$sub"; then nudge_up; mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 1; key "$K_BACK" 1
       else mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 0; fi
     done
+    # On-device ASR ENGINE PICKER (Search section): the Whisper/SenseVoice/Moonshine rows with
+    # Download / Use / Active / Remove - the pickable-engines surface (upstream 5d2a6636). "Whisper
+    # tiny" is always present (the default catalog entry) so it anchors the swipe regardless of what
+    # is installed.
+    if open_settings && swipe_up_to "Whisper tiny"; then nudge_up; mark "settings-asr-engines" 1; key "$K_BACK" 1
+    else mark "settings-asr-engines" 0; fi
   else mark "settings-top" 0; mark "settings-lower" 0
-       mark "settings-voice-library" 0; mark "settings-offline" 0; mark "settings-saved-places" 0; fi
+       mark "settings-voice-library" 0; mark "settings-offline" 0; mark "settings-saved-places" 0
+       mark "settings-asr-engines" 0; fi
   fi  # phase settings
 
   # --- Voice search (mic + capture sheet) ------------------------------------------------------
