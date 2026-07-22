@@ -87,18 +87,38 @@ results_present() {
   return 1
 }
 
+# edit_field_center - x/y centre of the search overlay's EditText (Compose exposes it as an EditText
+# with an empty content-desc), or empty if none is up. Used to FOCUS the field before typing: opening
+# the overlay lands D-pad focus on the Close button, not the field, so `input text` would go nowhere.
+edit_field_center() {
+  ui_dump
+  $ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
+import sys, re
+d = sys.stdin.read()
+for m in re.finditer(r"<node [^>]*/>|<node [^>]*>", d):
+    s = m.group(0)
+    if "android.widget.EditText" in s:
+        b = re.search(r"bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"", s)
+        if b:
+            x1,y1,x2,y2 = map(int, b.groups()); print((x1+x2)//2, (y1+y2)//2); break
+'
+}
+
 # type_search <query> - open the search overlay and type <query>, then submit. This is the harness's
 # GROUND-TRUTH search path: it drives the field the same way a user does, so it exercises pagination
 # AND leaves <query> in recents (feeding the search-as-you-type history check). Under soft-keys the
-# RIGHT soft key ("Search") opens the overlay with the field focused; on touch, tap the search bar.
-# We commit the field before submitting so IME text lands, then ENTER (66) fires the query.
+# RIGHT soft key ("Search") opens the overlay; on touch, tap the search bar. Either way the field is
+# NOT auto-focused (focus sits on the Close/leading control), so we TAP the EditText to focus it,
+# commit the text, then ENTER (66) fires the query.
 type_search() {
-  local q="$1"
+  local q="$1" fc
   if softkeys_shown; then
-    key "$K_SOFT_RIGHT" 2                 # "Search" soft key -> overlay, field focused
+    key "$K_SOFT_RIGHT" 2                 # "Search" soft key -> overlay
   else
     tap_center "Search" || { key "$K_DOWN"; key "$K_OK" 1.5; }   # focus + expand the search bar
   fi
+  fc="$(edit_field_center)"
+  [ -n "$fc" ] && { $ADB shell input tap $fc >/dev/null 2>&1; sleep 1; }   # focus the text field
   $ADB shell input text "$q" >/dev/null 2>&1; sleep 1
   $ADB shell input keyevent 66 >/dev/null 2>&1   # KEYCODE_ENTER - submit the query
   sleep 4
