@@ -363,8 +363,14 @@ real-first-key initial focus picks the first focusable).
 - `searchOpen` keys off field focus, so merely *walking* focus across the search bar flipped the
   whole screen into the search page.
 - Fix (`SearchBar.kt`): in `dpadMode` the field is unfocusable (`focusProperties { canFocus }`)
-  until **armed** - OK on the search **text region** arms + focuses the field. Un-focusing
-  disarms. Touch phones: `dpadMode` false ⇒ byte-identical.
+  until **armed** - OK on the search **text region** arms + focuses the field. A genuine
+  un-focus disarms - but only after a ~700 ms **settle window**: opening the overlay clears the
+  Yapchik soft-key bar, and that Android-View removal churns window focus and STEALS it off the
+  freshly-focused field to the Back arrow ~165 ms after it lands (device-logged @240x320; the
+  keypad user then could not type at all). During the window a blur does not disarm and the arm
+  effect re-requests focus until it sticks; deliberate navigation (DOWN into the rows, LEFT/RIGHT
+  escaping at the text ends, a submit) ends the window at once so it never fights the user.
+  Touch phones: `dpadMode` false ⇒ byte-identical.
 
 > The arm `clickable` goes on the text region, NOT the whole Card. On the Card it makes the
 > entire bar one focus stop and **swallows the Settings gear inside it - the gear becomes
