@@ -561,9 +561,19 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             state.voiceDownloadingId?.let { id ->
                 val nm = vm.voiceCatalog().firstOrNull { it.id == id }?.displayName ?: stringResource(R.string.settings_voice_fallback_name)
                 val pct = state.kokoroDownloadPct ?: 0f
-                Text(stringResource(R.string.settings_voice_downloading, nm, (pct * 100).toInt()), style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+                if (state.voiceInstalling) {
+                    // Download hit 100%; now unpacking the ~67 MB archive (~15 s). A distinct
+                    // "Installing…" with an indeterminate bar so it doesn't read as a stuck 100%
+                    // download (upstream 75c9104d). The map card already does this; these Settings
+                    // sites did not, so they read as a hang.
+                    Text(stringResource(R.string.settings_voice_search_installing), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    Text(stringResource(R.string.settings_voice_downloading, nm, (pct * 100).toInt()), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+                }
                 Spacer(Modifier.height(12.dp))
             } ?: Spacer(Modifier.height(4.dp))
             // Enumerate TTS engines OFF the main thread. PackageManager.queryIntentServices + the
@@ -1490,6 +1500,7 @@ private fun VoiceLibrary(vm: MapViewModel, state: MapUiState) {
                         active = v.id == selected,
                         downloading = state.voiceDownloadingId == v.id,
                         downloadPct = if (state.voiceDownloadingId == v.id) state.kokoroDownloadPct ?: 0f else 0f,
+                        installing = state.voiceDownloadingId == v.id && state.voiceInstalling,
                         anyDownloading = state.voiceDownloadingId != null,
                         onDownload = { vm.downloadVoice(v.id) },
                         onUse = { vm.selectVoice(v.id) },
@@ -1532,6 +1543,7 @@ private fun VoiceRow(
     active: Boolean,
     downloading: Boolean,
     downloadPct: Float,
+    installing: Boolean = false, // download done, unpacking the archive (~15 s) - not a stuck 100%
     anyDownloading: Boolean,
     onDownload: () -> Unit,
     onUse: () -> Unit,
@@ -1556,6 +1568,7 @@ private fun VoiceRow(
                 )
             }
             val sub = when {
+                installing -> stringResource(R.string.settings_voice_search_installing) // unpacking, not a stuck 100% (upstream 75c9104d)
                 downloading -> stringResource(R.string.settings_voice_row_downloading, (downloadPct * 100).toInt())
                 active -> stringResource(R.string.settings_voice_row_in_use, v.region, gender, v.sizeMb)
                 installed -> stringResource(R.string.settings_voice_row_downloaded, v.region, gender, v.sizeMb)
@@ -1610,5 +1623,10 @@ private fun VoiceRow(
         }
         LaunchedEffect(downloading, active, installed) { keeper.retarget() }
     }
-    if (downloading) LinearProgressIndicator(progress = { downloadPct }, modifier = Modifier.fillMaxWidth())
+    // The label above already reads "Installing…" during unpack; the bar must go indeterminate too,
+    // or it sits frozen at 100% and reads as a hang (upstream 75c9104d, hunk f).
+    if (downloading) {
+        if (installing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        else LinearProgressIndicator(progress = { downloadPct }, modifier = Modifier.fillMaxWidth())
+    }
 }
