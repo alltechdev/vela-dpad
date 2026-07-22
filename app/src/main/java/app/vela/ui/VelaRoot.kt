@@ -69,7 +69,7 @@ fun VelaRoot(vm: MapViewModel = hiltViewModel()) {
                     // whether the phone has a system TTS engine, so every install ends up on the
                     // same consistent voice unless they deliberately change it in Settings.
                     ttsSizeMb = vm.defaultVoiceSizeMb(),
-                    micSizeMb = app.vela.voice.AsrModel.SIZE_MB,
+                    micSizeMb = app.vela.voice.AsrEngine.DEFAULT.sizeMb,
                     onChoose = { voice, mic ->
                         vm.downloadOnboardingModels(voice, mic)
                         Onboarding.dismissVoicePrompt(context)

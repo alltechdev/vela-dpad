@@ -481,6 +481,13 @@
     <string name="mapvm_asr_download_failed">無法下載語音模型。請檢查網路連線後再試一次。</string>
     <string name="settings_voice_search_model">Vela Voice 麥克風</string>
     <string name="settings_voice_search_model_hint">Vela Voice 麥克風直接在你的手機上把語音轉成搜尋：不需要其他應用程式，也不會上傳任何內容。只需一次性下載 %1$d MB。</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">語音直接在你的手機上變成搜尋：不需要其他應用程式，也不會上傳任何內容。下載一個或多個引擎，並選擇麥克風使用哪一個。</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Vela 支援的所有語言</string>
+    <string name="settings_asr_langs_sensevoice">英語、中文、日語、韓語、粤語</string>
+    <string name="settings_asr_langs_moonshine">僅英語</string>
+    <string name="settings_asr_active">使用中</string>
+    <string name="settings_asr_use">使用</string>
     <string name="settings_voice_search_download">下載（%1$d MB）</string>  <!-- format -->
     <string name="settings_voice_search_remove">移除</string>
     <string name="settings_voice_search_downloading">下載中… %1$d%%</string>  <!-- format -->

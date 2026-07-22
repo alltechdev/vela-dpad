@@ -918,7 +918,7 @@ fun MapScreen(
             // data. On a feature phone Back IS the natural cancel, so this was the likely path.
             onDismissRequest = { showAsrOffer = false },
             title = stringResource(R.string.map_asr_offer_title),
-            confirmText = stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB),
+            confirmText = stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrEngine.DEFAULT.sizeMb),
             onConfirm = { showAsrOffer = false; vm.downloadAsrModel() },
             dismissText = stringResource(R.string.root_not_now),
             onDismiss = answerNotNow,

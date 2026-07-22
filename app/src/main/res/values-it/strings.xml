@@ -474,6 +474,13 @@
     <string name="mapvm_asr_download_failed">Impossibile scaricare il modello vocale. Controlla la connessione e riprova.</string>
     <string name="settings_voice_search_model">Micro Vela Voice</string>
     <string name="settings_voice_search_model_hint">Il micro Vela Voice trasforma il parlato in una ricerca direttamente sul telefono: nessun\'altra app e nulla viene caricato. Download una tantum di %1$d MB.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">Il parlato diventa una ricerca direttamente sul telefono: nessun\'altra app e nulla viene caricato. Scarica uno o più motori e scegli quale usa il micro.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Tutte le lingue supportate da Vela</string>
+    <string name="settings_asr_langs_sensevoice">Inglese, cinese, giapponese, coreano, cantonese</string>
+    <string name="settings_asr_langs_moonshine">Solo inglese</string>
+    <string name="settings_asr_active">Attivo</string>
+    <string name="settings_asr_use">Usa</string>
     <string name="settings_voice_search_download">Scarica (%1$d MB)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Rimuovi</string>
     <string name="settings_voice_search_downloading">Download… %1$d%%</string>  <!-- format -->

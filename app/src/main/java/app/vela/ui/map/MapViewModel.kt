@@ -208,7 +208,10 @@ data class MapUiState(
     // live during that whole window, because asrDownloadPct is still null, so tapping it offered
     // the very download that was already queued (user 2026-07-21).
     val asrQueued: Boolean = false,
-    val asrInstalled: Boolean = false,      // Whisper voice-search model present on disk (Settings shows Download vs Remove)
+    val asrInstalled: Boolean = false,      // ANY on-device engine present + usable (mic availability gate)
+    val asrInstalledIds: Set<String> = emptySet(),  // which AsrEngine ids are installed (Settings picker)
+    val asrActiveId: String = app.vela.voice.AsrEngine.DEFAULT.id, // the picked engine's id (Settings "Active")
+    val asrDownloadingEngineId: String? = null,     // which engine is downloading now (Settings row progress)
     val parkingSpot: LatLng? = null, // one-tap "parked here" pin - survives restarts (prefs)
     val parkedAtMillis: Long = 0L,   // when it was saved (for the sheet/history labels)
     val parkingHistory: List<app.vela.core.model.ParkedSpot> = emptyList(), // recent saves, newest first - accidental-overwrite insurance
@@ -957,6 +960,7 @@ class MapViewModel @Inject constructor(
         recentPlaceStore.clear()
         _state.update { it.copy(recents = emptyList(), recentPlaces = emptyList()) }
     }
+
 
     /** Show notices pushed via the signed calibration channel, minus dismissed ones. */
     private fun refreshNotices() {
@@ -4390,9 +4394,15 @@ class MapViewModel @Inject constructor(
 
     // ---- On-device voice search (tier-1 Whisper ASR) ----
 
-    /** Reflect whether the on-device speech model is present (Settings shows Download vs Remove). */
+    /** Reflect whether ANY on-device engine is present + which one is active (Settings picker). */
     fun refreshAsr() {
-        _state.update { it.copy(asrInstalled = whisperRecognizer.isInstalled()) }
+        _state.update {
+            it.copy(
+                asrInstalled = whisperRecognizer.isInstalled(),
+                asrInstalledIds = app.vela.voice.AsrEngine.installed(appContext).map { e -> e.id }.toSet(),
+                asrActiveId = app.vela.voice.AsrEngine.active(appContext).id,
+            )
+        }
         // Pre-build the Whisper recognizer when the mic would actually use it, so the first
         // dictation listens immediately instead of showing a "Getting ready" beat while the
         // ONNX model loads. refreshAsr runs at VM init and the engine pref rarely changes.
@@ -4403,9 +4413,14 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    /** Download the ~58 MB on-device speech-to-text model, reusing the neural-voice installer + its
-     *  no-call-timeout client (the shared 12 s cap would abort a download this size). */
-    fun downloadAsrModel() {
+    /** The onboarding checkbox + the map's one-tap mic offer install the DEFAULT engine (Whisper) -
+     *  the smallest and multilingual, so a feature phone never gets pushed a heavier model by
+     *  default. The Settings picker calls [downloadAsrEngine] directly for a specific engine. */
+    fun downloadAsrModel() = downloadAsrEngine(app.vela.voice.AsrEngine.DEFAULT)
+
+    /** Download [engine]'s model (58-154 MB), reusing the neural-voice installer + its no-call-timeout
+     *  client (the shared 12 s cap would abort a download this size). One at a time. */
+    fun downloadAsrEngine(engine: app.vela.voice.AsrEngine) {
         if (_state.value.asrDownloadPct != null) { _state.update { it.copy(asrQueued = false) }; return } // serialize
         // The collision this really has to avoid is a VOICE download running at the same time:
         // KokoroInstaller stages every download through the same filesDir/voice.download.tmp +
@@ -4414,21 +4429,27 @@ class MapViewModel @Inject constructor(
         // entry point (the Settings button, the map offer) able to start one anyway. Stay queued
         // rather than clearing the flag - the onboarding waiter will call back when the voice is done.
         if (_state.value.voiceDownloadingId != null) return
-        val bytes = app.vela.voice.AsrModel.SIZE_MB.toLong() * 1024 * 1024
+        val bytes = engine.sizeMb.toLong() * 1024 * 1024
         if (appContext.filesDir.usableSpace < bytes * 13 / 10) {
-            showStatus(appContext.getString(R.string.mapvm_not_enough_space, appContext.getString(R.string.settings_voice_search_model), app.vela.voice.AsrModel.SIZE_MB))
+            showStatus(appContext.getString(R.string.mapvm_not_enough_space, engine.displayName, engine.sizeMb))
             _state.update { it.copy(asrQueued = false) } // abandoned: never leave the mic button dead
             return
         }
-        whisperRecognizer.clearQuarantine() // a fresh download replaces whatever was quarantined
-        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false, asrQueued = false) }
+        val hadNone = !whisperRecognizer.isInstalled()
+        whisperRecognizer.clearQuarantine(engine) // a fresh download replaces whatever was quarantined
+        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false, asrQueued = false, asrDownloadingEngineId = engine.id) }
         viewModelScope.launch {
             val ok = kokoroInstaller.download(
-                app.vela.voice.AsrModel.URL, app.vela.voice.AsrModel.dir(appContext), bytes,
+                engine.url, engine.dir(appContext), bytes,
                 onExtracting = { _state.update { it.copy(asrInstalling = true) } },
             ) { p -> _state.update { it.copy(asrDownloadPct = p) } }
-            _state.update { it.copy(asrDownloadPct = null, asrInstalling = false, asrInstalled = whisperRecognizer.isInstalled()) }
-            if (ok && whisperRecognizer.isInstalled()) {
+            if (ok && engine.isInstalled(appContext) && hadNone) {
+                // First engine installed -> make it the active pick, so the mic uses it immediately.
+                app.vela.voice.AsrEngine.setActive(appContext, engine)
+            }
+            _state.update { it.copy(asrDownloadPct = null, asrInstalling = false, asrDownloadingEngineId = null) }
+            refreshAsr()
+            if (ok && engine.isInstalled(appContext)) {
                 whisperRecognizer.warmUp() // a fresh install should listen immediately on first tap
                 flashStatus(appContext.getString(R.string.mapvm_asr_ready))
             } else {
@@ -4437,9 +4458,18 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun deleteAsrModel() {
-        app.vela.voice.AsrModel.dir(appContext).deleteRecursively()
-        _state.update { it.copy(asrInstalled = false) }
+    /** Make [engine] the active voice-search engine (Settings "Use"). */
+    fun selectAsrEngine(engine: app.vela.voice.AsrEngine) {
+        app.vela.voice.AsrEngine.setActive(appContext, engine)
+        whisperRecognizer.warmUp()
+        refreshAsr()
+    }
+
+    /** Remove one engine's model (Settings "Remove"); the active pick degrades to another installed
+     *  engine automatically (AsrEngine.active). */
+    fun deleteAsrEngine(engine: app.vela.voice.AsrEngine) {
+        engine.dir(appContext).deleteRecursively()
+        refreshAsr()
     }
 
     /** Onboarding offers BOTH on-device speech models on one screen, so a user can pick both at once.

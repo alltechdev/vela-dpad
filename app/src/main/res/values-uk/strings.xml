@@ -480,6 +480,13 @@
     <string name="mapvm_asr_download_failed">Не вдалося завантажити голосову модель. Перевірте з\'єднання та повторіть спробу.</string>
     <string name="settings_voice_search_model">Мікрофон Vela Voice</string>
     <string name="settings_voice_search_model_hint">Мікрофон Vela Voice перетворює мовлення на пошук просто на телефоні: без інших застосунків і без надсилання даних. Одноразове завантаження %1$d МБ.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">Мовлення перетворюється на пошук просто на телефоні: без інших застосунків і без надсилання даних. Завантажте один або кілька рушіїв і виберіть, який використовує мікрофон.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d МБ</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Усі мови, які підтримує Vela</string>
+    <string name="settings_asr_langs_sensevoice">англійська, китайська, японська, корейська, кантонська</string>
+    <string name="settings_asr_langs_moonshine">Лише англійська</string>
+    <string name="settings_asr_active">Активно</string>
+    <string name="settings_asr_use">Використати</string>
     <string name="settings_voice_search_download">Завантажити (%1$d МБ)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Видалити</string>
     <string name="settings_voice_search_downloading">Завантаження… %1$d%%</string>  <!-- format -->

@@ -481,6 +481,13 @@
     <string name="mapvm_asr_download_failed">音声モデルをダウンロードできませんでした。接続を確認してもう一度お試しください。</string>
     <string name="settings_voice_search_model">Vela Voice マイク</string>
     <string name="settings_voice_search_model_hint">Vela Voice マイクは、話した言葉を端末上でそのまま検索に変えます。ほかのアプリは不要で、何もアップロードされません。初回のみ %1$d MB のダウンロードです。</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">話した言葉が端末上でそのまま検索になります。ほかのアプリは不要で、何もアップロードされません。エンジンを1つ以上ダウンロードして、マイクが使うものを選んでください。</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Vela が対応するすべての言語</string>
+    <string name="settings_asr_langs_sensevoice">英語、中国語、日本語、韓国語、広東語</string>
+    <string name="settings_asr_langs_moonshine">英語のみ</string>
+    <string name="settings_asr_active">使用中</string>
+    <string name="settings_asr_use">使う</string>
     <string name="settings_voice_search_download">ダウンロード（%1$d MB）</string>  <!-- format -->
     <string name="settings_voice_search_remove">削除</string>
     <string name="settings_voice_search_downloading">ダウンロード中… %1$d%%</string>  <!-- format -->
