@@ -4179,6 +4179,44 @@
    "zh-rTW": "aa5f62aa189f2cdd"
   }
  },
+ "place_review_less": {
+  "en": "ae5239ec63f28cd4",
+  "loc": {
+   "de": "f60087913323af48",
+   "es": "444cacf0462ca9e5",
+   "fr": "c6b9ef33f8cd3c6c",
+   "it": "5622dc3d65c64552",
+   "iw": "8090b9bd7e495a27",
+   "ja": "8ab5d1f1fa80b078",
+   "nl": "7b6a426bac9707f7",
+   "pl": "f12b1920b3a59821",
+   "pt": "444cacf0462ca9e5",
+   "ru": "36c25d9ffcfd800a",
+   "sv": "f9952c0a115a3660",
+   "uk": "aa27da35c7e5fc09",
+   "zh": "afd4b783536b8297",
+   "zh-rTW": "32605db9ff7b5b53"
+  }
+ },
+ "place_review_more": {
+  "en": "d47d7cb0e4f8fd2b",
+  "loc": {
+   "de": "80dc77bcf4ca38b6",
+   "es": "dd7ab474d5a405f1",
+   "fr": "8a7843789f8d740a",
+   "it": "78f5742268e49038",
+   "iw": "6cfc6eb3122de455",
+   "ja": "ff99798f85153d09",
+   "nl": "2aaf74329a61387c",
+   "pl": "068c23e9a7630f75",
+   "pt": "962d86dfa1c5d9b1",
+   "ru": "2071fb9905043171",
+   "sv": "6c766182c6626eb2",
+   "uk": "7c36748dc7061bfe",
+   "zh": "38844b135cf70dfc",
+   "zh-rTW": "38844b135cf70dfc"
+  }
+ },
  "place_reviews_load_failed": {
   "en": "a50407ee35b72aba",
   "loc": {

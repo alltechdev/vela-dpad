@@ -149,6 +149,8 @@
     <string name="place_photo_number">Фото %1$d</string>
     <string name="place_photo_category_all">Все</string>
     <string name="place_saved">Сохранено</string>
+    <string name="place_review_more">Ещё</string>
+    <string name="place_review_less">Свернуть</string>
     <string name="place_save">Сохранить</string>
     <string name="place_more_options">Ещё</string>
     <string name="place_set_as_home">Сделать домом</string>

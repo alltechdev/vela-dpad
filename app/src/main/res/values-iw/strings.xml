@@ -149,6 +149,8 @@
     <string name="place_photo_number">תמונה %1$d</string>
     <string name="place_photo_category_all">הכל</string>
     <string name="place_saved">נשמר</string>
+    <string name="place_review_more">עוד</string>
+    <string name="place_review_less">פחות</string>
     <string name="place_save">שמור</string>
     <string name="place_more_options">אפשרויות נוספות</string>
     <string name="place_set_as_home">הגדר כבית</string>

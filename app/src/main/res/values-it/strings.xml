@@ -149,6 +149,8 @@
     <string name="place_photo_number">Foto %1$d</string>
     <string name="place_photo_category_all">Tutte</string>
     <string name="place_saved">Salvato</string>
+    <string name="place_review_more">Altro</string>
+    <string name="place_review_less">Meno</string>
     <string name="place_save">Salva</string>
     <string name="place_more_options">Altre opzioni</string>
     <string name="place_set_as_home">Imposta come Casa</string>

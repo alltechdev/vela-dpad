@@ -180,6 +180,8 @@
     <string name="place_photo_number">写真 %1$d</string> <!-- format -->
     <string name="place_photo_category_all">すべて</string>
     <string name="place_saved">保存済み</string>
+    <string name="place_review_more">もっと見る</string>
+    <string name="place_review_less">折りたたむ</string>
     <string name="place_save">保存</string>
     <string name="place_more_options">その他のオプション</string>
     <string name="place_set_as_home">自宅に設定</string>

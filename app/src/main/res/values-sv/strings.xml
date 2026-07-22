@@ -149,6 +149,8 @@
     <string name="place_photo_number">Foto %1$d</string>
     <string name="place_photo_category_all">Alla</string>
     <string name="place_saved">Sparad</string>
+    <string name="place_review_more">Mer</string>
+    <string name="place_review_less">Mindre</string>
     <string name="place_save">Spara</string>
     <string name="place_more_options">Fler alternativ</string>
     <string name="place_set_as_home">Ange som Hem</string>

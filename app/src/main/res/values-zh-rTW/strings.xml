@@ -180,6 +180,8 @@
     <string name="place_photo_number">相片 %1$d</string> <!-- format -->
     <string name="place_photo_category_all">全部</string>
     <string name="place_saved">已儲存</string>
+    <string name="place_review_more">更多</string>
+    <string name="place_review_less">收合</string>
     <string name="place_save">儲存</string>
     <string name="place_more_options">更多選項</string>
     <string name="place_set_as_home">設為住家</string>

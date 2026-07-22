@@ -205,6 +205,8 @@
     <!-- place: PlaceSheet.kt -->
     <string name="place_photo_number">Photo %1$d</string> <!-- format -->
     <string name="place_photo_category_all">All</string>
+    <string name="place_review_more">More</string>
+    <string name="place_review_less">Less</string>
     <string name="place_saved">Saved</string>
     <string name="place_save">Save</string>
     <string name="place_more_options">More options</string>
