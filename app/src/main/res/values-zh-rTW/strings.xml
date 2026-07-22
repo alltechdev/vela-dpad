@@ -60,6 +60,9 @@
     <string name="settings_traffic_lights_hint">在語音指引中加入「經過紅綠燈後左轉」這類提示。目前僅支援英文。</string>
     <string name="map_voice_downloading">正在下載 Vela 語音 · %1$d%%</string>
     <string name="map_voice_installing">正在安裝 Vela 語音…</string>
+    <string name="map_asr_downloading">正在下載 Vela Voice 麥克風 · %1$d%%</string>
+    <string name="map_asr_installing">正在安裝 Vela Voice 麥克風…</string>
+    <string name="map_asr_waiting">Vela Voice 麥克風 · 等待 Vela 語音</string>
     <string name="map_region_downloading">正在下載 %1$s 的路線規劃資料 · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">正在儲存 %1$s 的地點供離線搜尋 · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">%1$s 的地點現在可以離線搜尋了</string> <!-- format -->
@@ -334,12 +337,14 @@
 
     <!-- root: VelaRoot.kt -->
     <string name="root_not_now">暫時不要</string>
-    <string name="root_voice_title">導航語音</string>
-    <string name="root_voice_body_intro">Vela 專屬語音完全在你的手機上執行：自然的語音指引，不需帳戶，也不需額外的應用程式。建議使用，只需一次性下載 %1$d MB。</string>
-    <string name="root_voice_body_outro">之後隨時可以在「設定 → 語音」中變更。</string>
-    <string name="root_voice_download">下載 Vela 語音</string>
-    <string name="root_voice_body_system">不想下載？也可以使用手機上現有的語音。</string>
-    <string name="root_voice_use_system">使用系統語音</string>
+    <string name="root_voice_title">Vela Voice</string>
+    <string name="root_voice_body_intro">兩者都完全在你的手機上執行：不需帳戶，不需額外的應用程式，也不會上傳任何內容。</string>
+    <string name="root_voice_tts_title">語音播報路線指引</string>
+    <string name="root_voice_tts_desc">語音逐向導航。建議使用。一次性下載 %1$d MB。</string> <!-- format -->
+    <string name="root_voice_mic_title">說話搜尋</string>
+    <string name="root_voice_mic_desc">不用打字，說話就能搜尋。若不下載，麥克風會使用 Google。一次性下載 %1$d MB。</string> <!-- format -->
+    <string name="root_voice_none_picked">請先勾選一項，或選擇「暫時不要」。</string>
+    <string name="root_voice_download">下載</string>
 
     <!-- nav: NavOverlays.kt -->
     <string name="nav_maneuver_continue">繼續直行</string>
@@ -470,19 +475,19 @@
     <string name="voice_capture_listening">聆聽中…</string>
     <string name="voice_capture_starting">準備中…</string>
     <string name="voice_capture_done">完成</string>
-    <string name="mapvm_asr_ready">Vela 語音已就緒</string>
+    <string name="mapvm_asr_ready">Vela Voice 麥克風已就緒</string>
     <string name="mapvm_asr_download_failed">無法下載語音模型。請檢查網路連線後再試一次。</string>
-    <string name="settings_voice_search_model">Vela 語音</string>
-    <string name="settings_voice_search_model_hint">Vela 語音直接在你的手機上把語音轉成搜尋：不需要其他應用程式，也不會上傳任何內容。只需一次性下載 %1$d MB。</string>  <!-- format -->
+    <string name="settings_voice_search_model">Vela Voice 麥克風</string>
+    <string name="settings_voice_search_model_hint">Vela Voice 麥克風直接在你的手機上把語音轉成搜尋：不需要其他應用程式，也不會上傳任何內容。只需一次性下載 %1$d MB。</string>  <!-- format -->
     <string name="settings_voice_search_download">下載（%1$d MB）</string>  <!-- format -->
     <string name="settings_voice_search_remove">移除</string>
     <string name="settings_voice_search_downloading">下載中… %1$d%%</string>  <!-- format -->
     <string name="settings_voice_search_installing">安裝中…</string>
     <string name="settings_voice_search_engine_title">點按麥克風時</string>
-    <string name="settings_voice_search_engine_auto">Vela 語音</string>
+    <string name="settings_voice_search_engine_auto">Vela Voice 麥克風</string>
     <string name="settings_voice_search_engine_default">Android 預設</string>
     <string name="map_asr_offer_title">語音搜尋</string>
-    <string name="map_asr_offer_body">下載 Vela 語音，用說的就能搜尋。它完全在你的手機上執行，不會上傳任何內容。</string>
+    <string name="map_asr_offer_body">下載 Vela Voice 麥克風，用說的就能搜尋。它完全在你的手機上執行，不會上傳任何內容。</string>
     <string name="map_parking_saved">已儲存停車位置</string>
     <string name="map_parking_no_fix">正在等待定位</string>
     <string name="map_parking_cleared">已清除停車位置</string>

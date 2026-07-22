@@ -60,6 +60,9 @@
     <string name="settings_traffic_lights_hint">音声案内に「信号を通過して左折」のような目印を追加します。今のところ英語のみです。</string>
     <string name="map_voice_downloading">Vela 音声をダウンロード中 · %1$d%%</string>
     <string name="map_voice_installing">Vela 音声をインストール中…</string>
+    <string name="map_asr_downloading">Vela Voice マイクをダウンロード中 · %1$d%%</string>
+    <string name="map_asr_installing">Vela Voice マイクをインストール中…</string>
+    <string name="map_asr_waiting">Vela Voice マイク · Vela 音声を待機中</string>
     <string name="map_region_downloading">%1$s の経路データをダウンロード中 · %2$d%%</string> <!-- format -->
     <string name="map_region_places_downloading">%1$s の場所をオフライン検索用に保存中 · %2$d%%</string> <!-- format -->
     <string name="mapvm_poipack_ready">%1$s の場所がオフラインで検索できるようになりました</string> <!-- format -->
@@ -334,12 +337,14 @@
 
     <!-- root: VelaRoot.kt -->
     <string name="root_not_now">後で</string>
-    <string name="root_voice_title">ナビの音声</string>
-    <string name="root_voice_body_intro">Vela の音声は完全に端末上で動作します。自然な音声案内で、アカウントも追加アプリも不要。おすすめです（初回のみ %1$d MB のダウンロード）。</string>
-    <string name="root_voice_body_outro">設定 → 音声 でいつでも変更できます。</string>
-    <string name="root_voice_download">Vela 音声をダウンロード</string>
-    <string name="root_voice_body_system">ダウンロードしない場合は、端末にすでにある音声も使えます。</string>
-    <string name="root_voice_use_system">システムの音声を使用</string>
+    <string name="root_voice_title">Vela Voice</string>
+    <string name="root_voice_body_intro">どちらも完全に端末上で動作します。アカウントも追加アプリも不要で、何もアップロードされません。</string>
+    <string name="root_voice_tts_title">音声で案内を読み上げる</string>
+    <string name="root_voice_tts_desc">音声のターンバイターン案内。おすすめです。初回のみ %1$d MB のダウンロード。</string> <!-- format -->
+    <string name="root_voice_mic_title">話して検索する</string>
+    <string name="root_voice_mic_desc">入力せずに音声で検索できます。なしの場合、マイクは Google を使います。初回のみ %1$d MB のダウンロード。</string> <!-- format -->
+    <string name="root_voice_none_picked">どちらかを選ぶか、「後で」を押してください。</string>
+    <string name="root_voice_download">ダウンロード</string>
 
     <!-- nav: NavOverlays.kt -->
     <string name="nav_maneuver_continue">直進</string>
@@ -470,19 +475,19 @@
     <string name="voice_capture_listening">聞き取っています…</string>
     <string name="voice_capture_starting">準備しています…</string>
     <string name="voice_capture_done">完了</string>
-    <string name="mapvm_asr_ready">Vela 音声の準備ができました</string>
+    <string name="mapvm_asr_ready">Vela Voice マイクの準備ができました</string>
     <string name="mapvm_asr_download_failed">音声モデルをダウンロードできませんでした。接続を確認してもう一度お試しください。</string>
-    <string name="settings_voice_search_model">Vela 音声</string>
-    <string name="settings_voice_search_model_hint">Vela 音声は、話した言葉を端末上でそのまま検索に変えます。ほかのアプリは不要で、何もアップロードされません。初回のみ %1$d MB のダウンロードです。</string>  <!-- format -->
+    <string name="settings_voice_search_model">Vela Voice マイク</string>
+    <string name="settings_voice_search_model_hint">Vela Voice マイクは、話した言葉を端末上でそのまま検索に変えます。ほかのアプリは不要で、何もアップロードされません。初回のみ %1$d MB のダウンロードです。</string>  <!-- format -->
     <string name="settings_voice_search_download">ダウンロード（%1$d MB）</string>  <!-- format -->
     <string name="settings_voice_search_remove">削除</string>
     <string name="settings_voice_search_downloading">ダウンロード中… %1$d%%</string>  <!-- format -->
     <string name="settings_voice_search_installing">インストールしています…</string>
     <string name="settings_voice_search_engine_title">マイクをタップしたとき</string>
-    <string name="settings_voice_search_engine_auto">Vela 音声</string>
+    <string name="settings_voice_search_engine_auto">Vela Voice マイク</string>
     <string name="settings_voice_search_engine_default">Android のデフォルト</string>
     <string name="map_asr_offer_title">音声検索</string>
-    <string name="map_asr_offer_body">Vela 音声をダウンロードすると、話して検索できるようになります。完全に端末上で動作し、何もアップロードしません。</string>
+    <string name="map_asr_offer_body">Vela Voice マイクをダウンロードすると、話して検索できるようになります。完全に端末上で動作し、何もアップロードしません。</string>
     <string name="map_parking_saved">駐車位置を保存しました</string>
     <string name="map_parking_no_fix">位置情報の取得を待っています</string>
     <string name="map_parking_cleared">駐車位置を消去しました</string>

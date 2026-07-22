@@ -515,6 +515,11 @@ fun MapScreen(
     val infoCardsShown = !state.navigating && state.selected == null && !searchOpen &&
         (
             state.notices.isNotEmpty() || state.voiceDownloadingId != null ||
+                // The MIC model belongs here too. Its card was added to the block below but this gate
+                // was not updated, so a mic-only download rendered NOTHING - build green, card never
+                // on screen. Found by looking at the device, not the diff: filesDir held a complete
+                // 49 MB voice.download.tmp and a live voice.staging while the map showed no progress.
+                state.asrDownloadPct != null || state.asrQueued ||
                 state.routingDownloadingId != null || state.poiPackDownloadingId != null ||
                 state.updateInfo != null
             )
@@ -792,23 +797,67 @@ fun MapScreen(
     // With nothing installed the mic still shows (when the toggle is on) and tapping it OFFERS the
     // Vela voice download - a hidden mic made the whole feature undiscoverable on a fresh install.
     var showAsrOffer by remember { mutableStateOf(false) }
+    // True when the offer was raised INSTEAD of a working voice app. "Not now" then still does what
+    // the tap asked for (hand off to the provider) rather than wasting the press; with no provider
+    // to fall back on, dismissing just closes.
+    var offerHasFallback by remember { mutableStateOf(false) }
+    val launchSystemVoice = {
+        val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            // Pin the voice app the user picked in Settings; with no pick, defer to
+            // Android's own default app, and only pin the first installed one when
+            // Android has no default either (else its chooser interrupts dictation).
+            app.vela.ui.VoiceSearch.launchComponent(context)?.let { component = it }
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, app.vela.ui.AppLocale.effective().toLanguageTag())
+            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+        }
+        // The resolver check can go stale (provider uninstalled since launch); catch so a
+        // tap can never crash - it just does nothing.
+        runCatching { voiceLauncher.launch(intent) }
+        Unit
+    }
+    // NEVER offer a download that is already running. The model is not on disk until it finishes, so
+    // every "is it installed" test still reads false mid-download, and the mic offered the same 58 MB
+    // again while the bar was moving (user 2026-07-21). The progress card above is the answer to the
+    // tap in that window.
+    // QUEUED counts as busy, not just in-flight. Ticking both models in setup downloads them one at a
+    // time (shared temp paths), so the mic spends the whole voice download picked-but-not-started -
+    // and gating on asrDownloadPct alone left the button live for exactly that window.
+    val asrDownloading = state.asrDownloadPct != null || state.asrQueued
+    // Tapping the mic while its model is still arriving must SAY SO. Two wrong answers were shipped
+    // before this: re-offering the same 58 MB download (nothing on disk yet, so every "installed?"
+    // test reads false), and then silently opening Google instead - which is worse, because ticking
+    // the mic was an explicit choice NOT to send speech off the phone. Reuses the progress card's own
+    // strings, so no new copy and it names the real percentage.
+    //
+    // A TOAST, not flashStatus: the status card renders in the same top stack as the download banners,
+    // so the answer to the tap appeared UNDER the very banners it was explaining and read as buried
+    // (user 2026-07-21). A toast floats at the bottom, clear of them.
+    val showMicBusyToast = {
+        android.widget.Toast.makeText(
+            context,
+            when {
+                state.asrDownloadPct == null -> context.getString(R.string.map_asr_waiting)
+                state.asrInstalling -> context.getString(R.string.map_asr_installing)
+                else -> context.getString(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt())
+            },
+            android.widget.Toast.LENGTH_SHORT,
+        ).show()
+    }
     val onMic: (() -> Unit)? = if (app.vela.ui.VoiceSearch.enabled.value) {
         {
             when (micMode) {
-                app.vela.ui.VoiceSearch.Mode.NONE -> showAsrOffer = true
-                app.vela.ui.VoiceSearch.Mode.SYSTEM -> {
-                    val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        // Pin the voice app the user picked in Settings; with no pick, defer to
-                        // Android's own default app, and only pin the first installed one when
-                        // Android has no default either (else its chooser interrupts dictation).
-                        app.vela.ui.VoiceSearch.launchComponent(context)?.let { component = it }
-                        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, app.vela.ui.AppLocale.effective().toLanguageTag())
-                        putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, voicePrompt)
+                app.vela.ui.VoiceSearch.Mode.NONE ->
+                    if (asrDownloading) showMicBusyToast()
+                    else { offerHasFallback = false; showAsrOffer = true }
+                // Offer Vela's own model BEFORE handing speech to a third party - see
+                // VoiceSearch.shouldOfferLocal for why AUTO must ask rather than assume.
+                app.vela.ui.VoiceSearch.Mode.SYSTEM -> when {
+                    asrDownloading -> showMicBusyToast()
+                    app.vela.ui.VoiceSearch.shouldOfferLocal(context) -> {
+                        offerHasFallback = true; showAsrOffer = true
                     }
-                    // The resolver check can go stale (provider uninstalled since launch); catch so a
-                    // tap can never crash - it just does nothing.
-                    runCatching { voiceLauncher.launch(intent) }
+                    else -> launchSystemVoice()
                 }
                 app.vela.ui.VoiceSearch.Mode.LOCAL ->
                     if (vm.voiceMicGranted()) startLocalVoice()
@@ -851,13 +900,28 @@ fun MapScreen(
         )
     }
     if (showAsrOffer) {
+        // "Not now" is an ANSWER: remember it (only when a provider exists to fall back on, so a
+        // phone whose mic cannot work any other way keeps being offered the thing that would fix it)
+        // and carry out the tap the user made by handing off to that provider.
+        val answerNotNow = {
+            showAsrOffer = false
+            if (offerHasFallback) {
+                app.vela.ui.VoiceSearch.declineOffer(context)
+                launchSystemVoice()
+            }
+        }
         app.vela.ui.VelaDialog(
+            // BACK / outside tap is a CANCEL, not an answer, and must do neither of those things.
+            // Wiring it to the same handler meant one Back press permanently persisted the decline
+            // AND opened the third-party recogniser - speech leaving the phone straight after an
+            // explicit cancel, with the on-device offer never shown again short of clearing app
+            // data. On a feature phone Back IS the natural cancel, so this was the likely path.
             onDismissRequest = { showAsrOffer = false },
             title = stringResource(R.string.map_asr_offer_title),
             confirmText = stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB),
             onConfirm = { showAsrOffer = false; vm.downloadAsrModel() },
             dismissText = stringResource(R.string.root_not_now),
-            onDismiss = { showAsrOffer = false },
+            onDismiss = answerNotNow,
             text = { Text(stringResource(R.string.map_asr_offer_body)) },
         )
     }
@@ -2126,7 +2190,31 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (downloadingVoiceId != null) {
-                    VoiceDownloadCard(installing = state.voiceInstalling, pct = state.kokoroDownloadPct ?: 0f)
+                    VoiceDownloadCard(
+                        label = if (state.voiceInstalling) stringResource(R.string.map_voice_installing)
+                        else stringResource(R.string.map_voice_downloading, ((state.kokoroDownloadPct ?: 0f) * 100).toInt()),
+                        pct = state.kokoroDownloadPct ?: 0f,
+                        indeterminate = state.voiceInstalling,
+                    )
+                }
+                // The MIC model gets the same card. Without it the onboarding download ran with no
+                // surface outside Settings - which is the exact fault this card was added to fix for
+                // the voice. Picking both options in setup then looked like only the voice
+                // downloaded, and because nothing on screen said a download was in flight, tapping
+                // the mic mid-download OFFERED THE SAME DOWNLOAD AGAIN (user 2026-07-21).
+                if (state.asrDownloadPct != null || state.asrQueued) {
+                    // Three states, three honest labels: WAITING (picked, but the voice download has
+                    // the shared staging paths), downloading with a real %, then installing.
+                    val micQueued = state.asrDownloadPct == null
+                    VoiceDownloadCard(
+                        label = when {
+                            micQueued -> stringResource(R.string.map_asr_waiting)
+                            state.asrInstalling -> stringResource(R.string.map_asr_installing)
+                            else -> stringResource(R.string.map_asr_downloading, ((state.asrDownloadPct ?: 0f) * 100).toInt())
+                        },
+                        pct = state.asrDownloadPct ?: 0f,
+                        indeterminate = micQueued || state.asrInstalling,
+                    )
                 }
                 // A region (state/country) download: the routing graph first, then its place pack -
                 // same progress card treatment as the voice download, so a Settings-started state
@@ -3082,13 +3170,19 @@ private fun InfoCard(
     }
 }
 
-/** Voice-download progress over the map - makes the onboarding one-tap install visible (it used to
- * run with no surface outside Settings). Reads the SAME state the Settings row does, so it also
- * shows when a Settings-started download is still running after backing out to the map. The bar
+/** Speech-model download progress over the map - makes the onboarding one-tap install visible (it
+ * used to run with no surface outside Settings). Reads the SAME state the Settings row does, so it
+ * also shows when a Settings-started download is still running after backing out to the map. The bar
  * includes the extract phase (KokoroInstaller maps untar into the tail), so it no longer parks at
- * ~98% while the archive unpacks. */
+ * ~98% while the archive unpacks. Labels are passed in because BOTH on-device models use this card -
+ * the voice that speaks directions and the mic that hears searches. */
 @Composable
-private fun VoiceDownloadCard(installing: Boolean, pct: Float, modifier: Modifier = Modifier) {
+private fun VoiceDownloadCard(
+    label: String,
+    pct: Float,
+    indeterminate: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Card(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -3097,15 +3191,13 @@ private fun VoiceDownloadCard(installing: Boolean, pct: Float, modifier: Modifie
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(
-                if (installing) stringResource(R.string.map_voice_installing)
-                else stringResource(R.string.map_voice_downloading, (pct * 100).toInt()),
-                fontWeight = FontWeight.SemiBold,
-            )
+            Text(label, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
-            // Determinate while downloading; the unpack step can't report a meaningful %, so it goes
-            // indeterminate under the "Installing…" label rather than crawling a frozen-looking bar.
-            if (installing) {
+            // Determinate only while bytes are actually moving. The unpack step can't report a
+            // meaningful %, and a QUEUED download has not started at all - both would otherwise sit at
+            // a frozen-looking number (the queued mic parked at "0%" for the whole voice download and
+            // read as stuck, user 2026-07-21). Indeterminate says "working, no number" honestly.
+            if (indeterminate) {
                 androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else {
                 androidx.compose.material3.LinearProgressIndicator(

@@ -12,10 +12,11 @@ dismiss_onboarding() {
   # after two consecutive settled misses.
   local misses=0
   for _ in $(seq 1 8); do
-    # The first-run chain: the diagnostics consent + "Offline maps" dialogs dismiss with "Not now";
-    # the "Spoken navigation voice" dialog's auto-focused dismiss is "Use system voice". OK activates
-    # whichever is up (both are the safe/decline choice). Keep clearing until two settled misses.
-    if on_screen "Not now" || on_screen "Use system voice"; then key "$K_OK" 1.2; misses=0
+    # The first-run chain: the "Vela Voice" prompt, "Offline maps", and the diagnostics consent all
+    # dismiss with "Not now" - OK activates the safe/decline choice on whichever is up. (The voice
+    # prompt's dismiss used to be "Use system voice"; it is "Not now" since the two-checkbox
+    # redesign.) Keep clearing until two settled misses.
+    if on_screen "Not now"; then key "$K_OK" 1.2; misses=0
     else misses=$((misses + 1)); [ "$misses" -ge 2 ] && break; sleep 0.6; fi
   done
 }

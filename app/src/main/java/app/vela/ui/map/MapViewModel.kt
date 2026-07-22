@@ -203,6 +203,11 @@ data class MapUiState(
     val voiceSpeaker: Int = 0, // chosen speaker # for the multi-speaker Vela voice (playground stepper)
     val asrDownloadPct: Float? = null,      // 0f..1f while the on-device voice-search model downloads; null = idle
     val asrInstalling: Boolean = false,     // ASR download done, unpacking
+    // Mic model PICKED in onboarding but not started yet - it waits for the voice download to
+    // finish (shared temp paths, see downloadOnboardingModels). Without this the mic button was
+    // live during that whole window, because asrDownloadPct is still null, so tapping it offered
+    // the very download that was already queued (user 2026-07-21).
+    val asrQueued: Boolean = false,
     val asrInstalled: Boolean = false,      // Whisper voice-search model present on disk (Settings shows Download vs Remove)
     val parkingSpot: LatLng? = null, // one-tap "parked here" pin - survives restarts (prefs)
     val parkedAtMillis: Long = 0L,   // when it was saved (for the sheet/history labels)
@@ -239,6 +244,31 @@ data class MapUiState(
     val poiPackRegions: List<app.vela.offline.RoutingRegion> = emptyList(), // the pack catalog (revs/deltas)
     val poiPackInstalledRevs: Map<String, Int> = emptyMap(),                // installed pack revision per region
 )
+
+/** What to do with the onboarding MIC download after the voice request has been made. */
+enum class OnboardingMicAction { NONE, ABANDON, QUEUE }
+
+/**
+ * Decide the mic download's fate when both speech models are offered together in onboarding. Pure so
+ * it can be unit-tested without the ViewModel - the on-device path that reaches [ABANDON] is a
+ * disk-full voice refusal, which cannot be reproduced safely on a real device.
+ *
+ * - [NONE]    the mic was not requested - nothing to do.
+ * - [ABANDON] the mic was requested AND the voice was requested but did not start (low disk / bad
+ *   id). The two share [KokoroInstaller]'s temp paths so they cannot run at once, and a device that
+ *   just refused the voice for space is in no state for a second large download - drop the mic and
+ *   let the voice's own status message stand. Regression guard for the bug where the queue's
+ *   `voiceDownloadingId == null` wait was satisfied INSTANTLY by a refused voice and started the mic
+ *   anyway (review of PR #87).
+ * - [QUEUE]   the mic was requested and either the voice is genuinely downloading (queue behind it)
+ *   or no voice was requested (nothing to wait on).
+ */
+fun onboardingMicAction(voiceRequested: Boolean, voiceStarted: Boolean, micRequested: Boolean): OnboardingMicAction =
+    when {
+        !micRequested -> OnboardingMicAction.NONE
+        voiceRequested && !voiceStarted -> OnboardingMicAction.ABANDON
+        else -> OnboardingMicAction.QUEUE
+    }
 
 /**
  * State holder for the map experience. Nav itself lives in the shared
@@ -4336,14 +4366,22 @@ class MapViewModel @Inject constructor(
     /** Download the ~58 MB on-device speech-to-text model, reusing the neural-voice installer + its
      *  no-call-timeout client (the shared 12 s cap would abort a download this size). */
     fun downloadAsrModel() {
-        if (_state.value.asrDownloadPct != null) return // serialize
+        if (_state.value.asrDownloadPct != null) { _state.update { it.copy(asrQueued = false) }; return } // serialize
+        // The collision this really has to avoid is a VOICE download running at the same time:
+        // KokoroInstaller stages every download through the same filesDir/voice.download.tmp +
+        // voice.staging, so two in flight overwrite each other's archive and the first to finish
+        // deletes the other's staging mid-extract. Guarding only asrDownloadPct left every other
+        // entry point (the Settings button, the map offer) able to start one anyway. Stay queued
+        // rather than clearing the flag - the onboarding waiter will call back when the voice is done.
+        if (_state.value.voiceDownloadingId != null) return
         val bytes = app.vela.voice.AsrModel.SIZE_MB.toLong() * 1024 * 1024
         if (appContext.filesDir.usableSpace < bytes * 13 / 10) {
             showStatus(appContext.getString(R.string.mapvm_not_enough_space, appContext.getString(R.string.settings_voice_search_model), app.vela.voice.AsrModel.SIZE_MB))
+            _state.update { it.copy(asrQueued = false) } // abandoned: never leave the mic button dead
             return
         }
         whisperRecognizer.clearQuarantine() // a fresh download replaces whatever was quarantined
-        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false) }
+        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false, asrQueued = false) }
         viewModelScope.launch {
             val ok = kokoroInstaller.download(
                 app.vela.voice.AsrModel.URL, app.vela.voice.AsrModel.dir(appContext), bytes,
@@ -4362,6 +4400,42 @@ class MapViewModel @Inject constructor(
     fun deleteAsrModel() {
         app.vela.voice.AsrModel.dir(appContext).deleteRecursively()
         _state.update { it.copy(asrInstalled = false) }
+    }
+
+    /** Onboarding offers BOTH on-device speech models on one screen, so a user can pick both at once.
+     *  They must NOT download concurrently: [KokoroInstaller] stages every download through the same
+     *  `filesDir/voice.download.tmp` + `voice.staging` paths, and the two callers guard different
+     *  state ([MapUiState.voiceDownloadingId] vs [MapUiState.asrDownloadPct]), so nothing else stops
+     *  them overlapping. Two in flight would overwrite each other's archive, and the `finally` of
+     *  whichever finished first would delete the other's staging mid-extract - two failed installs
+     *  from one tap. So queue them: the voice first (it is the default pick), the mic once the
+     *  voice's download state clears. Picking only the mic waits on nothing. */
+    fun downloadOnboardingModels(voice: Boolean, mic: Boolean) {
+        if (voice) downloadPiper()
+        // downloadVoice REFUSES silently (low disk, unknown voice id) by returning before it ever
+        // sets voiceDownloadingId - it only calls showStatus. So the actual outcome of the voice
+        // request is read back off the state, and the mic's fate decided from it by the pure
+        // [onboardingMicAction] (unit-tested; a disk-full repro is unsafe on a real device).
+        val voiceStarted = _state.value.voiceDownloadingId != null
+        when (onboardingMicAction(voiceRequested = voice, voiceStarted = voiceStarted, micRequested = mic)) {
+            OnboardingMicAction.NONE -> Unit
+            OnboardingMicAction.ABANDON ->
+                // Voice was asked for and did not start (the device just said it has no room, or the
+                // id was bad). Piling a second large download on is wrong, and asrQueued must be
+                // cleared so the mic button does not sit dead. The voice's status message is the
+                // reason already on screen.
+                _state.update { it.copy(asrQueued = false) }
+            OnboardingMicAction.QUEUE -> {
+                // Mark queued IMMEDIATELY, before the wait. The mic is a chosen, pending download
+                // from this moment, and the UI must treat it as busy for the whole wait - not just
+                // once bytes move - or the button stays live and re-offers it.
+                _state.update { it.copy(asrQueued = true) }
+                viewModelScope.launch {
+                    _state.first { it.voiceDownloadingId == null }
+                    downloadAsrModel()
+                }
+            }
+        }
     }
 
     fun voiceMicGranted(): Boolean = whisperRecognizer.hasMicPermission()
