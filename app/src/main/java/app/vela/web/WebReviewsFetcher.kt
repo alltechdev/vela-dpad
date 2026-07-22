@@ -292,7 +292,13 @@ class WebReviewsFetcher @Inject constructor(
                   // anyway, so letting them through only wastes CAP slots on cards we can't render.
                 }).filter(function(x){ return x.a; });
               }
-              function expand(){ [].slice.call(document.querySelectorAll('button')).forEach(function(b){ var l=((b.getAttribute('aria-label')||b.textContent)||'').trim(); if(/^(see more|more)${'$'}/i.test(l)){ try{ b.click(); }catch(e){} } }); }
+              function expand(){
+                // Click the "see more" expander by its stable Maps class hook FIRST (language-independent),
+                // then fall back to the English aria-label/text match. English-only left every non-English
+                // review truncated in the inline list (upstream d11ae719).
+                [].slice.call(document.querySelectorAll('button.w8nwRe')).forEach(function(b){ try{ b.click(); }catch(e){} });
+                [].slice.call(document.querySelectorAll('button')).forEach(function(b){ var l=((b.getAttribute('aria-label')||b.textContent)||'').trim(); if(/^(see more|more)${'$'}/i.test(l)){ try{ b.click(); }catch(e){} } });
+              }
               // De-dupe across scroll windows by the review's stable id (falls back to author+date+text).
               function key(x){ return x.rid || ((x.a||'')+'|'+(x.d||'')+'|'+((x.t||'').slice(0,48))); }
               // The accumulated reviews so far, capped - used for both the partial streams and the
@@ -346,7 +352,9 @@ class WebReviewsFetcher @Inject constructor(
                 // ACCUMULATE this window's cards (don't replace) - the panel virtualizes, so each
                 // scroll position exposes a fresh ~10 that would otherwise be lost when recycled.
                 var revs=extract();
-                for(var i=0;i<revs.length;i++){ var k=key(revs[i]); if(k.length>2 && !acc[k]){ acc[k]=revs[i]; accN++; } }
+                // Keep the LONGEST body seen for each review key: a later scroll window may capture the
+                // full text after an expander fired, replacing an earlier truncated copy (upstream d11ae719).
+                for(var i=0;i<revs.length;i++){ var k=key(revs[i]); if(k.length>2){ if(!acc[k]){ acc[k]=revs[i]; accN++; } else if((revs[i].t||'').length>(acc[k].t||'').length){ acc[k]=revs[i]; } } }
                 // Stream progress whenever the count grows: the running count (drives the "N of ~M"
                 // bar) AND the accumulated reviews themselves, so the sheet fills in under the bar
                 // while the scrape grinds instead of making the user stare at a bar for 30 s.
