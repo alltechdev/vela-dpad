@@ -443,6 +443,26 @@ issue #131 and then iterated there):
   BELOW the ambient POIs and flipped `iconIgnorePlacement` to false, so cameras always draw but
   claim their collision box - street names dodge the badge, POIs (placed earlier) still win on top.
 
+Verdicts from the 2026-07-22 post-#89 sweep (everything newer than the ported `137beea9`) -
+**do not re-attempt these without new evidence**:
+
+- **`6281d00f` "Fix search overlay vanishing while the field stays focused": NOT PORTED, the fork
+  cannot reach the bug.** Upstream's stuck state needs an interaction that trips the
+  results/selected collapse effect while the field NEVER loses focus; their trigger is the
+  long-press context menu on a recent row - a feature this fork has never ported (our only
+  long-press is the parking FAB). The fork already defends the mechanism itself: every overlay
+  action that can trip the collapse - `onPickSuggestion` / `onPickSaved` / `onPickRecent` /
+  `onPickRecentPlace` / `onPickShortcut` / submit (`MapScreen.kt` pick handlers) - calls
+  `focusManager.clearFocus()` FIRST, so the next field tap is a real focus change that reopens the
+  overlay. Porting would tie `searchOpen` to live field focus right next to the armed-field settle
+  window (docs/dpad.md), where the field intentionally blurs as D-pad focus walks the rows - real
+  interaction risk for an unreachable bug. **If the recents long-press menu is ever ported, port
+  `6281d00f` with it as a pair.**
+- **`5fce272f` (list editor Save button) + `b4caaf15` (list icon "Color" label): N/A** - the fork
+  has no custom lists.
+- **`df7de641` (em-dash style in upstream docs) + `36b37f42` (upstream F-Droid CI): N/A** - their
+  docs, their infra.
+
 Satellite batch (2026-07-14 port of upstream 68570ba6..bb271d94, applied as the net final
 state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 
