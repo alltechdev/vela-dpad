@@ -324,10 +324,15 @@ cover_one() {
       key "$K_BACK" 1
     else mark "softkey-layers-panel" 0; fi
   else mark "softkey-map-options" 0; mark "softkey-move-map" 0; mark "softkey-zoom-mode" 0; mark "softkey-layers-panel" 0; fi
-  [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
-  if [ "$haveResults" = 1 ]; then
+  # The zoom/layers walk above leaves the results overlay CLOSED, so re-run the search fresh -
+  # open_first_place from a stale state walked the bare map and SOFT_LEFT opened the MAP Options
+  # menu, which the old unconditional mark then recorded as the place menu (a check that could not
+  # fail - caught by eyeballing the frame: the "Move map" banner was visible behind the menu).
+  if goto_map && run_coffee; then
+    haveResults=1
     open_first_place; key "$K_SOFT_LEFT" 1           # place sheet: LEFT -> place Options menu
-    on_screen_contains "Directions" || on_screen "Street View"; mark "softkey-place-options" 1
+    if on_screen_contains "Directions" || on_screen "Street View"; then mark "softkey-place-options" 1
+    else mark "softkey-place-options" 0; fi
     key "$K_BACK" 1; key "$K_BACK" 1
   else mark "softkey-place-options" 0; fi
   fi
