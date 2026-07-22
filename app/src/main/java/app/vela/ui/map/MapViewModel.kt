@@ -338,6 +338,11 @@ class MapViewModel @Inject constructor(
     @Volatile private var lastLimitHitLoc: LatLng? = null // last fix that RESOLVED a limit - drives the
                                                           // "forget a stale limit after driving far off it" clear
     private var limitJob: Job? = null // single-flight the off-thread maxspeed snap
+    // Debounce the OFFLINE latch: a real phone on flaky cellular drops the network for a beat on a
+    // cell/wifi handoff or coming out of doze, and greying the whole app instantly on that blip reads
+    // as "crying wolf". Going ONLINE heals immediately; going offline waits ~3 s and re-checks first
+    // (upstream b9be581c). null/inactive = not currently latching.
+    private var offlineLatchJob: Job? = null
     private val noticePrefs = appContext.getSharedPreferences("vela_notices", Context.MODE_PRIVATE)
 
     init {
@@ -1156,7 +1161,19 @@ class MapViewModel @Inject constructor(
         val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
         fun refresh() {
             val off = !isOnline()
-            _state.update { if (it.offline != off) it.copy(offline = off) else it }
+            if (!off) {
+                // Back online: heal instantly, cancel any pending offline latch.
+                offlineLatchJob?.cancel()
+                _state.update { if (it.offline) it.copy(offline = false) else it }
+            } else if (offlineLatchJob?.isActive != true) {
+                // Went offline: wait ~3 s and re-check before greying the app, so a momentary blip
+                // (handoff / doze wake) doesn't flash the offline indicator.
+                offlineLatchJob = viewModelScope.launch {
+                    delay(3_000)
+                    val stillOff = !isOnline()
+                    _state.update { if (it.offline != stillOff) it.copy(offline = stillOff) else it }
+                }
+            }
         }
         refresh()
         runCatching {
@@ -1200,9 +1217,11 @@ class MapViewModel @Inject constructor(
             onMapLongPress(at)
             return
         }
-        // Re-poll connectivity per search: the registered callback alone proved able to
-        // wedge `offline` on (missed onAvailable after doze) until an app relaunch.
-        _state.update { val off = !isOnline(); if (it.offline != off) it.copy(offline = off) else it }
+        // Re-poll connectivity per search, HEAL-ONLY: the registered callback alone proved able to
+        // wedge `offline` on (missed onAvailable after doze) until an app relaunch. A successful-enough
+        // reach to run a search means we're online, so clear the latch; never SET offline here - that
+        // is the debounced path's job, or this would re-introduce the instant flap (upstream b9be581c).
+        if (isOnline()) { offlineLatchJob?.cancel(); _state.update { if (it.offline) it.copy(offline = false) else it } }
         suggestJob?.cancel()
         recentStore.add(q)
         _state.update { it.copy(recents = recentStore.recent()) }
@@ -3687,7 +3706,10 @@ class MapViewModel @Inject constructor(
             // Re-check we're still on the bare map - the user may have searched/opened a place while we fetched.
             val cur = _state.value
             if (cur.navigating || cur.replaying || cur.results.isNotEmpty() || cur.selected != null) return@launch
-            _state.update { it.copy(ambientPois = keepAmbientForView(res, viewRadiusMeters)) }
+            // A fresh ambient fetch that returned means we reached the network - heal offline too, so
+            // a browse that succeeds clears a stale offline flag without waiting for a search (b9be581c).
+            offlineLatchJob?.cancel()
+            _state.update { it.copy(ambientPois = keepAmbientForView(res, viewRadiusMeters), offline = false) }
         }
     }
 
