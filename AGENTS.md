@@ -1249,11 +1249,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
       the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =
       `downloadAsrEngine(DEFAULT)`) so a feature phone is never pushed a heavier model. `isInstalled()`
       = any engine installed AND not quarantined.
-    - **The crash-sentinel quarantine (issue #81) is PER ENGINE.** `WhisperRecognizer` marks
-      `asr_load_inflight_<id>` before the native load and clears it after; a mark still set next launch
-      = the process died inside sherpa-onnx's C++ parse, so it latches `asr_model_bad_<id>` and deletes
-      **that engine's** dir only. A truncated SenseVoice must never quarantine or delete Whisper. A
-      fresh download of an engine clears its own keys (`clearQuarantine(engine)`).
+    - **The crash-sentinel quarantine (issue #81) is PER ENGINE and TWO-STRIKE.** `WhisperRecognizer`
+      bumps `asr_load_strikes_<id>` before the native load and zeroes it after; TWO stranded loads in
+      a row = the process died inside sherpa-onnx's C++ parse both times, so it latches
+      `asr_model_bad_<id>` and deletes **that engine's** dir only. ONE stranded load is forgiven -
+      a process killed DURING the seconds-long load (user swipe-away, memory reclaim, a harness
+      force-stop) strands the counter exactly like a crash, and a single kill must not delete a
+      healthy 154 MB download (device-measured: the old one-strike rule silently deleted both
+      installed engines during a routine coverage run). A truncated SenseVoice must never quarantine
+      or delete Whisper. A fresh download of an engine clears its own keys (`clearQuarantine(engine)`).
     - **Model hosting: the `asr-models` GitHub release on THIS repo** (fixed-tag prerelease, like
       `routing-graphs`/`building-overlays`; `AsrEngine.url`). **Each archive MUST be a `.tar.bz2` whose
       single top-level folder holds that engine's `files` list** (e.g. Whisper's `tiny-*.onnx` +

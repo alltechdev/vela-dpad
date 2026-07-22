@@ -80,10 +80,12 @@ class WhisperRecognizer @Inject constructor(
         // VoiceResult.Reason, so "it doesn't work" arrives already diagnosed (issue #81).
         const val TAG = "VELAASR"
         // Crash-sentinel keys are PER-ENGINE (suffixed with the engine id): a truncated SenseVoice
-        // must never quarantine or delete Whisper. Set across the native load, cleared once it
-        // returns; still set at the next attempt = the process died inside it. KEY_MODEL_BAD_ latches
-        // the quarantine so a bad model is not retried every launch; a fresh download clears it.
-        const val KEY_LOAD_INFLIGHT = "asr_load_inflight_"
+        // must never quarantine or delete Whisper. KEY_LOAD_STRIKES counts loads the process died
+        // inside (bumped before the native load, zeroed once it returns); TWO in a row quarantine -
+        // one stranded load is as likely a mid-load kill (user swipe-away, memory reclaim) as a
+        // crash, and must not delete a healthy download. KEY_MODEL_BAD_ latches the quarantine so a
+        // bad model is not retried every launch; a fresh download clears it.
+        const val KEY_LOAD_STRIKES = "asr_load_strikes_"
         const val KEY_MODEL_BAD = "asr_model_bad_"
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
@@ -101,7 +103,7 @@ class WhisperRecognizer @Inject constructor(
     fun clearQuarantine(engine: AsrEngine = AsrEngine.DEFAULT) {
         prefs().edit()
             .putBoolean(KEY_MODEL_BAD + engine.id, false)
-            .putBoolean(KEY_LOAD_INFLIGHT + engine.id, false).apply()
+            .putInt(KEY_LOAD_STRIKES + engine.id, 0).apply()
     }
 
     fun hasMicPermission(): Boolean =
@@ -159,22 +161,28 @@ class WhisperRecognizer @Inject constructor(
             // throwing - `runCatching` cannot catch a native abort, it takes the whole process down.
             // Reachable in the real world: a copy that stops partway (storage full, process killed)
             // leaves a short file that isInstalled()'s present-and-non-empty test happily accepts, and
-            // warmUp() runs at STARTUP, so the result was an unrecoverable crash loop. So: mark before
-            // the load, clear after; a mark still set at the next attempt means the previous never
-            // returned - quarantine THAT engine only and delete THAT engine's dir (a bad SenseVoice
-            // must never take out Whisper), report not-installed, let the app start. A fresh download
-            // clears the engine's quarantine. Same idiom as the map's two-crash sentinel.
+            // warmUp() runs at STARTUP, so the result was an unrecoverable crash loop. So: bump a
+            // strike counter before the load, zero it after; a counter that reaches TWO stranded
+            // loads means the process died inside the load twice in a row - quarantine THAT engine
+            // only and delete THAT engine's dir (a bad SenseVoice must never take out Whisper),
+            // report not-installed, let the app start. A fresh download clears the quarantine.
+            // TWO strikes, not one (the map sentinel's idiom, and device-measured necessity): the
+            // load takes seconds, and a process killed DURING it - the user swiping the app away, the
+            // system reclaiming memory, a test harness force-stop - strands the counter exactly like
+            // a native crash. One stranded load used to delete a healthy 154 MB download; a genuinely
+            // bad model crashes EVERY load, so it still self-heals one launch later.
             val prefs = prefs()
-            val inflightKey = KEY_LOAD_INFLIGHT + engine.id
+            val strikesKey = KEY_LOAD_STRIKES + engine.id
             val badKey = KEY_MODEL_BAD + engine.id
-            if (prefs.getBoolean(inflightKey, false)) {
-                Timber.tag(TAG).e("previous ASR load never returned (native crash) - quarantining ${engine.id}")
-                prefs.edit().putBoolean(inflightKey, false).putBoolean(badKey, true).apply()
+            val strikes = prefs.getInt(strikesKey, 0)
+            if (strikes >= 2) {
+                Timber.tag(TAG).e("two ASR loads never returned (native crash) - quarantining ${engine.id}")
+                prefs.edit().putInt(strikesKey, 0).putBoolean(badKey, true).apply()
                 runCatching { engine.dir(context).deleteRecursively() }
                 return null
             }
             if (prefs.getBoolean(badKey, false)) return null
-            prefs.edit().putBoolean(inflightKey, true).apply()
+            prefs.edit().putInt(strikesKey, strikes + 1).apply()
 
             val dir = engine.dir(context)
             fun p(name: String) = File(dir, name).absolutePath
@@ -228,10 +236,10 @@ class WhisperRecognizer @Inject constructor(
                 // re-downloaded 47 MB twice on that advice. The class name alone decides it.
                 Timber.tag(TAG).e(it, "native ASR load failed (${engine.id}): ${it::class.java.simpleName}")
             }.getOrNull()
-            // The load RETURNED (success or a catchable failure), so the process survived it: clear
-            // the sentinel. Only a native abort leaves it set, which is exactly the case we want the
-            // next launch to notice.
-            prefs.edit().putBoolean(inflightKey, false).apply()
+            // The load RETURNED (success or a catchable failure), so the process survived it: zero
+            // the strikes. Only a native abort (or a mid-load kill) leaves a strike standing, and
+            // only two in a row quarantine.
+            prefs.edit().putInt(strikesKey, 0).apply()
             recognizer = r
             loadedKey = key
             return r
