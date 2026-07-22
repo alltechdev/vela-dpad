@@ -138,21 +138,34 @@ cover_one() {
   fi
 
   # --- place sheet (+ expand) -----------------------------------------------------------------
-  if phase place; then i=7
+  if phase place; then i=8
   # standalone (search phase not run this pass): get a result set first
   [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
   if [ "$haveResults" = 1 ]; then
     open_first_place; mark "place-sheet" 1
     key "$K_OK" 1; mark "place-sheet-expanded" 1
+    # Review collapse (upstream 2fb6ed30): a long review shows ~4 lines behind a "More" toggle; OK on
+    # the toggle expands it to "Less". The reviews sit below the fold of the expanded sheet, so scroll
+    # to the toggle first. A place whose reviews are all short never shows "More" - that's not a gap in
+    # the BUILD, so mark the frames n/a (not MISSED) when the toggle genuinely is not on this sheet.
+    if swipe_up_to "More" 24; then
+      mark "place-review-collapsed" 1
+      if focus_and_ok "More" && on_screen "Less"; then mark "place-review-expanded" 1
+      else mark "place-review-expanded" 0; fi
+    else
+      na "place-review-collapsed" "no long review on the first result - toggle absent"
+      na "place-review-expanded" "no long review on the first result - toggle absent"
+    fi
     key "$K_BACK" 1
-  else mark "place-sheet" 0; mark "place-sheet-expanded" 0; fi
+  else mark "place-sheet" 0; mark "place-sheet-expanded" 0
+       mark "place-review-collapsed" 0; mark "place-review-expanded" 0; fi
   fi
 
   # --- in-app Street View (keyless GL panorama) -----------------------------------------------
   # Drop a pin (clean 2-pill sheet so Street View is on-screen without scrolling the pill row),
   # tap it, wait for the tile stitch + GL render, then D-pad look-around (OK engages, RIGHT pans).
   # NEEDS network (tile CDN) + a mock fix over a covered area; MISSED if the pill/render doesn't show.
-  if phase streetview; then i=20
+  if phase streetview; then i=12
   case "${VELA_PKG:-}" in
     *restricted*)
       # The restricted flavor ships no Street View (RESTRICTED_BUILD drops the pill and the screen),
@@ -179,7 +192,7 @@ cover_one() {
   fi
 
   # --- directions + steps ---------------------------------------------------------------------
-  if phase directions; then i=9
+  if phase directions; then i=14
   goto_map
   if reach_directions; then
     mark "directions" 1
@@ -190,7 +203,7 @@ cover_one() {
   fi
 
   # --- Settings + sub-screens -----------------------------------------------------------------
-  if phase settings; then i=11
+  if phase settings; then i=16
   if open_settings; then
     mark "settings-top" 1
     # walk down a bit to capture the mid + lower sections
@@ -221,7 +234,7 @@ cover_one() {
   fi  # phase settings
 
   # --- Voice search (mic + capture sheet) ------------------------------------------------------
-  if phase voice; then i=16
+  if phase voice; then i=22
   $ADB shell pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1
   goto_map
   # The mic sits in the search bar when the field is empty. Under soft-keys that bar is decluttered
@@ -259,7 +272,7 @@ cover_one() {
   fi
 
   # --- Parking (P button, hub menu, parked-car sheet) -------------------------------------------
-  if phase parking; then i=17
+  if phase parking; then i=23
   goto_map; softkeys_shown && key "$K_DOWN"   # DOWN focuses the map for the LEFT-soft-key Options menu; in touch it would expand the search overlay and hide the FAB, so skip it
   # Park: under soft-keys the on-screen P FAB is decluttered away (#76) and Park lives in the bare-map
   # Options menu (LEFT soft key); on touch the FAB is still there. park_action opens it the right way
@@ -283,7 +296,7 @@ cover_one() {
   # --- hardware soft-key menus (keypad bar) ---------------------------------------------------
   # The base phases capture the BAR in every frame (dpad is forced), but never PRESS a soft key, so
   # the Options popups + zoom mode go uncaptured. Drive them here: LEFT opens the bottom-left menu.
-  if phase softkey && [ "$softkeys" = on ]; then i=22   # no soft-key bar to press in the touch (SOFTKEYS=off) layout
+  if phase softkey && [ "$softkeys" = on ]; then i=26   # no soft-key bar to press in the touch (SOFTKEYS=off) layout
   goto_map; key "$K_DOWN"
   key "$K_SOFT_LEFT" 1                              # bare map: LEFT -> Options menu
   if on_screen "Recenter"; then
