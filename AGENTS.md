@@ -161,6 +161,29 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   geometry/flavor; only once it passes, run the full leg (no `PHASES`) ONCE for the verdict. Do NOT
   re-run legs that already passed when the change cannot regress them - reason about blast radius
   first (e.g. a swipe-helper tweak can't regress a leg that already reached the section).
+  **HARD RULE - VERIFY A FEATURE BY ITS PHASES, NOT AD-HOC SHOTS AND NOT THE WHOLE MATRIX (added
+  2026-07-22, learned the hard way).** To verify a new/ported feature or a fix on device: (1) ADD its
+  surface to the relevant existing `full_coverage.sh` phase (or a new phase) IN THE SAME PR - a
+  feature with no phase capture is unverified by definition; (2) run `PHASES="<only the phases whose
+  surfaces the change touches>" bash tests/devices/full_coverage.sh <id>` at the target geometry, and
+  (3) EYEBALL those frames. Manually poking the app and screenshotting by hand is NOT a substitute for
+  the phased gate - it is slower, unrepeatable, and skips the checklist; the moment you catch yourself
+  driving the app with `input tap`/`input keyevent` to "verify" a surface, STOP and add/run its phase
+  instead. Equally: do NOT propose or run phases or geometries the change cannot affect - a
+  review-collapse edit needs `PHASES=place`, not the whole tour, and not every density variant. Scope
+  the run to blast radius; the matrix's job is device onboarding, not per-feature verification.
+  **Soft-key mode is the DEFAULT for on-device verification, never an afterthought.** `full_coverage`,
+  `run_all.sh`, and the small-screen suites all force `vela_force_dpad=1` (the keypad/soft-key layout)
+  in their setup - so the phased gate IS the soft-key run. Do not "verify" a surface only in the touch
+  layout and call it done: the soft-key layout declutters the search bar/FABs (#76) and routes actions
+  through the Options/Search soft keys, so it is a genuinely different surface. If a reviewer has to
+  ask "where are the soft keys / did you run soft-key", the verification was incomplete.
+  **Reinstall the freshly-built APK before verifying, and confirm the foreground package is the build
+  under test.** A `./gradlew assemble` does not install; testing a stale APK "verifies" nothing.
+  Multiple flavors/builds install side by side (`app.vela.debug`, `app.vela.restricted.debug`,
+  `app.vela.staging`), and D-pad BACK can drift the foreground to a different one - assert
+  `package="app.vela.<flavor>.debug"` in the uiautomator dump before trusting a frame (see the
+  package-drift note in `tests/devices/tcl-flip-2/findings.md`).
   **The IN-PROCESS self-coverage suite (`app/src/androidTest` SelfTourTest + `tests/devices/
   self_coverage.sh <id>`)** is the fast tour: ~10x quicker than full_coverage.sh for the surfaces
   it covers (36s vs ~6min at 240x320) and STRICTER - real focus-state assertions per D-pad step
