@@ -205,6 +205,8 @@
     <!-- place: PlaceSheet.kt -->
     <string name="place_photo_number">Photo %1$d</string> <!-- format -->
     <string name="place_photo_category_all">All</string>
+    <string name="place_review_more">More</string>
+    <string name="place_review_less">Less</string>
     <string name="place_saved">Saved</string>
     <string name="place_save">Save</string>
     <string name="place_more_options">More options</string>
@@ -521,8 +523,13 @@
     <string name="voice_capture_done">Done</string>
     <string name="mapvm_asr_ready">Vela Voice mic is ready</string>
     <string name="mapvm_asr_download_failed">Couldn\'t download the voice model. Check your connection and try again.</string>
-    <string name="settings_voice_search_model">Vela Voice mic</string>
-    <string name="settings_voice_search_model_hint">The Vela Voice mic turns speech into a search right on your phone: no other app needed and nothing is uploaded. One-time %1$d MB download.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">Speech becomes a search right on your phone: no other app needed and nothing is uploaded. Download one or more engines and pick which the mic uses.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Every language Vela supports</string>
+    <string name="settings_asr_langs_sensevoice">English, Chinese, Japanese, Korean, Cantonese</string>
+    <string name="settings_asr_langs_moonshine">English only</string>
+    <string name="settings_asr_active">Active</string>
+    <string name="settings_asr_use">Use</string>
     <string name="settings_voice_search_download">Download (%1$d MB)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Remove</string>
     <string name="settings_voice_search_downloading">Downloading… %1$d%%</string>  <!-- format -->

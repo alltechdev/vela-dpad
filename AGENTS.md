@@ -78,6 +78,39 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
   dozen realistic cases, including the ones where the same token means two different things.
   Whatever the probe catches becomes a permanent test before the probe is deleted.
 
+## Fix the harness, never work around it (HARD RULE, NO EXCEPTIONS)
+
+When the verification harness (`tests/devices/full_coverage.sh`, `tests/dpad/nav.sh`,
+`run_all.sh`, the small-screen suites) flakes or cannot reach a feature you built, the ONLY
+acceptable response is to **make the harness accommodate the feature** - never hand-capture the
+frames with ad-hoc `adb` commands and call it verified. Hand-grabbing frames leaves the harness
+permanently unable to prove the feature, so the next run flakes exactly the same way and the proof
+is gone the moment you stop babysitting it.
+
+- **Every new user-visible feature adds its own capture/`mark` step** in the relevant phase of
+  `full_coverage.sh`, wired to a check that can fail (see the section below). If the feature isn't
+  driven by the harness, it isn't done.
+- **Harden nav, don't route around it.** When the chip-search path raced the overlay and missed at
+  240x320, the fix was a typed-search fallback inside `run_coffee` (`type_search` in `nav.sh`) - the
+  reliable path a real user takes - NOT a one-off manual screenshot. Nav that races timing gets a
+  dump+find+tap loop or a fallback path, in the harness, so every future run benefits.
+- **A green harness is the deliverable, not a pile of PNGs.** If you found yourself typing `adb
+  input`/`screencap` by hand to prove something works, stop and put that flow into the harness first.
+
+## Refactors must not orphan resources (HARD RULE)
+
+The CI `Dead-resource audit (lint)` step fails the build on any unused `R.string`/drawable/etc. When
+a refactor removes the LAST usage of a string (e.g. the ASR rework dropped
+`settings_voice_search_model*`), you MUST in the same commit:
+
+- delete the string from `values/strings.xml` **and all 14 locale files** (`grep -rn <name>
+  app/src/main/res/values*/strings.xml` to catch every copy), then
+- re-run `python3 tools/check-translations.py --update` to re-record the lock, and
+- run `./gradlew :app:lintStandardDebug` locally - the same gate CI runs - before pushing.
+
+Removing a string's usage without removing the string turns CI red. Adding a string without wiring it
+into all locales turns the translation gate red. Do both halves, every time.
+
 ## Prove the check CAN fail (HARD RULE, NO EXCEPTIONS)
 
 The section above says look at the pixels. This one is about a different and worse failure: a check
@@ -161,6 +194,29 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   geometry/flavor; only once it passes, run the full leg (no `PHASES`) ONCE for the verdict. Do NOT
   re-run legs that already passed when the change cannot regress them - reason about blast radius
   first (e.g. a swipe-helper tweak can't regress a leg that already reached the section).
+  **HARD RULE - VERIFY A FEATURE BY ITS PHASES, NOT AD-HOC SHOTS AND NOT THE WHOLE MATRIX (added
+  2026-07-22, learned the hard way).** To verify a new/ported feature or a fix on device: (1) ADD its
+  surface to the relevant existing `full_coverage.sh` phase (or a new phase) IN THE SAME PR - a
+  feature with no phase capture is unverified by definition; (2) run `PHASES="<only the phases whose
+  surfaces the change touches>" bash tests/devices/full_coverage.sh <id>` at the target geometry, and
+  (3) EYEBALL those frames. Manually poking the app and screenshotting by hand is NOT a substitute for
+  the phased gate - it is slower, unrepeatable, and skips the checklist; the moment you catch yourself
+  driving the app with `input tap`/`input keyevent` to "verify" a surface, STOP and add/run its phase
+  instead. Equally: do NOT propose or run phases or geometries the change cannot affect - a
+  review-collapse edit needs `PHASES=place`, not the whole tour, and not every density variant. Scope
+  the run to blast radius; the matrix's job is device onboarding, not per-feature verification.
+  **Soft-key mode is the DEFAULT for on-device verification, never an afterthought.** `full_coverage`,
+  `run_all.sh`, and the small-screen suites all force `vela_force_dpad=1` (the keypad/soft-key layout)
+  in their setup - so the phased gate IS the soft-key run. Do not "verify" a surface only in the touch
+  layout and call it done: the soft-key layout declutters the search bar/FABs (#76) and routes actions
+  through the Options/Search soft keys, so it is a genuinely different surface. If a reviewer has to
+  ask "where are the soft keys / did you run soft-key", the verification was incomplete.
+  **Reinstall the freshly-built APK before verifying, and confirm the foreground package is the build
+  under test.** A `./gradlew assemble` does not install; testing a stale APK "verifies" nothing.
+  Multiple flavors/builds install side by side (`app.vela.debug`, `app.vela.restricted.debug`,
+  `app.vela.staging`), and D-pad BACK can drift the foreground to a different one - assert
+  `package="app.vela.<flavor>.debug"` in the uiautomator dump before trusting a frame (see the
+  package-drift note in `tests/devices/tcl-flip-2/findings.md`).
   **The IN-PROCESS self-coverage suite (`app/src/androidTest` SelfTourTest + `tests/devices/
   self_coverage.sh <id>`)** is the fast tour: ~10x quicker than full_coverage.sh for the surfaces
   it covers (36s vs ~6min at 240x320) and STRICTER - real focus-state assertions per D-pad step
@@ -1177,22 +1233,40 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     verify-gated, re-runnable) - never re-downloads.
   - **Voice search (speak a query into the search bar), two tiers.** `ui/VoiceSearch` (process-wide
     reactive holder, `init` in `VelaApp`) resolves the mic mode. **tier-1 on-device** =
-    `voice/WhisperRecognizer` (Whisper tiny int8 + Silero VAD via the SAME bundled sherpa-onnx AAR as
-    Piper - `OfflineRecognizer`/`Vad`; the wholesale `com.k2fsa.sherpa.onnx.**` R8 keep already covers
-    it) recording through `AudioRecord`; the model is `voice/AsrModel` (~58 MB, files in
-    `filesDir/asr/whisper-tiny/`). **tier-2** = a `RECOGNIZE_SPEECH` intent hand-off to an installed
-    voice-input app. The mic lives in `ui/search/SearchBar` (`onMic`, shown only when the mode isn't
-    NONE); the listening sheet is `ui/VoiceCaptureDialog` (raw D-pad-focusable `Dialog`, Done
-    auto-focuses); wiring + the RECORD_AUDIO launcher + the download-offer are in `MapScreen`; the
-    Settings -> Search section (toggle, model download/remove, engine picker) is in `SettingsScreen`.
+    `voice/WhisperRecognizer` (despite the name, it now loads ANY engine via the SAME bundled
+    sherpa-onnx AAR as Piper - `OfflineRecognizer`/`Vad`; the wholesale `com.k2fsa.sherpa.onnx.**` R8
+    keep already covers it) recording through `AudioRecord`. **tier-2** = a `RECOGNIZE_SPEECH` intent
+    hand-off to an installed voice-input app. The mic lives in `ui/search/SearchBar` (`onMic`, shown
+    only when the mode isn't NONE); the listening sheet is `ui/VoiceCaptureDialog` (raw
+    D-pad-focusable `Dialog`, Done auto-focuses); wiring + the RECORD_AUDIO launcher + the
+    download-offer are in `MapScreen`; the Settings -> Search per-engine picker is in `SettingsScreen`.
     Needs `RECORD_AUDIO` (manifest; asked at the mic tap).
+    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 / 118e7e8c /
+      137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`), `SENSE_VOICE`
+      (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Each is an OPTIONAL download to
+      `filesDir/asr/<id>/`; `active()` is the picked engine (pref `asr_engine`), `forRecognition(lang)`
+      falls back to Whisper when the pick can't do the app language. **Whisper stays the default and
+      the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =
+      `downloadAsrEngine(DEFAULT)`) so a feature phone is never pushed a heavier model. `isInstalled()`
+      = any engine installed AND not quarantined.
+    - **The crash-sentinel quarantine (issue #81) is PER ENGINE and TWO-STRIKE.** `WhisperRecognizer`
+      bumps `asr_load_strikes_<id>` before the native load and zeroes it after; TWO stranded loads in
+      a row = the process died inside sherpa-onnx's C++ parse both times, so it latches
+      `asr_model_bad_<id>` and deletes **that engine's** dir only. ONE stranded load is forgiven -
+      a process killed DURING the seconds-long load (user swipe-away, memory reclaim, a harness
+      force-stop) strands the counter exactly like a crash, and a single kill must not delete a
+      healthy 154 MB download (device-measured: the old one-strike rule silently deleted both
+      installed engines during a routine coverage run). A truncated SenseVoice must never quarantine
+      or delete Whisper. A fresh download of an engine clears its own keys (`clearQuarantine(engine)`).
     - **Model hosting: the `asr-models` GitHub release on THIS repo** (fixed-tag prerelease, like
-      `routing-graphs`/`building-overlays`; `AsrModel.URL`). **The archive MUST be a `.tar.bz2` whose
-      single top-level folder holds the 4 files** (`tiny-encoder.int8.onnx`, `tiny-decoder.int8.onnx`,
-      `tiny-tokens.txt`, `silero_vad.onnx`) - `KokoroInstaller.download` (reused for the ASR download)
-      unpacks bzip2 and RENAMES that inner folder to `AsrModel.dir`, so a `.tar.gz` or a flat/no-folder
-      archive would fail to install. (The mirror was re-packed from upstream's `.tar.gz`; drop the macOS
-      `._*` resource forks when re-packing.)
+      `routing-graphs`/`building-overlays`; `AsrEngine.url`). **Each archive MUST be a `.tar.bz2` whose
+      single top-level folder holds that engine's `files` list** (e.g. Whisper's `tiny-*.onnx` +
+      `silero_vad.onnx`; SenseVoice's `model.int8.onnx` + `tokens.txt` + VAD; Moonshine's
+      preprocess/encode/decode set + tokens + VAD) - `KokoroInstaller.download` unpacks bzip2 and
+      RENAMES that inner folder to `AsrEngine.dir`, so a `.tar.gz` or a flat/no-folder archive fails to
+      install. **The `silero_vad.onnx` VAD ships INSIDE every engine's archive** so each is
+      self-contained. The three mirrors were re-packed from upstream's `.tar.gz` to `.tar.bz2` (drop
+      the macOS `._*` resource forks when re-packing).
   - **Any large download (voice model, routing graph, building overlay) MUST NOT use the shared OkHttp
     client** - its `callTimeout(12s)` (scrape-bounding) aborts the body read mid-stream, `runCatching`
     eats it, and the asset SILENTLY never installs (no crash, no log). `KokoroInstaller`,

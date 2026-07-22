@@ -127,24 +127,45 @@ cover_one() {
   # decluttered, #76), else DOWN onto the on-screen search bar + OK - so touch runs still pass too.
   goto_map; open_search; on_screen "Home" || on_screen_contains "Search"; mark "search-overlay" 1; key "$K_BACK" 1
   goto_map; if run_coffee; then haveResults=1; mark "search-results" 1; else mark "search-results" 0; fi
+  # Search-as-you-type against your OWN history (upstream 40873d96): the coffee search above left
+  # "coffee" in recents, so typing a prefix now surfaces it as a local (History-icon) match ABOVE the
+  # network suggestions - instant, offline, no fetch. Best-effort: only assert when the recent exists.
+  if [ "$haveResults" = 1 ]; then
+    goto_map; open_search; $ADB shell input text "cof" >/dev/null 2>&1; sleep 1.5
+    if on_screen "coffee"; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
+    key "$K_BACK" 1
+  else mark "search-history-astype" 0; fi
   fi
 
   # --- place sheet (+ expand) -----------------------------------------------------------------
-  if phase place; then i=7
+  if phase place; then i=8
   # standalone (search phase not run this pass): get a result set first
   [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
   if [ "$haveResults" = 1 ]; then
     open_first_place; mark "place-sheet" 1
     key "$K_OK" 1; mark "place-sheet-expanded" 1
+    # Review collapse (upstream 2fb6ed30): a long review shows ~4 lines behind a "More" toggle; OK on
+    # the toggle expands it to "Less". The reviews sit below the fold of the expanded sheet, so scroll
+    # to the toggle first. A place whose reviews are all short never shows "More" - that's not a gap in
+    # the BUILD, so mark the frames n/a (not MISSED) when the toggle genuinely is not on this sheet.
+    if swipe_up_to "More" 24; then
+      mark "place-review-collapsed" 1
+      if focus_and_ok "More" && on_screen "Less"; then mark "place-review-expanded" 1
+      else mark "place-review-expanded" 0; fi
+    else
+      na "place-review-collapsed" "no long review on the first result - toggle absent"
+      na "place-review-expanded" "no long review on the first result - toggle absent"
+    fi
     key "$K_BACK" 1
-  else mark "place-sheet" 0; mark "place-sheet-expanded" 0; fi
+  else mark "place-sheet" 0; mark "place-sheet-expanded" 0
+       mark "place-review-collapsed" 0; mark "place-review-expanded" 0; fi
   fi
 
   # --- in-app Street View (keyless GL panorama) -----------------------------------------------
   # Drop a pin (clean 2-pill sheet so Street View is on-screen without scrolling the pill row),
   # tap it, wait for the tile stitch + GL render, then D-pad look-around (OK engages, RIGHT pans).
   # NEEDS network (tile CDN) + a mock fix over a covered area; MISSED if the pill/render doesn't show.
-  if phase streetview; then i=20
+  if phase streetview; then i=12
   case "${VELA_PKG:-}" in
     *restricted*)
       # The restricted flavor ships no Street View (RESTRICTED_BUILD drops the pill and the screen),
@@ -171,18 +192,24 @@ cover_one() {
   fi
 
   # --- directions + steps ---------------------------------------------------------------------
-  if phase directions; then i=9
+  if phase directions; then i=14
   goto_map
   if reach_directions; then
     mark "directions" 1
-    # steps sheet: from the Drive tab, DOWN to Steps and OK (best-effort)
-    if focus_and_ok "Steps"; then mark "route-steps" 1; key "$K_BACK" 1; else mark "route-steps" 0; fi
+    # Steps sheet. Under soft-keys "Steps" IS the LEFT soft key (the directions panel puts Steps/Start
+    # on the bar) - focus_and_ok can never land on a Yapchik bar label, so the old walk stalled on the
+    # Search-along-route chips and route-steps read MISSED while the feature worked (device-seen
+    # @240x320; same lesson as reach_directions' RIGHT-soft-key press). On touch it stays a panel row.
+    if softkeys_shown; then key "$K_SOFT_LEFT" 2; else focus_and_ok "Steps"; fi
+    if on_screen_contains "Head " || on_screen_contains "Turn " || on_screen "Close"; then
+      mark "route-steps" 1; key "$K_BACK" 1
+    else mark "route-steps" 0; fi
     key "$K_BACK" 1
   else mark "directions" 0; mark "route-steps" 0; fi
   fi
 
   # --- Settings + sub-screens -----------------------------------------------------------------
-  if phase settings; then i=11
+  if phase settings; then i=16
   if open_settings; then
     mark "settings-top" 1
     # walk down a bit to capture the mid + lower sections
@@ -201,12 +228,19 @@ cover_one() {
       if open_settings && swipe_up_to "$sub"; then nudge_up; mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 1; key "$K_BACK" 1
       else mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 0; fi
     done
+    # On-device ASR ENGINE PICKER (Search section): the Whisper/SenseVoice/Moonshine rows with
+    # Download / Use / Active / Remove - the pickable-engines surface (upstream 5d2a6636). "Whisper
+    # tiny" is always present (the default catalog entry) so it anchors the swipe regardless of what
+    # is installed.
+    if open_settings && swipe_up_to "Whisper tiny"; then nudge_up; mark "settings-asr-engines" 1; key "$K_BACK" 1
+    else mark "settings-asr-engines" 0; fi
   else mark "settings-top" 0; mark "settings-lower" 0
-       mark "settings-voice-library" 0; mark "settings-offline" 0; mark "settings-saved-places" 0; fi
+       mark "settings-voice-library" 0; mark "settings-offline" 0; mark "settings-saved-places" 0
+       mark "settings-asr-engines" 0; fi
   fi  # phase settings
 
   # --- Voice search (mic + capture sheet) ------------------------------------------------------
-  if phase voice; then i=16
+  if phase voice; then i=22
   $ADB shell pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1
   goto_map
   # The mic sits in the search bar when the field is empty. Under soft-keys that bar is decluttered
@@ -244,7 +278,7 @@ cover_one() {
   fi
 
   # --- Parking (P button, hub menu, parked-car sheet) -------------------------------------------
-  if phase parking; then i=17
+  if phase parking; then i=23
   goto_map; softkeys_shown && key "$K_DOWN"   # DOWN focuses the map for the LEFT-soft-key Options menu; in touch it would expand the search overlay and hide the FAB, so skip it
   # Park: under soft-keys the on-screen P FAB is decluttered away (#76) and Park lives in the bare-map
   # Options menu (LEFT soft key); on touch the FAB is still there. park_action opens it the right way
@@ -268,7 +302,7 @@ cover_one() {
   # --- hardware soft-key menus (keypad bar) ---------------------------------------------------
   # The base phases capture the BAR in every frame (dpad is forced), but never PRESS a soft key, so
   # the Options popups + zoom mode go uncaptured. Drive them here: LEFT opens the bottom-left menu.
-  if phase softkey && [ "$softkeys" = on ]; then i=22   # no soft-key bar to press in the touch (SOFTKEYS=off) layout
+  if phase softkey && [ "$softkeys" = on ]; then i=26   # no soft-key bar to press in the touch (SOFTKEYS=off) layout
   goto_map; key "$K_DOWN"
   key "$K_SOFT_LEFT" 1                              # bare map: LEFT -> Options menu
   if on_screen "Recenter"; then
@@ -290,10 +324,15 @@ cover_one() {
       key "$K_BACK" 1
     else mark "softkey-layers-panel" 0; fi
   else mark "softkey-map-options" 0; mark "softkey-move-map" 0; mark "softkey-zoom-mode" 0; mark "softkey-layers-panel" 0; fi
-  [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
-  if [ "$haveResults" = 1 ]; then
+  # The zoom/layers walk above leaves the results overlay CLOSED, so re-run the search fresh -
+  # open_first_place from a stale state walked the bare map and SOFT_LEFT opened the MAP Options
+  # menu, which the old unconditional mark then recorded as the place menu (a check that could not
+  # fail - caught by eyeballing the frame: the "Move map" banner was visible behind the menu).
+  if goto_map && run_coffee; then
+    haveResults=1
     open_first_place; key "$K_SOFT_LEFT" 1           # place sheet: LEFT -> place Options menu
-    on_screen_contains "Directions" || on_screen "Street View"; mark "softkey-place-options" 1
+    if on_screen_contains "Directions" || on_screen "Street View"; then mark "softkey-place-options" 1
+    else mark "softkey-place-options" 0; fi
     key "$K_BACK" 1; key "$K_BACK" 1
   else mark "softkey-place-options" 0; fi
   fi

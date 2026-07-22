@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.compose.runtime.mutableStateOf
-import app.vela.voice.AsrModel
+import app.vela.voice.AsrEngine
 
 /**
  * Voice search for the search bar. TWO ways to turn speech into a query:
@@ -138,7 +138,7 @@ object VoiceSearch {
     }.getOrDefault(false)
 
     /** Is Vela's own on-device model downloaded (tier-1)? File-existence check, no model load. */
-    fun localReady(context: Context): Boolean = AsrModel.isInstalled(context)
+    fun localReady(context: Context): Boolean = AsrEngine.anyInstalled(context)
 
     fun declineOffer(context: Context) {
         offerDeclined.value = true

@@ -149,6 +149,8 @@
     <string name="place_photo_number">Фото %1$d</string>
     <string name="place_photo_category_all">Все</string>
     <string name="place_saved">Сохранено</string>
+    <string name="place_review_more">Ещё</string>
+    <string name="place_review_less">Свернуть</string>
     <string name="place_save">Сохранить</string>
     <string name="place_more_options">Ещё</string>
     <string name="place_set_as_home">Сделать домом</string>
@@ -476,8 +478,13 @@
     <string name="voice_capture_done">Готово</string>
     <string name="mapvm_asr_ready">Микрофон Vela Voice готов</string>
     <string name="mapvm_asr_download_failed">Не удалось загрузить голосовую модель. Проверьте подключение и повторите попытку.</string>
-    <string name="settings_voice_search_model">Микрофон Vela Voice</string>
-    <string name="settings_voice_search_model_hint">Микрофон Vela Voice превращает речь в поиск прямо на телефоне: без других приложений и без выгрузки данных. Разовая загрузка %1$d МБ.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">Речь превращается в поиск прямо на телефоне: без других приложений и без выгрузки данных. Скачайте один или несколько движков и выберите, какой использует микрофон.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d МБ</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Все языки, которые поддерживает Vela</string>
+    <string name="settings_asr_langs_sensevoice">английский, китайский, японский, корейский, кантонский</string>
+    <string name="settings_asr_langs_moonshine">Только английский</string>
+    <string name="settings_asr_active">Активно</string>
+    <string name="settings_asr_use">Выбрать</string>
     <string name="settings_voice_search_download">Загрузить (%1$d МБ)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Удалить</string>
     <string name="settings_voice_search_downloading">Загрузка… %1$d%%</string>  <!-- format -->

@@ -149,6 +149,8 @@
     <string name="place_photo_number">Foto %1$d</string>
     <string name="place_photo_category_all">Alle</string>
     <string name="place_saved">Gespeichert</string>
+    <string name="place_review_more">Mehr</string>
+    <string name="place_review_less">Weniger</string>
     <string name="place_save">Speichern</string>
     <string name="place_more_options">Weitere Optionen</string>
     <string name="place_set_as_home">Als Zuhause festlegen</string>
@@ -470,8 +472,13 @@
     <string name="voice_capture_done">Fertig</string>
     <string name="mapvm_asr_ready">Das Vela Voice Mikro ist bereit</string>
     <string name="mapvm_asr_download_failed">Sprachmodell konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.</string>
-    <string name="settings_voice_search_model">Vela Voice Mikro</string>
-    <string name="settings_voice_search_model_hint">Das Vela Voice Mikro macht aus Sprache direkt auf deinem Gerät eine Suche: keine andere App nötig, nichts wird hochgeladen. Einmaliger Download von %1$d MB.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">Sprache wird direkt auf deinem Gerät zur Suche: keine andere App nötig, nichts wird hochgeladen. Lade eine oder mehrere Engines herunter und wähle, welche das Mikro verwendet.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Alle von Vela unterstützten Sprachen</string>
+    <string name="settings_asr_langs_sensevoice">Englisch, Chinesisch, Japanisch, Koreanisch, Kantonesisch</string>
+    <string name="settings_asr_langs_moonshine">Nur Englisch</string>
+    <string name="settings_asr_active">Aktiv</string>
+    <string name="settings_asr_use">Verwenden</string>
     <string name="settings_voice_search_download">Herunterladen (%1$d MB)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Entfernen</string>
     <string name="settings_voice_search_downloading">Wird geladen… %1$d%%</string>  <!-- format -->

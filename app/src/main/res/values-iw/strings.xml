@@ -149,6 +149,8 @@
     <string name="place_photo_number">תמונה %1$d</string>
     <string name="place_photo_category_all">הכל</string>
     <string name="place_saved">נשמר</string>
+    <string name="place_review_more">עוד</string>
+    <string name="place_review_less">פחות</string>
     <string name="place_save">שמור</string>
     <string name="place_more_options">אפשרויות נוספות</string>
     <string name="place_set_as_home">הגדר כבית</string>
@@ -457,8 +459,13 @@
     <string name="voice_capture_done">סיום</string>
     <string name="mapvm_asr_ready">מיקרופון Vela Voice מוכן</string>
     <string name="mapvm_asr_download_failed">לא ניתן להוריד את מודל הקול. בדוק את החיבור ונסה שוב.</string>
-    <string name="settings_voice_search_model">מיקרופון Vela Voice</string>
-    <string name="settings_voice_search_model_hint">מיקרופון Vela Voice הופך דיבור לחיפוש ישירות בטלפון שלך: לא צריך אפליקציה אחרת ושום דבר לא מועלה. הורדה חד-פעמית של %1$d מ\"ב.</string>
+    <string name="settings_asr_engines_hint">הדיבור הופך לחיפוש ישירות בטלפון שלך: לא צריך אפליקציה אחרת ושום דבר לא מועלה. הורד מנוע אחד או יותר ובחר באיזה המיקרופון ישתמש.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d מ\"ב</string>
+    <string name="settings_asr_langs_whisper">כל השפות ש-Vela תומכת בהן</string>
+    <string name="settings_asr_langs_sensevoice">אנגלית, סינית, יפנית, קוריאנית, קנטונזית</string>
+    <string name="settings_asr_langs_moonshine">אנגלית בלבד</string>
+    <string name="settings_asr_active">פעיל</string>
+    <string name="settings_asr_use">השתמש</string>
     <string name="settings_voice_search_download">הורד (%1$d מ\"ב)</string>
     <string name="settings_voice_search_remove">הסר</string>
     <string name="settings_voice_search_downloading">מוריד… %1$d%%</string>

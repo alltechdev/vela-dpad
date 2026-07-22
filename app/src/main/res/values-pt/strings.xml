@@ -149,6 +149,8 @@
     <string name="place_photo_number">Foto %1$d</string>
     <string name="place_photo_category_all">Todas</string>
     <string name="place_saved">Guardado</string>
+    <string name="place_review_more">Mais</string>
+    <string name="place_review_less">Menos</string>
     <string name="place_save">Guardar</string>
     <string name="place_more_options">Mais opções</string>
     <string name="place_set_as_home">Definir como Casa</string>
@@ -470,8 +472,13 @@
     <string name="voice_capture_done">Concluído</string>
     <string name="mapvm_asr_ready">O micro Vela Voice está pronto</string>
     <string name="mapvm_asr_download_failed">Não foi possível transferir o modelo de voz. Verifica a ligação e tenta novamente.</string>
-    <string name="settings_voice_search_model">Micro Vela Voice</string>
-    <string name="settings_voice_search_model_hint">O micro Vela Voice transforma a fala numa pesquisa diretamente no telemóvel: sem outra app e sem enviar nada. Transferência única de %1$d MB.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">A fala torna-se uma pesquisa diretamente no telemóvel: sem outra app e sem enviar nada. Transfere um ou mais motores e escolhe qual o micro usa.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Todos os idiomas suportados pelo Vela</string>
+    <string name="settings_asr_langs_sensevoice">Inglês, chinês, japonês, coreano, cantonês</string>
+    <string name="settings_asr_langs_moonshine">Apenas inglês</string>
+    <string name="settings_asr_active">Ativo</string>
+    <string name="settings_asr_use">Usar</string>
     <string name="settings_voice_search_download">Transferir (%1$d MB)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Remover</string>
     <string name="settings_voice_search_downloading">A transferir… %1$d%%</string>  <!-- format -->

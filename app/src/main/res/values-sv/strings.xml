@@ -149,6 +149,8 @@
     <string name="place_photo_number">Foto %1$d</string>
     <string name="place_photo_category_all">Alla</string>
     <string name="place_saved">Sparad</string>
+    <string name="place_review_more">Mer</string>
+    <string name="place_review_less">Mindre</string>
     <string name="place_save">Spara</string>
     <string name="place_more_options">Fler alternativ</string>
     <string name="place_set_as_home">Ange som Hem</string>
@@ -470,8 +472,13 @@
     <string name="voice_capture_done">Klar</string>
     <string name="mapvm_asr_ready">Vela Voice-mikrofonen är klar</string>
     <string name="mapvm_asr_download_failed">Det gick inte att ladda ner röstmodellen. Kontrollera anslutningen och försök igen.</string>
-    <string name="settings_voice_search_model">Vela Voice-mikrofon</string>
-    <string name="settings_voice_search_model_hint">Vela Voice-mikrofonen gör tal till en sökning direkt på telefonen: ingen annan app behövs och inget laddas upp. Engångsnedladdning på %1$d MB.</string>  <!-- format -->
+    <string name="settings_asr_engines_hint">Tal blir en sökning direkt på telefonen: ingen annan app behövs och inget laddas upp. Ladda ner en eller flera motorer och välj vilken mikrofonen använder.</string>
+    <string name="settings_asr_engine_meta">%1$s · %2$d MB</string>  <!-- format -->
+    <string name="settings_asr_langs_whisper">Alla språk som Vela stöder</string>
+    <string name="settings_asr_langs_sensevoice">Engelska, kinesiska, japanska, koreanska, kantonesiska</string>
+    <string name="settings_asr_langs_moonshine">Endast engelska</string>
+    <string name="settings_asr_active">Aktiv</string>
+    <string name="settings_asr_use">Använd</string>
     <string name="settings_voice_search_download">Ladda ner (%1$d MB)</string>  <!-- format -->
     <string name="settings_voice_search_remove">Ta bort</string>
     <string name="settings_voice_search_downloading">Laddar ner… %1$d%%</string>  <!-- format -->

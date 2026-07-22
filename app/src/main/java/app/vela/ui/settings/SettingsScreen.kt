@@ -151,7 +151,11 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
                         // focused) - the mirror of the UP-from-top trap. So route DOWN straight to the
                         // first content row via requestFocus (proven to land; never moveFocus, which
                         // clears at a container edge).
+                        // The ring, not just the focus: auto-focus landed here but without
+                        // dpadHighlight the screen LOOKED unfocused - the visible half of
+                        // issue #77 (the search overlay's Back has the same CircleShape ring).
                         modifier = Modifier
+                            .dpadHighlight(androidx.compose.foundation.shape.CircleShape)
                             .dpadAutoFocus(settingsAutoFocus)
                             .onKeyEvent { ev ->
                                 if (ev.key == Key.DirectionDown && ev.type == KeyEventType.KeyDown) {
@@ -561,9 +565,19 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             state.voiceDownloadingId?.let { id ->
                 val nm = vm.voiceCatalog().firstOrNull { it.id == id }?.displayName ?: stringResource(R.string.settings_voice_fallback_name)
                 val pct = state.kokoroDownloadPct ?: 0f
-                Text(stringResource(R.string.settings_voice_downloading, nm, (pct * 100).toInt()), style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+                if (state.voiceInstalling) {
+                    // Download hit 100%; now unpacking the ~67 MB archive (~15 s). A distinct
+                    // "Installing…" with an indeterminate bar so it doesn't read as a stuck 100%
+                    // download (upstream 75c9104d). The map card already does this; these Settings
+                    // sites did not, so they read as a hang.
+                    Text(stringResource(R.string.settings_voice_search_installing), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    Text(stringResource(R.string.settings_voice_downloading, nm, (pct * 100).toInt()), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+                }
                 Spacer(Modifier.height(12.dp))
             } ?: Spacer(Modifier.height(4.dp))
             // Enumerate TTS engines OFF the main thread. PackageManager.queryIntentServices + the
@@ -717,63 +731,102 @@ fun SettingsScreen(vm: MapViewModel, onBack: () -> Unit, openOffline: Boolean = 
             }
             Hint(stringResource(R.string.settings_voice_search_hint))
 
-            // On-device voice search (tier-1): download Vela Voice (Whisper) or remove it. Works with
-            // no other app and uploads nothing; Auto uses it over a provider when it's installed.
+            // On-device voice search (tier-1): a PER-ENGINE picker (upstream 5d2a6636 + 137beea9).
+            // Whisper (multilingual, smallest, the default) plus opt-in SenseVoice / Moonshine.
+            // Download one or more, pick which the mic uses ("Use"), remove to free space. D-pad
+            // safety: every control is a FULL-WIDTH single focus stop - an installed engine renders a
+            // "Use/Active" row AND a SEPARATE "Remove" row (never two nested targets in one row), a
+            // not-installed engine a "Download" row. One download at a time (the collision guard).
             LaunchedEffect(Unit) { vm.refreshAsr() }
             Spacer(Modifier.height(8.dp))
-            Hint(stringResource(R.string.settings_voice_search_model_hint, app.vela.voice.AsrModel.SIZE_MB))
-            // D-pad: swap-in control like the voice/region rows - the keeper re-places focus
-            // when Download becomes the progress readout and again when Remove appears.
-            val asrKeeper = rememberDpadFocusKeeper()
-            when {
-                // QUEUED counts as busy here too. Gating this row on asrDownloadPct alone left a live
-                // "Download (58 MB)" button through the whole voice download when both models were
-                // picked in setup - and downloadAsrModel's own guard checks the same field, so the
-                // tap sailed through and ran a SECOND download concurrently. Both stream through
-                // KokoroInstaller's shared voice.download.tmp/voice.staging, so they overwrite each
-                // other's archive and the first to finish deletes the other's staging mid-extract:
-                // two failed installs. Closing the map mic button was not enough; this is the other
-                // door into the same collision.
-                state.asrDownloadPct != null || state.asrQueued -> {
-                    val pct = state.asrDownloadPct ?: 0f
-                    val queued = state.asrDownloadPct == null
-                    DpadFocusHandoff(asrKeeper)
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .dpadFocusKept(asrKeeper)
-                            .dpadHighlight(RoundedCornerShape(8.dp))
-                            .focusable(),
-                    ) {
-                        Text(
-                            when {
-                                queued -> stringResource(R.string.map_asr_waiting)
-                                state.asrInstalling -> stringResource(R.string.settings_voice_search_installing)
-                                else -> stringResource(R.string.settings_voice_search_downloading, (pct * 100).toInt())
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        // Indeterminate while queued: nothing has started, so a 0% bar would read as stuck.
-                        if (queued) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        else LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+            Hint(stringResource(R.string.settings_asr_engines_hint))
+            val anyAsrBusy = state.asrDownloadPct != null || state.asrQueued
+            app.vela.voice.AsrEngine.entries.forEach { engine ->
+                val installed = engine.id in state.asrInstalledIds
+                val active = engine.id == state.asrActiveId && installed
+                val thisDownloading = state.asrDownloadingEngineId == engine.id ||
+                    (anyAsrBusy && state.asrDownloadingEngineId == null && engine == app.vela.voice.AsrEngine.DEFAULT)
+                val langs = stringResource(
+                    when (engine) {
+                        app.vela.voice.AsrEngine.WHISPER_TINY -> R.string.settings_asr_langs_whisper
+                        app.vela.voice.AsrEngine.SENSE_VOICE -> R.string.settings_asr_langs_sensevoice
+                        app.vela.voice.AsrEngine.MOONSHINE -> R.string.settings_asr_langs_moonshine
+                    },
+                )
+                val meta = stringResource(R.string.settings_asr_engine_meta, langs, engine.sizeMb)
+                // D-pad: a keeper PER ENGINE ROW (same idiom as the routing-region rows) so when this
+                // engine's control swaps Download -> spinner -> Use/Remove, the highlight stays on it
+                // instead of teleporting to the top of the page. DpadFocusHandoff inside each branch,
+                // dpadFocusKept on every variant, one retarget per row (docs/dpad.md; AGENTS.md).
+                val keeper = rememberDpadFocusKeeper()
+                when {
+                    thisDownloading -> {
+                        val pct = state.asrDownloadPct ?: 0f
+                        val queued = state.asrDownloadPct == null
+                        DpadFocusHandoff(keeper)
+                        Column(Modifier.fillMaxWidth().dpadFocusKept(keeper).dpadHighlight(DpadShape(6.dp)).focusable().padding(vertical = 8.dp)) {
+                            Text(engine.displayName, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                when {
+                                    queued -> stringResource(R.string.map_asr_waiting)
+                                    state.asrInstalling -> stringResource(R.string.settings_voice_search_installing)
+                                    else -> stringResource(R.string.settings_voice_search_downloading, (pct * 100).toInt())
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            // Indeterminate while queued/installing (nothing to count): a frozen bar reads as stuck.
+                            if (queued || state.asrInstalling) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            else LinearProgressIndicator(progress = { pct }, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                    installed -> {
+                        // ONE focus stop = the whole row (dpadClickable); the RadioButton is read-only
+                        // (onClick = null) so it isn't a second stop, matching the SelectableRow idiom.
+                        // OK selects this engine; the ring is the only focus signal (dpadClickable drops
+                        // Material's grey layer under key input).
+                        DpadFocusHandoff(keeper)
+                        Row(
+                            Modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).dpadClickable(enabled = !active) { vm.selectAsrEngine(engine) }.dpadFocusKept(keeper).padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = active, onClick = null)
+                            Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                                Text(engine.displayName, style = MaterialTheme.typography.bodyLarge)
+                                Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(
+                                stringResource(if (active) R.string.settings_asr_active else R.string.settings_asr_use),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        // Remove is a SEPARATE full-width row (its own single focus stop), never a nested
+                        // target inside the row above - the anti-pattern the audits reject.
+                        Row(
+                            Modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).dpadClickable { vm.deleteAsrEngine(engine) }.padding(start = 40.dp, top = 2.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(stringResource(R.string.settings_voice_search_remove), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    else -> {
+                        DpadFocusHandoff(keeper)
+                        Row(
+                            Modifier.fillMaxWidth().dpadHighlight(DpadShape(6.dp)).dpadClickable(enabled = !anyAsrBusy) { vm.downloadAsrEngine(engine) }.dpadFocusKept(keeper).padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(engine.displayName, style = MaterialTheme.typography.bodyLarge)
+                                Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(stringResource(R.string.settings_voice_search_download, engine.sizeMb), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
-                state.asrInstalled -> {
-                    DpadFocusHandoff(asrKeeper)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.settings_voice_search_model), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { vm.deleteAsrModel() }, modifier = Modifier.dpadFocusKept(asrKeeper)) { Text(stringResource(R.string.settings_voice_search_remove)) }
-                    }
-                }
-                else -> {
-                    DpadFocusHandoff(asrKeeper)
-                    OutlinedButton(onClick = { vm.downloadAsrModel() }, modifier = Modifier.dpadFocusKept(asrKeeper)) {
-                        Text(stringResource(R.string.settings_voice_search_download, app.vela.voice.AsrModel.SIZE_MB))
-                    }
-                }
+                LaunchedEffect(thisDownloading, installed, active) { keeper.retarget() }
+                Spacer(Modifier.height(4.dp))
             }
-            LaunchedEffect(state.asrDownloadPct != null, state.asrQueued, state.asrInstalled) { asrKeeper.retarget() }
             // The engine picker only matters when there's actually a choice (the model AND a voice app,
             // or two voice apps): "Vela Voice" = AUTO (the model wins, provider as graceful fallback),
             // "Android default" = the implicit intent Android routes, or each installed app pinned by name
@@ -1490,6 +1543,7 @@ private fun VoiceLibrary(vm: MapViewModel, state: MapUiState) {
                         active = v.id == selected,
                         downloading = state.voiceDownloadingId == v.id,
                         downloadPct = if (state.voiceDownloadingId == v.id) state.kokoroDownloadPct ?: 0f else 0f,
+                        installing = state.voiceDownloadingId == v.id && state.voiceInstalling,
                         anyDownloading = state.voiceDownloadingId != null,
                         onDownload = { vm.downloadVoice(v.id) },
                         onUse = { vm.selectVoice(v.id) },
@@ -1532,6 +1586,7 @@ private fun VoiceRow(
     active: Boolean,
     downloading: Boolean,
     downloadPct: Float,
+    installing: Boolean = false, // download done, unpacking the archive (~15 s) - not a stuck 100%
     anyDownloading: Boolean,
     onDownload: () -> Unit,
     onUse: () -> Unit,
@@ -1556,6 +1611,7 @@ private fun VoiceRow(
                 )
             }
             val sub = when {
+                installing -> stringResource(R.string.settings_voice_search_installing) // unpacking, not a stuck 100% (upstream 75c9104d)
                 downloading -> stringResource(R.string.settings_voice_row_downloading, (downloadPct * 100).toInt())
                 active -> stringResource(R.string.settings_voice_row_in_use, v.region, gender, v.sizeMb)
                 installed -> stringResource(R.string.settings_voice_row_downloaded, v.region, gender, v.sizeMb)
@@ -1610,5 +1666,10 @@ private fun VoiceRow(
         }
         LaunchedEffect(downloading, active, installed) { keeper.retarget() }
     }
-    if (downloading) LinearProgressIndicator(progress = { downloadPct }, modifier = Modifier.fillMaxWidth())
+    // The label above already reads "Installing…" during unpack; the bar must go indeterminate too,
+    // or it sits frozen at 100% and reads as a hang (upstream 75c9104d, hunk f).
+    if (downloading) {
+        if (installing) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        else LinearProgressIndicator(progress = { downloadPct }, modifier = Modifier.fillMaxWidth())
+    }
 }

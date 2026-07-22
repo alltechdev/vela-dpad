@@ -208,7 +208,10 @@ data class MapUiState(
     // live during that whole window, because asrDownloadPct is still null, so tapping it offered
     // the very download that was already queued (user 2026-07-21).
     val asrQueued: Boolean = false,
-    val asrInstalled: Boolean = false,      // Whisper voice-search model present on disk (Settings shows Download vs Remove)
+    val asrInstalled: Boolean = false,      // ANY on-device engine present + usable (mic availability gate)
+    val asrInstalledIds: Set<String> = emptySet(),  // which AsrEngine ids are installed (Settings picker)
+    val asrActiveId: String = app.vela.voice.AsrEngine.DEFAULT.id, // the picked engine's id (Settings "Active")
+    val asrDownloadingEngineId: String? = null,     // which engine is downloading now (Settings row progress)
     val parkingSpot: LatLng? = null, // one-tap "parked here" pin - survives restarts (prefs)
     val parkedAtMillis: Long = 0L,   // when it was saved (for the sheet/history labels)
     val parkingHistory: List<app.vela.core.model.ParkedSpot> = emptyList(), // recent saves, newest first - accidental-overwrite insurance
@@ -338,6 +341,11 @@ class MapViewModel @Inject constructor(
     @Volatile private var lastLimitHitLoc: LatLng? = null // last fix that RESOLVED a limit - drives the
                                                           // "forget a stale limit after driving far off it" clear
     private var limitJob: Job? = null // single-flight the off-thread maxspeed snap
+    // Debounce the OFFLINE latch: a real phone on flaky cellular drops the network for a beat on a
+    // cell/wifi handoff or coming out of doze, and greying the whole app instantly on that blip reads
+    // as "crying wolf". Going ONLINE heals immediately; going offline waits ~3 s and re-checks first
+    // (upstream b9be581c). null/inactive = not currently latching.
+    private var offlineLatchJob: Job? = null
     private val noticePrefs = appContext.getSharedPreferences("vela_notices", Context.MODE_PRIVATE)
 
     init {
@@ -953,6 +961,7 @@ class MapViewModel @Inject constructor(
         _state.update { it.copy(recents = emptyList(), recentPlaces = emptyList()) }
     }
 
+
     /** Show notices pushed via the signed calibration channel, minus dismissed ones. */
     private fun refreshNotices() {
         val dismissed = noticePrefs.getStringSet(KEY_DISMISSED, emptySet()).orEmpty()
@@ -1156,7 +1165,19 @@ class MapViewModel @Inject constructor(
         val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
         fun refresh() {
             val off = !isOnline()
-            _state.update { if (it.offline != off) it.copy(offline = off) else it }
+            if (!off) {
+                // Back online: heal instantly, cancel any pending offline latch.
+                offlineLatchJob?.cancel()
+                _state.update { if (it.offline) it.copy(offline = false) else it }
+            } else if (offlineLatchJob?.isActive != true) {
+                // Went offline: wait ~3 s and re-check before greying the app, so a momentary blip
+                // (handoff / doze wake) doesn't flash the offline indicator.
+                offlineLatchJob = viewModelScope.launch {
+                    delay(3_000)
+                    val stillOff = !isOnline()
+                    _state.update { if (it.offline != stillOff) it.copy(offline = stillOff) else it }
+                }
+            }
         }
         refresh()
         runCatching {
@@ -1200,9 +1221,11 @@ class MapViewModel @Inject constructor(
             onMapLongPress(at)
             return
         }
-        // Re-poll connectivity per search: the registered callback alone proved able to
-        // wedge `offline` on (missed onAvailable after doze) until an app relaunch.
-        _state.update { val off = !isOnline(); if (it.offline != off) it.copy(offline = off) else it }
+        // Re-poll connectivity per search, HEAL-ONLY: the registered callback alone proved able to
+        // wedge `offline` on (missed onAvailable after doze) until an app relaunch. A successful-enough
+        // reach to run a search means we're online, so clear the latch; never SET offline here - that
+        // is the debounced path's job, or this would re-introduce the instant flap (upstream b9be581c).
+        if (isOnline()) { offlineLatchJob?.cancel(); _state.update { if (it.offline) it.copy(offline = false) else it } }
         suggestJob?.cancel()
         recentStore.add(q)
         _state.update { it.copy(recents = recentStore.recent()) }
@@ -1248,6 +1271,24 @@ class MapViewModel @Inject constructor(
             try {
                 val res = dataSource.search(q, near)
                 if (res.places.isNotEmpty()) {
+                    // NEARBY MERGE (upstream b3bb48fa): even with pagination, Google's keyless ranking is
+                    // prominence-heavy over the whole viewport, so a modest place right next to the user
+                    // can miss every page of a category search. The ambient pool (the category fan-out at
+                    // a tight span) usually already holds it - APPEND matching ambient places the search
+                    // missed, nearest first, never reshuffling Google's own order. Zero extra network.
+                    val ambientExtra = if (near != null && !app.vela.core.data.OfflineAddressStore.looksLikeAddress(q)) {
+                        val qn = q.trim().lowercase().trimEnd('s')
+                        if (qn.length < 3) emptyList()
+                        else _state.value.ambientPois
+                            .filter { p ->
+                                val cat = p.category?.lowercase() ?: ""
+                                (cat.isNotEmpty() && (cat.contains(qn) || (cat.length >= 4 && qn.contains(cat)))) ||
+                                    p.name.lowercase().contains(qn)
+                            }
+                            .filterNot { a -> res.places.any { g -> g.name.equals(a.name, ignoreCase = true) && g.location.distanceTo(a.location) < 150.0 } }
+                            .sortedBy { it.location.distanceTo(near) }
+                            .take(20)
+                    } else emptyList()
                     _state.update {
                         // Keep the directions DESTINATION (held in `selected`) while picking an origin/stop -
                         // else typing the origin query wiped the "To" and the panel showed an empty
@@ -1255,7 +1296,7 @@ class MapViewModel @Inject constructor(
                         // A live scrape succeeding is definitive proof we're online - clear a stuck
                         // offline flag (the network callback can miss an event after doze and leave
                         // `offline` latched until relaunch; seen on-device 2026-07-09).
-                        it.copy(results = res.places, selected = if (it.pickingOrigin || it.pickingStop) it.selected else null, status = null, searching = false, offline = false)
+                        it.copy(results = res.places + ambientExtra, selected = if (it.pickingOrigin || it.pickingStop) it.selected else null, status = null, searching = false, offline = false)
                     }
                 } else {
                     // Online SUCCEEDED but found nothing. Don't leave a blank screen (the "POI list just
@@ -3687,7 +3728,10 @@ class MapViewModel @Inject constructor(
             // Re-check we're still on the bare map - the user may have searched/opened a place while we fetched.
             val cur = _state.value
             if (cur.navigating || cur.replaying || cur.results.isNotEmpty() || cur.selected != null) return@launch
-            _state.update { it.copy(ambientPois = keepAmbientForView(res, viewRadiusMeters)) }
+            // A fresh ambient fetch that returned means we reached the network - heal offline too, so
+            // a browse that succeeds clears a stale offline flag without waiting for a search (b9be581c).
+            offlineLatchJob?.cancel()
+            _state.update { it.copy(ambientPois = keepAmbientForView(res, viewRadiusMeters), offline = false) }
         }
     }
 
@@ -4350,9 +4394,15 @@ class MapViewModel @Inject constructor(
 
     // ---- On-device voice search (tier-1 Whisper ASR) ----
 
-    /** Reflect whether the on-device speech model is present (Settings shows Download vs Remove). */
+    /** Reflect whether ANY on-device engine is present + which one is active (Settings picker). */
     fun refreshAsr() {
-        _state.update { it.copy(asrInstalled = whisperRecognizer.isInstalled()) }
+        _state.update {
+            it.copy(
+                asrInstalled = whisperRecognizer.isInstalled(),
+                asrInstalledIds = app.vela.voice.AsrEngine.installed(appContext).map { e -> e.id }.toSet(),
+                asrActiveId = app.vela.voice.AsrEngine.active(appContext).id,
+            )
+        }
         // Pre-build the Whisper recognizer when the mic would actually use it, so the first
         // dictation listens immediately instead of showing a "Getting ready" beat while the
         // ONNX model loads. refreshAsr runs at VM init and the engine pref rarely changes.
@@ -4363,9 +4413,14 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    /** Download the ~58 MB on-device speech-to-text model, reusing the neural-voice installer + its
-     *  no-call-timeout client (the shared 12 s cap would abort a download this size). */
-    fun downloadAsrModel() {
+    /** The onboarding checkbox + the map's one-tap mic offer install the DEFAULT engine (Whisper) -
+     *  the smallest and multilingual, so a feature phone never gets pushed a heavier model by
+     *  default. The Settings picker calls [downloadAsrEngine] directly for a specific engine. */
+    fun downloadAsrModel() = downloadAsrEngine(app.vela.voice.AsrEngine.DEFAULT)
+
+    /** Download [engine]'s model (58-154 MB), reusing the neural-voice installer + its no-call-timeout
+     *  client (the shared 12 s cap would abort a download this size). One at a time. */
+    fun downloadAsrEngine(engine: app.vela.voice.AsrEngine) {
         if (_state.value.asrDownloadPct != null) { _state.update { it.copy(asrQueued = false) }; return } // serialize
         // The collision this really has to avoid is a VOICE download running at the same time:
         // KokoroInstaller stages every download through the same filesDir/voice.download.tmp +
@@ -4374,21 +4429,27 @@ class MapViewModel @Inject constructor(
         // entry point (the Settings button, the map offer) able to start one anyway. Stay queued
         // rather than clearing the flag - the onboarding waiter will call back when the voice is done.
         if (_state.value.voiceDownloadingId != null) return
-        val bytes = app.vela.voice.AsrModel.SIZE_MB.toLong() * 1024 * 1024
+        val bytes = engine.sizeMb.toLong() * 1024 * 1024
         if (appContext.filesDir.usableSpace < bytes * 13 / 10) {
-            showStatus(appContext.getString(R.string.mapvm_not_enough_space, appContext.getString(R.string.settings_voice_search_model), app.vela.voice.AsrModel.SIZE_MB))
+            showStatus(appContext.getString(R.string.mapvm_not_enough_space, engine.displayName, engine.sizeMb))
             _state.update { it.copy(asrQueued = false) } // abandoned: never leave the mic button dead
             return
         }
-        whisperRecognizer.clearQuarantine() // a fresh download replaces whatever was quarantined
-        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false, asrQueued = false) }
+        val hadNone = !whisperRecognizer.isInstalled()
+        whisperRecognizer.clearQuarantine(engine) // a fresh download replaces whatever was quarantined
+        _state.update { it.copy(asrDownloadPct = 0f, asrInstalling = false, asrQueued = false, asrDownloadingEngineId = engine.id) }
         viewModelScope.launch {
             val ok = kokoroInstaller.download(
-                app.vela.voice.AsrModel.URL, app.vela.voice.AsrModel.dir(appContext), bytes,
+                engine.url, engine.dir(appContext), bytes,
                 onExtracting = { _state.update { it.copy(asrInstalling = true) } },
             ) { p -> _state.update { it.copy(asrDownloadPct = p) } }
-            _state.update { it.copy(asrDownloadPct = null, asrInstalling = false, asrInstalled = whisperRecognizer.isInstalled()) }
-            if (ok && whisperRecognizer.isInstalled()) {
+            if (ok && engine.isInstalled(appContext) && hadNone) {
+                // First engine installed -> make it the active pick, so the mic uses it immediately.
+                app.vela.voice.AsrEngine.setActive(appContext, engine)
+            }
+            _state.update { it.copy(asrDownloadPct = null, asrInstalling = false, asrDownloadingEngineId = null) }
+            refreshAsr()
+            if (ok && engine.isInstalled(appContext)) {
                 whisperRecognizer.warmUp() // a fresh install should listen immediately on first tap
                 flashStatus(appContext.getString(R.string.mapvm_asr_ready))
             } else {
@@ -4397,9 +4458,18 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun deleteAsrModel() {
-        app.vela.voice.AsrModel.dir(appContext).deleteRecursively()
-        _state.update { it.copy(asrInstalled = false) }
+    /** Make [engine] the active voice-search engine (Settings "Use"). */
+    fun selectAsrEngine(engine: app.vela.voice.AsrEngine) {
+        app.vela.voice.AsrEngine.setActive(appContext, engine)
+        whisperRecognizer.warmUp()
+        refreshAsr()
+    }
+
+    /** Remove one engine's model (Settings "Remove"); the active pick degrades to another installed
+     *  engine automatically (AsrEngine.active). */
+    fun deleteAsrEngine(engine: app.vela.voice.AsrEngine) {
+        engine.dir(appContext).deleteRecursively()
+        refreshAsr()
     }
 
     /** Onboarding offers BOTH on-device speech models on one screen, so a user can pick both at once.
