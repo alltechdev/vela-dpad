@@ -1326,6 +1326,7 @@ fun MapScreen(
                                 ((state.pickingOrigin || state.pickingStop) && state.query.isBlank())
                             ) -> SearchEntryContent(
                             suggestions = state.suggestions,
+                            query = state.query,
                             saved = state.saved,
                             recents = state.recents,
                             recentPlaces = state.recentPlaces,
@@ -2807,6 +2808,7 @@ private fun ChooseOnMapOverlay(
 @Composable
 private fun SearchEntryContent(
     suggestions: List<Place>,
+    query: String,
     saved: List<SavedPlace>,
     recents: List<String>,
     recentPlaces: List<SavedPlace>,
@@ -2830,14 +2832,45 @@ private fun SearchEntryContent(
     onPinSavedAs: (SavedPlace, ShortcutKind) -> Unit,
     onRemoveSaved: (SavedPlace) -> Unit,
 ) {
-    // While typing, live place suggestions take over the page (Google-style);
-    // with an empty box it's the Home/Work + saved + recents shortlist.
-    if (suggestions.isNotEmpty()) {
+    // Match your OWN history/saved as you type - instant, offline, less typing on a keypad phone
+    // (upstream 40873d96; the fork has no custom lists, so only recents + saved). These render ABOVE
+    // the network suggestions and are deduped from them by name, each a plain SuggestionRow = one
+    // D-pad focus stop. No network, so they appear before the Google fetch even returns.
+    val q = query.trim()
+    val localQueries = if (q.length >= 2) recents.filter { it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true) }.take(3) else emptyList()
+    val localPlaces = if (q.length >= 2) {
+        (recentPlaces + saved).distinctBy { it.id }
+            .filter { it.name.contains(q, ignoreCase = true) }
+            .filterNot { lp -> suggestions.any { it.name.equals(lp.name, ignoreCase = true) } } // network wins the dupe
+            .take(3)
+    } else emptyList()
+
+    // While typing, live suggestions take over the page (Google-style); with an empty box it's the
+    // Home/Work + saved + recents shortlist.
+    if (suggestions.isNotEmpty() || localQueries.isNotEmpty() || localPlaces.isNotEmpty()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp),
         ) {
             if (assigning != null) AssignBanner(assigning, onCancelAssign)
             if (pickingStop) PickStopBanner(onCancelPickStop)
+            localPlaces.forEach { lp ->
+                SuggestionRow(
+                    icon = Icons.Default.Place,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = lp.name,
+                    onClick = { onPickRecentPlace(lp) },
+                )
+                Divider()
+            }
+            localQueries.forEach { rq ->
+                SuggestionRow(
+                    icon = Icons.Default.History,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    label = rq,
+                    onClick = { onPickRecent(rq) },
+                )
+                Divider()
+            }
             suggestions.forEach { p ->
                 SuggestionRow(
                     icon = Icons.Default.Search,
