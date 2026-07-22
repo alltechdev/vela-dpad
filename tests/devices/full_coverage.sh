@@ -196,8 +196,14 @@ cover_one() {
   goto_map
   if reach_directions; then
     mark "directions" 1
-    # steps sheet: from the Drive tab, DOWN to Steps and OK (best-effort)
-    if focus_and_ok "Steps"; then mark "route-steps" 1; key "$K_BACK" 1; else mark "route-steps" 0; fi
+    # Steps sheet. Under soft-keys "Steps" IS the LEFT soft key (the directions panel puts Steps/Start
+    # on the bar) - focus_and_ok can never land on a Yapchik bar label, so the old walk stalled on the
+    # Search-along-route chips and route-steps read MISSED while the feature worked (device-seen
+    # @240x320; same lesson as reach_directions' RIGHT-soft-key press). On touch it stays a panel row.
+    if softkeys_shown; then key "$K_SOFT_LEFT" 2; else focus_and_ok "Steps"; fi
+    if on_screen_contains "Head " || on_screen_contains "Turn " || on_screen "Close"; then
+      mark "route-steps" 1; key "$K_BACK" 1
+    else mark "route-steps" 0; fi
     key "$K_BACK" 1
   else mark "directions" 0; mark "route-steps" 0; fi
   fi
