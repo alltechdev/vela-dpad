@@ -1,10 +1,18 @@
 package app.vela.car
 
 import androidx.car.app.CarContext
+import androidx.car.app.CarToast
+import androidx.car.app.Screen
 import androidx.car.app.media.CarAudioRecord
+import androidx.car.app.model.Action
+import androidx.car.app.model.CarIcon
+import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.lifecycleScope
+import app.vela.R
 import app.vela.ui.VoiceSearch
 import app.vela.voice.VoiceResult
 import app.vela.voice.WhisperRecognizer
+import kotlinx.coroutines.launch
 
 /**
  * In-car voice search: the car's microphone ([CarAudioRecord], Car API level 5+) feeding the same
@@ -28,6 +36,42 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
     /** Ask the host to run the phone-side RECORD_AUDIO grant flow, then invalidate via [onDone]. */
     fun requestPermission(onDone: () -> Unit) {
         carContext.requestPermissions(listOf(android.Manifest.permission.RECORD_AUDIO)) { _, _ -> onDone() }
+    }
+
+    /** True while a capture is in flight. Screens read it for their loading state; a second mic tap
+     *  flips it off, which [capture]'s cancelled() sees (= the phone's "done": transcribe what was heard). */
+    var listening = false
+        private set
+
+    /** The mic [Action] for a screen's action strip. One shared flow: tap to record (permission
+     *  prompt first if needed), tap again to stop early; [onUpdate] fires on state changes the
+     *  screen should re-template for, [onTranscript] gets the cleaned query. No-speech toasts. */
+    fun micAction(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit): Action =
+        Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_mic)).build())
+            .setOnClickListener { tap(screen, onUpdate, onTranscript) }
+            .build()
+
+    private fun tap(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit) {
+        if (listening) { listening = false; return }
+        if (!hasPermission()) {
+            requestPermission { screen.invalidate() }
+            return
+        }
+        listening = true
+        onUpdate()
+        CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_SHORT).show()
+        screen.lifecycleScope.launch {
+            val result = capture { !listening }
+            listening = false
+            when (result) {
+                is VoiceResult.Text -> onTranscript(result.query)
+                else -> {
+                    CarToast.makeText(carContext, R.string.car_voice_nothing, CarToast.LENGTH_SHORT).show()
+                    onUpdate()
+                }
+            }
+        }
     }
 
     /** Record one utterance from the car mic and transcribe it. Suspends until speech ends (or

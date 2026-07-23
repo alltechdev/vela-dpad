@@ -1,21 +1,16 @@
 package app.vela.car.screen
 
 import androidx.car.app.CarContext
-import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
-import androidx.car.app.model.CarIcon
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.car.app.model.SearchTemplate
-import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.lifecycleScope
-import app.vela.R
 import app.vela.car.CarVoiceSearch
 import app.vela.core.model.Place
-import app.vela.voice.VoiceResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -24,14 +19,21 @@ import kotlinx.coroutines.launch
  *  last known location; tapping a result previews a route to it. A mic action (hosts on Car API 5+,
  *  when the on-device model is installed) records from the CAR's mic and transcribes with the same
  *  Whisper pipeline as the phone - see [CarVoiceSearch]. */
-class SearchCarScreen(carContext: CarContext, private val deps: CarDeps) : Screen(carContext) {
+class SearchCarScreen(
+    carContext: CarContext,
+    private val deps: CarDeps,
+    initialQuery: String? = null, // a transcript from the landing screen's mic, searched on entry
+) : Screen(carContext) {
 
     private var results: List<Place> = emptyList()
     private var searching = false
     private var searchJob: Job? = null
     private val voice = CarVoiceSearch(carContext, deps.whisper)
-    private var listening = false
     private var voiceQuery: String? = null // last transcript, echoed into the search field
+
+    init {
+        initialQuery?.let { voiceQuery = it; runSearch(it) }
+    }
 
     override fun onGetTemplate(): Template {
         val callback = object : SearchTemplate.SearchCallback {
@@ -45,14 +47,14 @@ class SearchCarScreen(carContext: CarContext, private val deps: CarDeps) : Scree
         if (voice.available()) {
             builder.setActionStrip(
                 ActionStrip.Builder().addAction(
-                    Action.Builder()
-                        .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_mic)).build())
-                        .setOnClickListener { onMicTapped() }
-                        .build(),
+                    voice.micAction(this, ::invalidate) { q ->
+                        voiceQuery = q
+                        runSearch(q)
+                    },
                 ).build(),
             )
         }
-        if (listening || searching) {
+        if (voice.listening || searching) {
             builder.setLoading(true)
         } else {
             val list = ItemList.Builder()
@@ -76,33 +78,6 @@ class SearchCarScreen(carContext: CarContext, private val deps: CarDeps) : Scree
             builder.setItemList(list.build())
         }
         return builder.build()
-    }
-
-    /** Mic flow: tap to record from the car mic, tap again to stop early (like the phone's "done").
-     *  The transcript lands in the search field (setInitialSearchText) and runs as a normal search. */
-    private fun onMicTapped() {
-        if (listening) { listening = false; return } // second tap = stop; capture() sees cancelled()
-        if (!voice.hasPermission()) {
-            voice.requestPermission { invalidate() }
-            return
-        }
-        listening = true
-        invalidate()
-        CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            val result = voice.capture { !listening }
-            listening = false
-            when (result) {
-                is VoiceResult.Text -> {
-                    voiceQuery = result.query
-                    runSearch(result.query)
-                }
-                else -> {
-                    CarToast.makeText(carContext, R.string.car_voice_nothing, CarToast.LENGTH_SHORT).show()
-                    invalidate()
-                }
-            }
-        }
     }
 
     private fun runSearch(text: String) {

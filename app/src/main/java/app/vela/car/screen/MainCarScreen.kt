@@ -14,6 +14,7 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import app.vela.car.CarMapRenderer
+import app.vela.car.CarVoiceSearch
 import app.vela.core.model.LatLng
 import app.vela.core.model.ShortcutKind
 
@@ -26,6 +27,8 @@ import app.vela.core.model.ShortcutKind
  */
 class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
     Screen(carContext), DefaultLifecycleObserver {
+
+    private val voice = CarVoiceSearch(carContext, deps.whisper)
 
     init { lifecycle.addObserver(this) }
 
@@ -60,12 +63,23 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
             .setIcon(icon(android.R.drawable.ic_menu_search))
             .setOnClickListener { screenManager.push(SearchCarScreen(carContext, deps)) }
             .build()
+        // Voice search straight from the landing screen - no need to open Search first. The
+        // transcript opens SearchCarScreen with the query already searched.
+        val strip = ActionStrip.Builder()
+        if (voice.available()) {
+            strip.addAction(
+                voice.micAction(this, ::invalidate) { q ->
+                    screenManager.push(SearchCarScreen(carContext, deps, q))
+                },
+            )
+        }
+        strip.addAction(search)
 
         return PlaceListNavigationTemplate.Builder()
             .setItemList(list.build())
             .setTitle(carContext.getString(app.vela.R.string.app_name))
             .setHeaderAction(Action.APP_ICON)
-            .setActionStrip(ActionStrip.Builder().addAction(search).build())
+            .setActionStrip(strip.build())
             .build()
     }
 

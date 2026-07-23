@@ -31,8 +31,9 @@ below.
 - **Browse map** with the styled Vela basemap, puck, camera follow, pan/zoom.
 - **Search** (keyboard on the head unit) with results biased to your location;
   tapping a result opens the route preview.
-- **Voice search** on head units with Car API level 5+: the mic action on the
-  search screen records from the **car's** microphone and transcribes with the
+- **Voice search** on head units with Car API level 5+: a mic action on both
+  the landing screen and the search screen records from the **car's**
+  microphone and transcribes with the
   same on-device Whisper model as the phone mic - nothing leaves the device.
   It appears only when voice search is enabled in Settings and the on-device
   model is installed (Settings, Search, Voice search); tap again to stop early.

@@ -847,7 +847,7 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     (upstream returns null and just opens; coord parsing is matchEntire so "Store 12, 34th St"
     is a query, not lat 12 lng 34); and **in-car voice search** - `CarVoiceSearch` feeds the
     car's mic (`CarAudioRecord`, Car API 5+, 16 kHz) through `WhisperRecognizer.listen`'s
-    `PcmSource` seam, so the mic action on `SearchCarScreen` runs the same on-device VAD +
+    `PcmSource` seam, so the mic actions on `MainCarScreen` and `SearchCarScreen` (shared flow in `CarVoiceSearch.micAction`) run the same on-device VAD +
     Whisper pipeline as the phone (gates: host API >= 5, voice-search toggle, model installed;
     RECORD_AUDIO via `carContext.requestPermissions`).
   - **`CarMapRenderer` draws the REAL styled map via MapLibre's `MapSnapshotter`** (off-screen ->
