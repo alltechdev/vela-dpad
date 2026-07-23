@@ -124,6 +124,9 @@ class SearchCarScreen(
     /** Submitted text OR a mic transcript: voice commands act ("navigate home" routes, "mute"
      *  mutes) and everything else searches. */
     private fun handleSubmitted(searchText: String) {
+        // Car searches join the SAME history the phone records (they never did - a port gap the
+        // user caught): submitted text and mic transcripts only, never per-keystroke suggestions.
+        if (searchText.isNotBlank()) deps.recentSearches.add(searchText)
         when (val c = app.vela.core.voice.CarCommands.parse(searchText)) {
             app.vela.core.voice.CarCommands.Command.Mute -> deps.voiceGuide.muted = true
             app.vela.core.voice.CarCommands.Command.Unmute -> deps.voiceGuide.muted = false

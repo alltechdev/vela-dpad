@@ -6,6 +6,7 @@ import app.vela.core.data.MapDataSource
 import app.vela.core.data.ParkingStore
 import app.vela.core.data.PlaceShortcutStore
 import app.vela.core.data.RecentPlaceStore
+import app.vela.core.data.RecentSearchStore
 import app.vela.core.data.RouteEngine
 import app.vela.core.data.SavedPlaceStore
 import app.vela.core.location.LocationProvider
@@ -19,6 +20,7 @@ data class CarDeps(
     val locationProvider: LocationProvider,
     val mapDataSource: MapDataSource,
     val recentPlaces: RecentPlaceStore,
+    val recentSearches: RecentSearchStore, // car searches join the same history the phone shows
     val savedPlaces: SavedPlaceStore,
     val shortcuts: PlaceShortcutStore,
     val voiceGuide: VoiceGuide,

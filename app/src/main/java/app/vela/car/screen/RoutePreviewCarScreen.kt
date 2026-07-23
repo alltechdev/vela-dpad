@@ -166,6 +166,16 @@ class RoutePreviewCarScreen(
                 .getString("voice_engine", null)
             val engine = if (savedRaw == null || savedRaw.startsWith("vela.")) null else savedRaw
             deps.navSession.start(named, dest, destName, engine, emptyList(), TravelMode.DRIVE)
+            // Record the destination into recent places (same store the phone and the landing
+            // screen read) - car-started trips never joined history before (user-caught gap).
+            runCatching {
+                deps.recentPlaces.add(
+                    app.vela.core.model.SavedPlace(
+                        id = place?.id ?: "car:%.5f,%.5f".format(dest.lat, dest.lng),
+                        name = destName, lat = dest.lat, lng = dest.lng,
+                    ),
+                )
+            }
             runCatching { NavigationService.start(carContext.applicationContext) }
             screenManager.push(ActiveNavCarScreen(carContext, deps))
         }

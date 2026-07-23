@@ -8,6 +8,7 @@ import app.vela.core.data.MapDataSource
 import app.vela.core.data.ParkingStore
 import app.vela.core.data.PlaceShortcutStore
 import app.vela.core.data.RecentPlaceStore
+import app.vela.core.data.RecentSearchStore
 import app.vela.core.data.RouteEngine
 import app.vela.core.data.SavedPlaceStore
 import app.vela.core.location.LocationProvider
@@ -34,6 +35,7 @@ class VelaCarAppService : CarAppService() {
     @Inject lateinit var locationProvider: LocationProvider
     @Inject lateinit var mapDataSource: MapDataSource
     @Inject lateinit var recentPlaces: RecentPlaceStore
+    @Inject lateinit var recentSearches: RecentSearchStore
     @Inject lateinit var savedPlaces: SavedPlaceStore
     @Inject lateinit var shortcuts: PlaceShortcutStore
     @Inject lateinit var voiceGuide: VoiceGuide
@@ -49,6 +51,6 @@ class VelaCarAppService : CarAppService() {
     override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
     override fun onCreateSession(): Session = VelaCarSession(
-        CarDeps(navSession, locationProvider, mapDataSource, recentPlaces, savedPlaces, shortcuts, voiceGuide, routeEngine, whisper, parkingStore),
+        CarDeps(navSession, locationProvider, mapDataSource, recentPlaces, recentSearches, savedPlaces, shortcuts, voiceGuide, routeEngine, whisper, parkingStore),
     )
 }
