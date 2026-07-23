@@ -96,6 +96,12 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
         }
     }
 
+    override fun onStop(owner: LifecycleOwner) {
+        // A non-map screen (search, categories, stops, details) is covering us - stop posting
+        // frames under the host's overlay (they tear through it). onStart's start() resumes.
+        deps.mapRenderer(carContext).pause()
+    }
+
     override fun onStart(owner: LifecycleOwner) {
         // Claim the surface with the SHARED renderer + nav mode (route + puck, follow). Never clear it
         // on stop and never stop the collector here — the shared renderer lives for the session (a stop

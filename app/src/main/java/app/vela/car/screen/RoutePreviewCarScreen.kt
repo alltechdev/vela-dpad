@@ -43,6 +43,12 @@ class RoutePreviewCarScreen(
 
     init { lifecycle.addObserver(this) }
 
+    override fun onStop(owner: LifecycleOwner) {
+        // A non-map screen (search, categories, stops, details) is covering us - stop posting
+        // frames under the host's overlay (they tear through it). onStart's start() resumes.
+        deps.mapRenderer(carContext).pause()
+    }
+
     override fun onStart(owner: LifecycleOwner) {
         // Shared renderer, preview mode (frame the selected route). Never clear/stop on transitions.
         val renderer = deps.mapRenderer(carContext)

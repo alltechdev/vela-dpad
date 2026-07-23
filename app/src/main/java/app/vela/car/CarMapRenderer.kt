@@ -184,7 +184,16 @@ class CarMapRenderer(
     // seasons and latitudes; the car host already computes this from location + time).
     private fun isNight(): Boolean = runCatching { carContext.isDarkMode }.getOrDefault(false)
 
+    /** Pause buffer production while a NON-MAP template covers the surface: the host layers the
+     *  search/list templates over the shared surface, and frames we keep posting underneath bleed
+     *  through as tearing blocks (head-unit report). Map screens call [start] on foreground
+     *  (which unpauses) and [pause] from onStop. */
+    @Volatile private var paused = false
+    fun pause() { paused = true }
+
     fun start() {
+        paused = false
+        requestRender()
         collectJob?.cancel()
         collectJob = scope.launch {
             locationProvider.updates().collect { loc ->
@@ -387,6 +396,7 @@ class CarMapRenderer(
     }
 
     private fun requestRender() {
+        if (paused) return
         // A day/night or traffic flip mid-session must rebuild the snapshotter (the style is baked
         // in at creation): no surface event fires at sunset, so without this the map kept the old
         // palette for the rest of the drive (review finding). Rebuild via the same surface path.
