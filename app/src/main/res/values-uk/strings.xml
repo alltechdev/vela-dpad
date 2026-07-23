@@ -568,4 +568,11 @@
     <string name="settings_alert_speeding">Попередження про швидкість</string>
     <string name="settings_alert_speeding_hint">Значок швидкості червоніє при перевищенні ліміту.</string>
     <string name="car_camera_ahead">Попереду камера</string>
+    <string name="cat_parking">Парковка</string>
+    <string name="cat_charging">Зарядка EV</string>
+    <string name="car_stops">Зупинки</string>
+    <string name="car_no_stops">У цій поїздці немає зупинок</string>
+    <string name="car_stop_removed">Зупинку видалено</string>
+    <string name="car_stop_remove_hint">Торкніться, щоб видалити</string>
+    <string name="car_details">Деталі</string>
 </resources>

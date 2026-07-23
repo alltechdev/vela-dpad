@@ -568,4 +568,11 @@
     <string name="settings_alert_speeding">Предупреждение о скорости</string>
     <string name="settings_alert_speeding_hint">Значок скорости краснеет при превышении лимита.</string>
     <string name="car_camera_ahead">Впереди камера</string>
+    <string name="cat_parking">Парковка</string>
+    <string name="cat_charging">Зарядка ЭМ</string>
+    <string name="car_stops">Остановки</string>
+    <string name="car_no_stops">В этой поездке нет остановок</string>
+    <string name="car_stop_removed">Остановка удалена</string>
+    <string name="car_stop_remove_hint">Нажмите, чтобы удалить</string>
+    <string name="car_details">Подробности</string>
 </resources>

@@ -560,4 +560,11 @@
     <string name="settings_alert_speeding">Fortkörningsvarning</string>
     <string name="settings_alert_speeding_hint">Hastighetsmärket blir rött över gränsen.</string>
     <string name="car_camera_ahead">Kamera framför</string>
+    <string name="cat_parking">Parkering</string>
+    <string name="cat_charging">EV-laddning</string>
+    <string name="car_stops">Stopp</string>
+    <string name="car_no_stops">Inga stopp på den här resan</string>
+    <string name="car_stop_removed">Stopp borttaget</string>
+    <string name="car_stop_remove_hint">Tryck för att ta bort</string>
+    <string name="car_details">Detaljer</string>
 </resources>

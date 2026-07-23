@@ -560,4 +560,11 @@
     <string name="settings_alert_speeding">Tempowarnung</string>
     <string name="settings_alert_speeding_hint">Die Tempoanzeige im Auto wird über dem Limit rot.</string>
     <string name="car_camera_ahead">Kamera voraus</string>
+    <string name="cat_parking">Parken</string>
+    <string name="cat_charging">E-Ladestationen</string>
+    <string name="car_stops">Stopps</string>
+    <string name="car_no_stops">Keine Stopps auf dieser Fahrt</string>
+    <string name="car_stop_removed">Stopp entfernt</string>
+    <string name="car_stop_remove_hint">Zum Entfernen tippen</string>
+    <string name="car_details">Details</string>
 </resources>

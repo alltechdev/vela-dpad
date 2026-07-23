@@ -190,12 +190,16 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
                 .build(),
         )
 
-        // Google-style map controls: recenter (re-follow the puck) + zoom in/out.
-        val mapStrip = ActionStrip.Builder()
+        // Google-style map controls: recenter (re-follow the puck) + zoom in/out; plus the stop
+        // manager while the trip actually has stops (max 4 actions on this strip).
+        val mapStripB = ActionStrip.Builder()
             .addAction(carAction(android.R.drawable.ic_menu_mylocation) { deps.mapRenderer(carContext).follow() })
             .addAction(carAction(android.R.drawable.ic_menu_add) { deps.mapRenderer(carContext).zoomBy(1.0) })
             .addAction(carAction(android.R.drawable.ic_menu_revert) { deps.mapRenderer(carContext).zoomBy(-1.0) })
-            .build()
+        if (deps.navSession.remainingStops().isNotEmpty()) {
+            mapStripB.addAction(carAction(android.R.drawable.ic_menu_agenda) { screenManager.push(StopsCarScreen(carContext, deps)) })
+        }
+        val mapStrip = mapStripB.build()
 
         return NavigationTemplate.Builder()
             .setNavigationInfo(info)

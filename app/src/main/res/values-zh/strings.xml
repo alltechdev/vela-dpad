@@ -580,4 +580,11 @@
     <string name="settings_alert_speeding">超速警告</string>
     <string name="settings_alert_speeding_hint">超过限速时车内速度标志变红。</string>
     <string name="car_camera_ahead">前方有摄像头</string>
+    <string name="cat_parking">停车场</string>
+    <string name="cat_charging">电动车充电</string>
+    <string name="car_stops">停靠点</string>
+    <string name="car_no_stops">本次行程没有停靠点</string>
+    <string name="car_stop_removed">已删除停靠点</string>
+    <string name="car_stop_remove_hint">点按即可删除</string>
+    <string name="car_details">详情</string>
 </resources>

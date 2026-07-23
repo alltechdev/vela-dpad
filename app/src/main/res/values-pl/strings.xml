@@ -568,4 +568,11 @@
     <string name="settings_alert_speeding">Ostrzeżenie o prędkości</string>
     <string name="settings_alert_speeding_hint">Wskaźnik prędkości robi się czerwony powyżej limitu.</string>
     <string name="car_camera_ahead">Kamera przed tobą</string>
+    <string name="cat_parking">Parking</string>
+    <string name="cat_charging">Ładowanie EV</string>
+    <string name="car_stops">Przystanki</string>
+    <string name="car_no_stops">Brak przystanków w tej podróży</string>
+    <string name="car_stop_removed">Przystanek usunięty</string>
+    <string name="car_stop_remove_hint">Dotknij, aby usunąć</string>
+    <string name="car_details">Szczegóły</string>
 </resources>

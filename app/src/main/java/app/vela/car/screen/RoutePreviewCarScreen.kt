@@ -32,6 +32,7 @@ class RoutePreviewCarScreen(
     private val deps: CarDeps,
     private val destName: String,
     private val dest: LatLng,
+    private val place: app.vela.core.model.Place? = null, // search results carry the full place -> Details action
 ) : Screen(carContext), DefaultLifecycleObserver {
 
     private var routes: List<Route> = emptyList()
@@ -55,6 +56,16 @@ class RoutePreviewCarScreen(
 
         val builder = RoutePreviewNavigationTemplate.Builder().setHeaderAction(Action.BACK)
         builder.setTitle(destName)
+        place?.let { p ->
+            builder.setActionStrip(
+                androidx.car.app.model.ActionStrip.Builder().addAction(
+                    Action.Builder()
+                        .setTitle(carContext.getString(app.vela.R.string.car_details))
+                        .setOnClickListener { screenManager.push(PlaceDetailsCarScreen(carContext, deps, p)) }
+                        .build(),
+                ).build(),
+            )
+        }
 
         if (loading) {
             builder.setLoading(true)

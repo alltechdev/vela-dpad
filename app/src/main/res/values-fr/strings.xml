@@ -560,4 +560,11 @@
     <string name="settings_alert_speeding">Alerte de vitesse</string>
     <string name="settings_alert_speeding_hint">Le badge de vitesse devient rouge au-dessus de la limite.</string>
     <string name="car_camera_ahead">Caméra devant</string>
+    <string name="cat_parking">Parking</string>
+    <string name="cat_charging">Recharge VE</string>
+    <string name="car_stops">Arrêts</string>
+    <string name="car_no_stops">Aucun arrêt sur ce trajet</string>
+    <string name="car_stop_removed">Arrêt supprimé</string>
+    <string name="car_stop_remove_hint">Appuyez pour supprimer</string>
+    <string name="car_details">Détails</string>
 </resources>

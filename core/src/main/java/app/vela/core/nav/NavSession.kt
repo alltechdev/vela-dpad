@@ -216,8 +216,34 @@ class NavSession @Inject constructor(
             passedStops = 0
             remaining
         }
-        voice.speak(app.vela.core.i18n.NavStringsRegistry.current().rerouting(), interrupt = true)
         diag.record("nav", "add stop mid-nav → ${stop.label}")
+        replanVia(newRemaining, loc, dest)
+    }
+
+    /** The remaining (unpassed) stops in travel order - the car's stop manager lists these. */
+    fun remainingStops(): List<NavStop> = synchronized(stopLock) { stops.drop(passedStops) }
+
+    /** [addStop]'s inverse: drop one remaining stop (matched by location+label) and replan through
+     *  the rest. Same user-ordered reroute semantics - no cooldown, cancels any deviation reroute. */
+    fun removeStop(stop: NavStop, loc: LatLng) {
+        val dest = destination ?: return
+        val newRemaining = synchronized(stopLock) {
+            val remaining = stops.drop(passedStops)
+                .filterNot { it.location == stop.location && it.label == stop.label }
+            stops = remaining
+            stopMarks = List(remaining.size) { null }
+            passedStops = 0
+            remaining
+        }
+        diag.record("nav", "remove stop mid-nav → ${stop.label}")
+        replanVia(newRemaining, loc, dest)
+    }
+
+    /** The shared user-ordered replan behind [addStop]/[removeStop]: fetch through the new stop
+     *  plan, adopt atomically. The plan is already committed (marks null until the route lands), so
+     *  even a failed fetch keeps it - the next reroute/recheck routes through it. */
+    private fun replanVia(newRemaining: List<NavStop>, loc: LatLng, dest: LatLng) {
+        voice.speak(app.vela.core.i18n.NavStringsRegistry.current().rerouting(), interrupt = true)
         val gen = sessionGen
         rerouteJob?.cancel()
         rerouteJob = scope.launch {

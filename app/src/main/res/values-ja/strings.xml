@@ -580,4 +580,11 @@
     <string name="settings_alert_speeding">速度超過警告</string>
     <string name="settings_alert_speeding_hint">制限速度を超えると車の速度バッジが赤くなります。</string>
     <string name="car_camera_ahead">この先にカメラ</string>
+    <string name="cat_parking">駐車場</string>
+    <string name="cat_charging">EV充電</string>
+    <string name="car_stops">経由地</string>
+    <string name="car_no_stops">経由地はありません</string>
+    <string name="car_stop_removed">経由地を削除しました</string>
+    <string name="car_stop_remove_hint">タップで削除</string>
+    <string name="car_details">詳細</string>
 </resources>

@@ -43,9 +43,15 @@ below.
   icons + lane guidance, and instrument-cluster trip updates.
 - **Search along the route while driving**: the nav screen carries a search
   action and the mic; results are corridor-filtered (the same filter the phone
-  uses) and tapping one adds it as a stop - the drive replans through it.
-  One-tap **category shortcuts** (Gas / Food / Coffee / Groceries) sit behind
-  the grid action on the landing screen and feed the same flow in-drive.
+  uses) and tapping one adds it as a stop - the drive replans through it. A
+  **stop manager** on the nav map strip lists the remaining stops (tap to
+  remove; the drive replans). One-tap **category shortcuts** (Gas / Food /
+  Coffee / Groceries / Parking / EV charging) sit behind the grid action on
+  the landing screen and feed the same flow in-drive.
+- **Place details** from a search result's route preview (rating, address,
+  category, phone) - a pane the host expands fully while parked.
+- **Live traffic on the browse map** when the phone's traffic overlay is on -
+  the same keyless tiles, same subdued opacity.
 - **Voice commands**: the mic understands "navigate home", "take me to work",
   "find my car", "mute" / "unmute", and "end navigation" (English); anything
   else is a normal search with the leading verb stripped ("navigate to the

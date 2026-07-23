@@ -37,6 +37,25 @@
    "zh-rTW": "b4d250d23bedfd0e"
   }
  },
+ "car_details": {
+  "en": "45989de49fb7f66d",
+  "loc": {
+   "de": "45989de49fb7f66d",
+   "es": "c8a74ca68d39907d",
+   "fr": "17eaee489b095c37",
+   "it": "1a45b008319a26a1",
+   "iw": "63edb3705e209cd4",
+   "ja": "9652e7b5f69922bd",
+   "nl": "45989de49fb7f66d",
+   "pl": "02a49e904b960f3b",
+   "pt": "62c95076dbeb3160",
+   "ru": "0fefbd67d8332867",
+   "sv": "b59da76d61fac33a",
+   "uk": "2a0b62e6db65be19",
+   "zh": "979a332955c855bf",
+   "zh-rTW": "1791bb652092a436"
+  }
+ },
  "car_end": {
   "en": "f4db1e48476f6075",
   "loc": {
@@ -151,6 +170,25 @@
    "zh-rTW": "66b31df856c4db0c"
   }
  },
+ "car_no_stops": {
+  "en": "ec3f7d9791e9f557",
+  "loc": {
+   "de": "892d1cd89b78dfb8",
+   "es": "65e9d25657ddff03",
+   "fr": "b9c8745150a74e3d",
+   "it": "d3ca253c59d99362",
+   "iw": "b6085d23136e7766",
+   "ja": "47ffa7e52ba9e622",
+   "nl": "041c0f152bbb356b",
+   "pl": "1e72b1bb8438aad6",
+   "pt": "f7c34baea860a1a5",
+   "ru": "16d0b969d0183efc",
+   "sv": "b9daf7e8e34b7296",
+   "uk": "6e0775189cfc174f",
+   "zh": "ebb1db9616db29b1",
+   "zh-rTW": "7361e0d72b1fa556"
+  }
+ },
  "car_search": {
   "en": "49c266baaaa70981",
   "loc": {
@@ -208,6 +246,63 @@
    "zh-rTW": "c62124e79c895524"
   }
  },
+ "car_stop_remove_hint": {
+  "en": "2b305f16827c9e02",
+  "loc": {
+   "de": "b1f3ccea743e3baf",
+   "es": "ccda5be698c8a5d1",
+   "fr": "8e857a5d58229c5c",
+   "it": "e190d7ec64923235",
+   "iw": "f6ad0512bf586e6e",
+   "ja": "ce8ffc7e8840ff2c",
+   "nl": "da274ddccfffef3b",
+   "pl": "e02ad1459bd02b45",
+   "pt": "dbc639ee485327c7",
+   "ru": "e9f8bf81a776400d",
+   "sv": "b312fba7042161bf",
+   "uk": "8cfa6388e0b182e2",
+   "zh": "885117bc136b1a3f",
+   "zh-rTW": "578ae4222d74c2af"
+  }
+ },
+ "car_stop_removed": {
+  "en": "08411fa93ae8196e",
+  "loc": {
+   "de": "ceb7d0d4039d2acb",
+   "es": "7a80824cff76aae1",
+   "fr": "679af516d12d1216",
+   "it": "fc9c1f47791d65f5",
+   "iw": "862671950e92ef0d",
+   "ja": "b11b4b2fe320e8c4",
+   "nl": "8dce1092b39e91dd",
+   "pl": "e43730a7f1440c81",
+   "pt": "351efd64de1159ab",
+   "ru": "87930c9419ad29e2",
+   "sv": "4eadeb5dcd272801",
+   "uk": "f497077e3d026165",
+   "zh": "9dad2f675bf62e78",
+   "zh-rTW": "e7cd8ded11543797"
+  }
+ },
+ "car_stops": {
+  "en": "877a8887947ed45b",
+  "loc": {
+   "de": "c0766288f23694bd",
+   "es": "d3de30eb56fe1739",
+   "fr": "86696d6754115258",
+   "it": "bcc56705eec37ee7",
+   "iw": "ad7968fbfad1fdca",
+   "ja": "925bfd6a30cce32f",
+   "nl": "877a8887947ed45b",
+   "pl": "362d53ff1a52c905",
+   "pt": "d3de30eb56fe1739",
+   "ru": "04677c7462d13428",
+   "sv": "268829685bf7f35f",
+   "uk": "c3fb83d5e371b4b5",
+   "zh": "271098558885f0ef",
+   "zh-rTW": "fa1e55092041e113"
+  }
+ },
  "car_unmute": {
   "en": "ce4ee4efc5e324fc",
   "loc": {
@@ -263,6 +358,25 @@
    "uk": "af50d4bcdcb0bc66",
    "zh": "ffc027edcc0ef3f2",
    "zh-rTW": "ffc027edcc0ef3f2"
+  }
+ },
+ "cat_charging": {
+  "en": "c357dfbf4c433c06",
+  "loc": {
+   "de": "d1217d3262ea1bf4",
+   "es": "2dbf26f5f3c89412",
+   "fr": "5b451a4ad842a238",
+   "it": "149905895ca71d4a",
+   "iw": "ee899b8bfae72072",
+   "ja": "0bb8a96de7b2e930",
+   "nl": "699df9bd023c9ad0",
+   "pl": "e7baa66f2e97b91b",
+   "pt": "761a05dd22b7981e",
+   "ru": "ca563931c2e3592a",
+   "sv": "1c7d85b093820a86",
+   "uk": "7c478932122ee786",
+   "zh": "c9fa3ce0908f8083",
+   "zh-rTW": "8c522c67a83c0ac0"
   }
  },
  "cat_coffee": {
@@ -358,6 +472,25 @@
    "uk": "3f4ca458ef7616bb",
    "zh": "59322eebea9442a1",
    "zh-rTW": "5050a20a0f23563c"
+  }
+ },
+ "cat_parking": {
+  "en": "4a64d6c849df0110",
+  "loc": {
+   "de": "25408090fcf54ce5",
+   "es": "7dba4b6299cd4b89",
+   "fr": "4a64d6c849df0110",
+   "it": "e7b0154e8b88bd53",
+   "iw": "a86508ab54583db9",
+   "ja": "798fa88035fbd098",
+   "nl": "9d40a4469517f2d2",
+   "pl": "4a64d6c849df0110",
+   "pt": "a144d34915183505",
+   "ru": "d34ff2a3e8fe5aea",
+   "sv": "d894f230b4858129",
+   "uk": "d34ff2a3e8fe5aea",
+   "zh": "22964380dd7f66a7",
+   "zh-rTW": "6bb236624e987a76"
   }
  },
  "cat_parks": {

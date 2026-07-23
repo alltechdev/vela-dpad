@@ -123,6 +123,6 @@ class SearchCarScreen(
                 return
             }
         }
-        screenManager.push(RoutePreviewCarScreen(carContext, deps, p.name, p.location))
+        screenManager.push(RoutePreviewCarScreen(carContext, deps, p.name, p.location, p))
     }
 }

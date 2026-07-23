@@ -560,4 +560,11 @@
     <string name="settings_alert_speeding">Avviso velocità</string>
     <string name="settings_alert_speeding_hint">Il badge velocità diventa rosso oltre il limite.</string>
     <string name="car_camera_ahead">Telecamera in arrivo</string>
+    <string name="cat_parking">Parcheggio</string>
+    <string name="cat_charging">Ricarica EV</string>
+    <string name="car_stops">Tappe</string>
+    <string name="car_no_stops">Nessuna tappa in questo viaggio</string>
+    <string name="car_stop_removed">Tappa rimossa</string>
+    <string name="car_stop_remove_hint">Tocca per rimuovere</string>
+    <string name="car_details">Dettagli</string>
 </resources>

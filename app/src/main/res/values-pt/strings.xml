@@ -560,4 +560,11 @@
     <string name="settings_alert_speeding">Aviso de velocidade</string>
     <string name="settings_alert_speeding_hint">O indicador de velocidade fica vermelho acima do limite.</string>
     <string name="car_camera_ahead">Câmara à frente</string>
+    <string name="cat_parking">Estacionamento</string>
+    <string name="cat_charging">Carregamento EV</string>
+    <string name="car_stops">Paradas</string>
+    <string name="car_no_stops">Sem paradas nesta viagem</string>
+    <string name="car_stop_removed">Parada removida</string>
+    <string name="car_stop_remove_hint">Toque para remover</string>
+    <string name="car_details">Detalhes</string>
 </resources>

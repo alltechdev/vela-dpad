@@ -70,6 +70,7 @@ class CarMapRenderer(
     // snapshotter was built for, so a mid-session flip rebuilds it with the other palette.
     private var nightStyled = false
     private var snapNight = false
+    private var snapTraffic = false
     private var snapWidth = 0
     private var snapHeight = 0
     private var lastSnapshot: MapSnapshot? = null
@@ -297,7 +298,8 @@ class CarMapRenderer(
         // style (the repeated CompositionEngine createDisplay churn = a visible map flash/reload).
         val s = snapshotter
         val night = isNight()
-        if (s != null && snapWidth == width && snapHeight == height && snapNight == night) {
+        val traffic = app.vela.ui.Traffic.on.value
+        if (s != null && snapWidth == width && snapHeight == height && snapNight == night && snapTraffic == traffic) {
             requestRender()
             return
         }
@@ -315,13 +317,17 @@ class CarMapRenderer(
         // the style JSON; a failed/unavailable transform falls back to the draw-time tint filter.
         val darkJson = if (night) patchedJson?.let(CarNightStyle::darken) else null
         nightStyled = darkJson != null
-        val styleJson = darkJson ?: patchedJson
+        // The phone's live-traffic overlay toggle carries into the car browse map (nav mode draws
+        // its own per-segment route traffic; the raster just adds ambient congestion around it).
+        val styleJson = (darkJson ?: patchedJson)?.let { base ->
+            if (traffic) CarNightStyle.withTraffic(base) ?: base else base
+        }
         val opts = MapSnapshotter.Options(width, height)
             .let { if (styleJson != null) it.withStyleJson(styleJson) else it.withStyle(MapStyle.LIBERTY.uri) }
             .withPixelRatio(1.0f)
             .withLogo(false)
         snapshotter = runCatching { MapSnapshotter(carContext, opts) }.getOrNull()
-        snapWidth = width; snapHeight = height; snapNight = night
+        snapWidth = width; snapHeight = height; snapNight = night; snapTraffic = traffic
         requestRender()
     }
 

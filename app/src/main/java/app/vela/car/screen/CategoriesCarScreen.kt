@@ -11,9 +11,9 @@ import androidx.car.app.model.Template
 import androidx.core.graphics.drawable.IconCompat
 import app.vela.R
 
-/** One-tap category search (Gas / Food / Coffee / Groceries) - the same four the phone offers
- *  along a route, with the same dual-purpose-literal rule: the LABEL localizes, the search QUERY
- *  stays the stable English key. From the landing screen a tap searches nearby; from active nav
+/** One-tap category search - the phone's four along-route categories plus two car-first ones
+ *  (Parking, EV charging), all under the phone chips' dual-purpose-literal rule: the LABEL
+ *  localizes, the search QUERY stays the stable English key. From the landing screen a tap searches nearby; from active nav
  *  ([alongRoute]) results come corridor-filtered and a pick adds a stop. */
 class CategoriesCarScreen(
     carContext: CarContext,
@@ -28,6 +28,8 @@ class CategoriesCarScreen(
             Triple(R.string.cat_food, "Food", R.drawable.ic_car_food),
             Triple(R.string.cat_coffee, "Coffee", R.drawable.ic_car_coffee),
             Triple(R.string.cat_groceries, "Groceries", R.drawable.ic_car_grocery),
+            Triple(R.string.cat_parking, "Parking", R.drawable.ic_car_parking),
+            Triple(R.string.cat_charging, "EV charging", R.drawable.ic_car_charging),
         ).forEach { (labelRes, query, iconRes) ->
             list.addItem(
                 GridItem.Builder()

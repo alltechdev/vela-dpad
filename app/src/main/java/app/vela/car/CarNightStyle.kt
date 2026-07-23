@@ -81,4 +81,39 @@ object CarNightStyle {
         }
         root.toString()
     }.getOrNull()
+
+    /** Inject the phone's live-traffic raster overlay (same keyless Google tile, same 0.6 opacity,
+     *  same below-the-first-symbol-layer placement as ensureTraffic on the live map) into a style
+     *  JSON for the snapshotter. Null on parse failure - the caller just renders without traffic. */
+    fun withTraffic(styleJson: String): String? = runCatching {
+        val root = JSONObject(styleJson)
+        val sources = root.optJSONObject("sources") ?: return null
+        val layers = root.optJSONArray("layers") ?: return null
+        sources.put(
+            "vela-traffic-src",
+            JSONObject().put("type", "raster").put("tileSize", 256)
+                .put("tiles", org.json.JSONArray().put(TRAFFIC_TILES)),
+        )
+        val layer = JSONObject()
+            .put("id", "vela-traffic").put("type", "raster").put("source", "vela-traffic-src")
+            .put("paint", JSONObject().put("raster-opacity", 0.6))
+        var at = layers.length()
+        for (i in 0 until layers.length()) {
+            if (layers.optJSONObject(i)?.optString("type") == "symbol") { at = i; break }
+        }
+        // JSONArray has no insert - rebuild with the layer at the symbol boundary.
+        val rebuilt = org.json.JSONArray()
+        for (i in 0 until layers.length()) {
+            if (i == at) rebuilt.put(layer)
+            rebuilt.put(layers.get(i))
+        }
+        if (at == layers.length()) rebuilt.put(layer)
+        root.put("layers", rebuilt)
+        root.toString()
+    }.getOrNull()
+
+    // The phone's TRAFFIC_TILES literal (VelaMapView) - keyless public Google traffic PNGs.
+    private const val TRAFFIC_TILES =
+        "https://www.google.com/maps/vt/pb=!1m4!1m3!1i{z}!2i{x}!3i{y}!2m9!1e2!2straffic!3i999999" +
+            "!4m2!1sincidents!2s1!4m2!1sincidents_text!2s1!3m8!2sen!3sus!5e1105!12m4!1e68!2m2!1sset!2sRoadmap!4e0!5m1!1e0"
 }

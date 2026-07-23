@@ -560,4 +560,11 @@
     <string name="settings_alert_speeding">Snelheidswaarschuwing</string>
     <string name="settings_alert_speeding_hint">De snelheidsbadge wordt rood boven de limiet.</string>
     <string name="car_camera_ahead">Camera vooruit</string>
+    <string name="cat_parking">Parkeren</string>
+    <string name="cat_charging">EV-laden</string>
+    <string name="car_stops">Stops</string>
+    <string name="car_no_stops">Geen stops op deze rit</string>
+    <string name="car_stop_removed">Stop verwijderd</string>
+    <string name="car_stop_remove_hint">Tik om te verwijderen</string>
+    <string name="car_details">Details</string>
 </resources>
