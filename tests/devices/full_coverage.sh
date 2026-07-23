@@ -136,7 +136,10 @@ cover_one() {
     # run_coffee's chip path records its stable English query literal "Coffee", the typed fallback
     # records "coffee" - the old exact-lowercase check systematically missed the chip path on every
     # leg, on main and branch alike (A/B-confirmed 2026-07-23).
-    if on_screen_ci_within "coffee" 8; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
+    # Guard the ci-match's main false-pass vector: on the BARE MAP (open_search failed) the
+    # "Coffee" CHIP would satisfy a case-insensitive match with no history row anywhere. Require
+    # the typed field text first - it only exists inside the armed overlay.
+    if on_screen_within "cof" 4 && on_screen_ci_within "coffee" 8; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
     key "$K_BACK" 1
   else mark "search-history-astype" 0; fi
   fi

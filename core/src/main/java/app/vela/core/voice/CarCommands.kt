@@ -25,15 +25,20 @@ object CarCommands {
 
     // Leading verb phrases a destination request starts with, longest-first so "navigate to"
     // wins over "navigate" (sorted at init so a new entry can't silently break precedence).
+    // NO bare verbs here: "drive" stripped "drive in movie theater" to "in movie theater" and
+    // "take me" maimed "take me out diner" (review finding) - the same trap the bare-"go" comment
+    // below documents. Verb-only phrasings of home/work are covered as whole phrases instead.
     private val NAV_PREFIXES = listOf(
-        "navigate to", "navigate me to", "navigate", "take me to", "take me", "drive to",
-        "drive me to", "drive me", "drive", "directions to", "go to", "route to", "head to",
-        "bring me to",
+        "navigate to", "navigate me to", "navigate", "take me to", "drive to",
+        "drive me to", "directions to", "go to", "route to", "head to", "bring me to",
     ).sortedByDescending { it.length }
 
     // "go home" is listed whole rather than via a bare "go" prefix - stripping "go" would maim
     // legitimate searches ("go kart track" must not search "kart track").
-    private val HOME_WORDS = setOf("home", "my home", "my house", "the house", "go home")
+    private val HOME_WORDS = setOf(
+        "home", "my home", "my house", "the house", "go home", "take me home",
+        "drive home", "drive me home",
+    )
     private val WORK_WORDS = setOf("work", "my work", "my office", "the office")
     private val CAR_PHRASES = setOf(
         "find my car", "where is my car", "where's my car", "where did i park",

@@ -47,6 +47,9 @@ class CarCommandsTest {
         // "Home Depot" must stay a search - only an exact keyword (after verb stripping) commands.
         assertEquals(Command.Search("Home Depot"), CarCommands.parse("Home Depot"))
         assertEquals(Command.Search("workshop cafe"), CarCommands.parse("navigate to workshop cafe"))
+        // Bare verbs must NOT strip: these are place names, not commands (review finding).
+        assertEquals(Command.Search("drive in movie theater"), CarCommands.parse("drive in movie theater"))
+        assertEquals(Command.Search("take me out diner"), CarCommands.parse("take me out diner"))
         assertEquals(Command.Search("Mute Swan Pub"), CarCommands.parse("Mute Swan Pub"))
     }
 

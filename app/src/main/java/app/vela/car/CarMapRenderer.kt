@@ -71,6 +71,9 @@ class CarMapRenderer(
     private var nightStyled = false
     private var snapNight = false
     private var snapTraffic = false
+    // The last surface container, kept so a mid-session day/night or traffic flip can replay the
+    // surface path to rebuild the snapshotter (its style is baked in at creation).
+    private var lastContainer: SurfaceContainer? = null
     private var snapWidth = 0
     private var snapHeight = 0
     private var lastSnapshot: MapSnapshot? = null
@@ -282,6 +285,7 @@ class CarMapRenderer(
     }
 
     override fun onSurfaceAvailable(container: SurfaceContainer) {
+        lastContainer = container
         surface = container.surface
         width = container.width
         height = container.height
@@ -332,6 +336,7 @@ class CarMapRenderer(
     }
 
     override fun onSurfaceDestroyed(container: SurfaceContainer) {
+        lastContainer = null
         surface = null
         runCatching { snapshotter?.cancel() }
         snapshotter = null
@@ -374,6 +379,15 @@ class CarMapRenderer(
     }
 
     private fun requestRender() {
+        // A day/night or traffic flip mid-session must rebuild the snapshotter (the style is baked
+        // in at creation): no surface event fires at sunset, so without this the map kept the old
+        // palette for the rest of the drive (review finding). Rebuild via the same surface path.
+        if (snapshotter != null && width > 0 && height > 0 &&
+            (isNight() != snapNight || app.vela.ui.Traffic.on.value != snapTraffic)
+        ) {
+            snapWidth = 0 // force the reuse check to miss
+            lastContainer?.let { onSurfaceAvailable(it) }
+        }
         val snap = snapshotter
         val here = center
         if (snap == null || here == null) return

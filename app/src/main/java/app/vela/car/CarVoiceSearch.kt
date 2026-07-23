@@ -82,14 +82,21 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
     suspend fun capture(cancelled: () -> Boolean): VoiceResult {
         val record = runCatching { CarAudioRecord.create(carContext) }.getOrNull()
             ?: return VoiceResult.Failed(VoiceResult.Reason.AUDIO_INIT, "CarAudioRecord.create failed")
-        val bytes = ByteArray(WhisperRecognizer.VAD_WINDOW * 2)
+        val bytes = ByteArray(WhisperRecognizer.VAD_WINDOW * 2 + 1)
         val source = object : WhisperRecognizer.PcmSource {
+            // A carried low byte from an odd-length read: DROPPING it desynced the little-endian
+            // pairing for the rest of the capture (every later sample straddled two real samples -
+            // review finding); prepending it to the next read keeps the stream aligned.
+            private var carry = -1
             override fun start() = record.startRecording()
             override fun read(buf: ShortArray, size: Int): Int {
-                val n = record.read(bytes, 0, minOf(size * 2, bytes.size))
-                if (n <= 0) return n
-                // Little-endian PCM16 byte pairs -> shorts (an odd trailing byte is dropped).
-                val shorts = n / 2
+                var off = 0
+                if (carry != -1) { bytes[0] = carry.toByte(); off = 1; carry = -1 }
+                val n = record.read(bytes, off, minOf(size * 2 - off, bytes.size - off))
+                if (n < 0) return n
+                val total = off + n
+                val shorts = total / 2
+                if (total % 2 == 1) carry = bytes[total - 1].toInt() and 0xFF
                 for (i in 0 until shorts) {
                     buf[i] = ((bytes[2 * i].toInt() and 0xFF) or (bytes[2 * i + 1].toInt() shl 8)).toShort()
                 }

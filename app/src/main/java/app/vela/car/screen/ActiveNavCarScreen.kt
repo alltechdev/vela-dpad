@@ -45,6 +45,10 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
     private var callbackSet = false
 
     init {
+        // Marker so the terminal-state handler can peel back to THIS screen no matter what got
+        // pushed on top mid-drive (along-route search, stops, categories) - a blind pop() removed
+        // the covering screen instead and stranded a dead guidance screen (review finding).
+        marker = NAV_MARKER
         lifecycle.addObserver(this)
         // Re-render on each nav-state change (state emits ~1 Hz during guidance); pop when the trip
         // ends. Voice already announces the arrival, so returning to the landing screen is enough.
@@ -53,6 +57,8 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
                 if (!left && (s.arrived || !s.navigating)) {
                     left = true
                     endNavDeclaration()
+                    // Peel any covering screens first, then remove guidance itself.
+                    runCatching { screenManager.popTo(NAV_MARKER) }
                     screenManager.pop()
                     // Arrival (not a manual End): land on the arrival card so the driver can save
                     // the parking spot where the car now sits - the phone offers the same.
@@ -229,8 +235,24 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
             CarCommands.Command.EndNav -> stopNav()
             CarCommands.Command.GoHome -> previewShortcut(app.vela.core.model.ShortcutKind.HOME, q)
             CarCommands.Command.GoWork -> previewShortcut(app.vela.core.model.ShortcutKind.WORK, q)
-            CarCommands.Command.FindMyCar ->
-                screenManager.push(SearchCarScreen(carContext, deps, q, alongRoute = true))
+            CarCommands.Command.FindMyCar -> {
+                // Same as the landing screen's handler: the SAVED SPOT, not a literal-text search
+                // for "where's my car" along the corridor (review finding).
+                val spot = deps.parkingStore.current()
+                if (spot != null) {
+                    screenManager.push(
+                        RoutePreviewCarScreen(
+                            carContext, deps,
+                            carContext.getString(app.vela.R.string.map_parking_find),
+                            app.vela.core.model.LatLng(spot.lat, spot.lng),
+                        ),
+                    )
+                } else {
+                    androidx.car.app.CarToast.makeText(
+                        carContext, app.vela.R.string.map_parking_no_fix, androidx.car.app.CarToast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
             is CarCommands.Command.Search ->
                 screenManager.push(SearchCarScreen(carContext, deps, c.query, alongRoute = true))
         }
@@ -291,6 +313,7 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
     }
 
     private companion object {
+        const val NAV_MARKER = "active-nav"
         const val ALERT_FASTER_ID = 1
         const val ALERT_DURATION_MS = 15_000L
     }

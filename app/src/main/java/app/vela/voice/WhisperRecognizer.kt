@@ -91,6 +91,7 @@ class WhisperRecognizer @Inject constructor(
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
         const val MAX_SECONDS = 15            // hard cap on one utterance
+        const val EMPTY_READ_SLEEP_MS = 10L   // zero-byte read backoff (car mic can be nonblocking)
     }
 
     private fun prefs() = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
@@ -335,7 +336,14 @@ class WhisperRecognizer @Inject constructor(
             onListening()
             while (!cancelled() && segment == null && total < SAMPLE_RATE * MAX_SECONDS) {
                 val n = audio.read(buf, VAD_WINDOW)
-                if (n <= 0) continue
+                // n < 0 is TERMINAL (CarAudioRecord returns -1 forever once the host remote-closes
+                // the mic): continuing spun this loop at 100% CPU holding audio focus (review
+                // finding). n == 0 is just no-data-yet; breathe instead of hot-looping.
+                if (n < 0) {
+                    runCatching { vad.release() }
+                    return@withContext fail(VoiceResult.Reason.RECORDING, "source read returned $n")
+                }
+                if (n == 0) { Thread.sleep(EMPTY_READ_SLEEP_MS); continue }
                 val f = FloatArray(n) { buf[it] / 32768f }
                 onLevel(rms(f))
                 chunks.add(f)

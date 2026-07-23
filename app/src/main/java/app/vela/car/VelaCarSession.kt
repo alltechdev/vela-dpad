@@ -84,7 +84,10 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
         // a push-pop flicker: an arrived-but-undismissed session must not bounce the screen.
         val nav = deps.navSession.state.value
         if (nav.navigating && !nav.arrived) {
-            scope.launch {
+            // Dispatchers.Main (NOT the session scope's Main.immediate): immediate would run this
+            // push INLINE, before the library pushes the returned MainCarScreen as root, landing
+            // guidance UNDER the landing screen (review finding). A dispatched post runs after.
+            scope.launch(kotlinx.coroutines.Dispatchers.Main) {
                 carContext.getCarService(ScreenManager::class.java)
                     .push(app.vela.car.screen.ActiveNavCarScreen(carContext, deps))
             }
@@ -113,11 +116,13 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
         if (!s.navigating || s.arrived) return
         val key = route.polyline.size * 31 + (route.polyline.firstOrNull()?.lat?.times(1e5)?.toInt() ?: 0)
         if (key != camRouteKey) {
+            // Don't record the key until the dataset is actually loaded: caching emptyList while
+            // the bundled set is still parsing silenced alerts for the whole trip (review finding)
+            // - leaving the key stale makes the next fix retry until cameras are computable.
+            if (!app.vela.data.FlockCameras.isLoaded) return
             camRouteKey = key
             camAnnounced.clear()
-            camsOnRoute = if (app.vela.data.FlockCameras.isLoaded) {
-                runCatching { app.vela.data.FlockCameras.along(route.polyline).map { it.loc } }.getOrDefault(emptyList())
-            } else emptyList()
+            camsOnRoute = runCatching { app.vela.data.FlockCameras.along(route.polyline).map { it.loc } }.getOrDefault(emptyList())
         }
         camsOnRoute.forEachIndexed { i, cam ->
             if (i !in camAnnounced && here.distanceTo(cam) <= CAM_ALERT_METERS) {
@@ -167,13 +172,16 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
         if (intent.action != CarContext.ACTION_NAVIGATE) return null
         val uri: Uri = intent.data ?: return null
         val ssp = uri.schemeSpecificPart ?: return null
-        val coordRe = Regex("""(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*(?:\((.*)\))?""")
+        // Optional third numeric component (RFC 5870 altitude) is tolerated non-capturing, and
+        // ;u=/;crs= params are stripped below - matchEntire on the bare pair swallowed
+        // geo:lat,lng,alt and geo:lat,lng;u=35 NAVIGATE intents entirely (review finding).
+        val coordRe = Regex("""(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)(?:\s*,\s*-?\d+\.?\d*)?\s*(?:\((.*)\))?""")
         // Prefer a `q=` payload (geo:0,0?q=lat,lng(Label)); else the bare `geo:lat,lng` coords.
         val qVal = ssp.substringAfter("q=", "").takeIf { it.isNotBlank() }
         val target = qVal ?: ssp.substringBefore('?')
         // matchEntire, not find: "Store 12, 34th St" CONTAINS a coord-shaped substring but is a
         // free-text query for the geocoder, not a destination at lat 12 lng 34.
-        coordRe.matchEntire(target.trim())?.let { m ->
+        coordRe.matchEntire(target.substringBefore(';').trim())?.let { m ->
             val lat = m.groupValues[1].toDoubleOrNull(); val lng = m.groupValues[2].toDoubleOrNull()
             // Reject the placeholder 0,0 only when it came from the bare coords (a real q= 0,0 is unheard of).
             if (lat != null && lng != null && !(qVal == null && lat == 0.0 && lng == 0.0)) {
