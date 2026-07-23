@@ -47,6 +47,12 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
     }
 
     override fun onCreate(owner: LifecycleOwner) {
+        // Vela voice pinned (or Auto with the model installed)? Warm the Whisper recognizer NOW,
+        // off-thread, so the first mic tap in the car listens immediately instead of spending the
+        // ~1-2 s native model load mid-tap (the phone warms it the same way at app start).
+        if (app.vela.ui.VoiceSearch.resolvedMode(carContext) == app.vela.ui.VoiceSearch.Mode.LOCAL) {
+            deps.whisper.warmUp()
+        }
         // Feed live GPS into NavSession while the car session is alive. Mirrors the phone's fix gate:
         // GPS fixes with accuracy ≤ 50 m drive guidance; coarser fixes are ignored for nav.
         // Cancel any prior collector first so a re-delivered onCreate can't leak a second one.

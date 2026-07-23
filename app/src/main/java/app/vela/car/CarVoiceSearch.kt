@@ -76,7 +76,9 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
         }
         listening = true
         onUpdate()
-        CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_SHORT).show()
+        // LONG: the short toast died ~2 s into a capture that legitimately runs up to 15 s,
+        // leaving no sign the car was still listening.
+        CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_LONG).show()
         screen.lifecycleScope.launch {
             val result = capture { !listening }
             listening = false
