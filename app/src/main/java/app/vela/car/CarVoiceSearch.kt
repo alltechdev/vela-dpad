@@ -26,12 +26,10 @@ import kotlinx.coroutines.launch
  */
 class CarVoiceSearch(private val carContext: CarContext, private val whisper: WhisperRecognizer) {
 
-    /** Should the mic SHOW? User toggle + installed model only - deliberately NOT the host API
-     *  level: the landing screen templates ONCE at session create, BEFORE the handshake reports
-     *  carAppApiLevel, so gating visibility on it dropped the mic from exactly that screen (head
-     *  unit report; the same gate passed on every later-built screen). The level is checked at
-     *  TAP time instead - an ancient host gets a graceful no-speech toast, not a hidden mic. */
-    fun available(): Boolean = VoiceSearch.enabled.value && VoiceSearch.localReady(carContext)
+    /** Should the mic SHOW? Mirrors the phone: whenever the resolved mode is not NONE. NOT gated
+     *  on the host API level - the landing templates once at session create, before the handshake
+     *  reports carAppApiLevel (that gate silently hid the mic from exactly that screen). */
+    fun available(): Boolean = VoiceSearch.resolvedMode(carContext) != VoiceSearch.Mode.NONE
 
     fun hasPermission(): Boolean = whisper.hasMicPermission()
 
@@ -51,13 +49,26 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
     /** The mic [Action] for a screen's action strip. One shared flow: tap to record (permission
      *  prompt first if needed), tap again to stop early; [onUpdate] fires on state changes the
      *  screen should re-template for, [onTranscript] gets the cleaned query. No-speech toasts. */
-    fun micAction(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit): Action =
+    fun micAction(
+        screen: Screen,
+        onUpdate: () -> Unit,
+        onTranscript: (String) -> Unit,
+        onSystem: () -> Unit,
+    ): Action =
         Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_mic2)).build())
-            .setOnClickListener { tap(screen, onUpdate, onTranscript) }
+            .setOnClickListener { tap(screen, onUpdate, onTranscript, onSystem) }
             .build()
 
-    private fun tap(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit) {
+    /** THE USER'S ENGINE PREFERENCE IS LAW (Settings -> Search): resolved LOCAL runs Vela's
+     *  on-device Whisper through the car mic; resolved SYSTEM routes to [onSystem] (the search
+     *  surface whose inline host mic is the system recognizer). A LOCAL failure toasts and stops -
+     *  it never silently reroutes speech to Google. */
+    private fun tap(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit, onSystem: () -> Unit) {
+        when (VoiceSearch.resolvedMode(carContext)) {
+            VoiceSearch.Mode.SYSTEM, VoiceSearch.Mode.NONE -> { onSystem(); return }
+            VoiceSearch.Mode.LOCAL -> Unit
+        }
         if (listening) { listening = false; return }
         if (!hasPermission()) {
             requestPermission { screen.invalidate() }

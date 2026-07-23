@@ -29,6 +29,7 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
 
     // Leave the nav screen at most once — on arrival OR when nav stops (from here or elsewhere).
     private var left = false
+    private val voice = app.vela.car.CarVoiceSearch(carContext, deps.whisper)
     // One head-up alert per faster-route offer (keyed by the candidate's duration+distance; a new
     // offer alerts again, the same one doesn't re-pop every state tick).
     private var alertedFasterKey = 0L
@@ -155,11 +156,16 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
         // In-drive search-along-route: the mic and a search action (both push the corridor-filtered
         // SearchCarScreen; a pick becomes a stop). Icon-only - the strip's text budget stays on
         // Faster/Mute/End. The mic's transcript skips the keyboard entirely.
-        strip.addAction(
-            carAction(app.vela.R.drawable.ic_car_mic2) {
-                screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true))
-            },
-        )
+        // Same preference-law mic as the landing screen, along-route flavored.
+        if (voice.available()) {
+            strip.addAction(
+                voice.micAction(
+                    this, ::invalidate,
+                    onTranscript = { q -> screenManager.push(SearchCarScreen(carContext, deps, q, alongRoute = true)) },
+                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true)) },
+                ),
+            )
+        }
         strip.addAction(
             carAction(android.R.drawable.ic_menu_search) {
                 screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true))

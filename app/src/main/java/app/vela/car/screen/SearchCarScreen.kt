@@ -38,42 +38,13 @@ class SearchCarScreen(
     private var voiceQuery: String? = null // last transcript, echoed into the search field
 
     init {
-        initialQuery?.let { voiceQuery = it; runSearch(it) }
+        initialQuery?.let { voiceQuery = it; handleSubmitted(it) }
     }
 
     override fun onGetTemplate(): Template {
         val callback = object : SearchTemplate.SearchCallback {
             override fun onSearchTextChanged(searchText: String) = runSearch(searchText)
-            override fun onSearchSubmitted(searchText: String) {
-                // Voice commands ride the submitted text (the host mic types the transcript here):
-                // "navigate home" acts instead of searching those words; plain queries fall through.
-                when (val c = app.vela.core.voice.CarCommands.parse(searchText)) {
-                    app.vela.core.voice.CarCommands.Command.Mute -> deps.voiceGuide.muted = true
-                    app.vela.core.voice.CarCommands.Command.Unmute -> deps.voiceGuide.muted = false
-                    app.vela.core.voice.CarCommands.Command.GoHome -> shortcutOrSearch(app.vela.core.model.ShortcutKind.HOME, searchText)
-                    app.vela.core.voice.CarCommands.Command.GoWork -> shortcutOrSearch(app.vela.core.model.ShortcutKind.WORK, searchText)
-                    app.vela.core.voice.CarCommands.Command.FindMyCar -> {
-                        val spot = deps.parkingStore.current()
-                        if (spot != null) {
-                            screenManager.push(
-                                RoutePreviewCarScreen(
-                                    carContext, deps,
-                                    carContext.getString(app.vela.R.string.map_parking_find),
-                                    app.vela.core.model.LatLng(spot.lat, spot.lng),
-                                ),
-                            )
-                        } else runSearch(searchText)
-                    }
-                    app.vela.core.voice.CarCommands.Command.EndNav -> runSearch(searchText)
-                    is app.vela.core.voice.CarCommands.Command.Search -> runSearch(c.query)
-                }
-            }
-
-            private fun shortcutOrSearch(kind: app.vela.core.model.ShortcutKind, fallback: String) {
-                val sc = deps.shortcuts.get(kind)
-                if (sc != null) screenManager.push(RoutePreviewCarScreen(carContext, deps, sc.name, sc.location))
-                else runSearch(fallback)
-            }
+            override fun onSearchSubmitted(searchText: String) = handleSubmitted(searchText)
         }
         val builder = SearchTemplate.Builder(callback)
             .setHeaderAction(Action.BACK)
@@ -104,6 +75,37 @@ class SearchCarScreen(
             builder.setItemList(list.build())
         }
         return builder.build()
+    }
+
+    /** Submitted text OR a mic transcript: voice commands act ("navigate home" routes, "mute"
+     *  mutes) and everything else searches. */
+    private fun handleSubmitted(searchText: String) {
+        when (val c = app.vela.core.voice.CarCommands.parse(searchText)) {
+            app.vela.core.voice.CarCommands.Command.Mute -> deps.voiceGuide.muted = true
+            app.vela.core.voice.CarCommands.Command.Unmute -> deps.voiceGuide.muted = false
+            app.vela.core.voice.CarCommands.Command.GoHome -> shortcutOrSearch(app.vela.core.model.ShortcutKind.HOME, searchText)
+            app.vela.core.voice.CarCommands.Command.GoWork -> shortcutOrSearch(app.vela.core.model.ShortcutKind.WORK, searchText)
+            app.vela.core.voice.CarCommands.Command.FindMyCar -> {
+                val spot = deps.parkingStore.current()
+                if (spot != null) {
+                    screenManager.push(
+                        RoutePreviewCarScreen(
+                            carContext, deps,
+                            carContext.getString(app.vela.R.string.map_parking_find),
+                            app.vela.core.model.LatLng(spot.lat, spot.lng),
+                        ),
+                    )
+                } else runSearch(searchText)
+            }
+            app.vela.core.voice.CarCommands.Command.EndNav -> runSearch(searchText)
+            is app.vela.core.voice.CarCommands.Command.Search -> runSearch(c.query)
+        }
+    }
+
+    private fun shortcutOrSearch(kind: app.vela.core.model.ShortcutKind, fallback: String) {
+        val sc = deps.shortcuts.get(kind)
+        if (sc != null) screenManager.push(RoutePreviewCarScreen(carContext, deps, sc.name, sc.location))
+        else runSearch(fallback)
     }
 
     private fun runSearch(text: String) {

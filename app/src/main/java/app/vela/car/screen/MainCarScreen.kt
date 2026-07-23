@@ -33,6 +33,8 @@ import app.vela.core.model.ShortcutKind
 class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
     Screen(carContext), DefaultLifecycleObserver {
 
+    private val voice = app.vela.car.CarVoiceSearch(carContext, deps.whisper)
+
     // Live drive-time subtitles for the Home/Work rows, fetched once per screen instance (a cheap
     // pair of directions calls); rows render plain until they land, then invalidate() fills them in.
     private val etaSecs = HashMap<String, Long>()
@@ -112,16 +114,20 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
         // evidence across three builds - the mic sat first and was the one dropped every time).
         val strip = ActionStrip.Builder()
         strip.addAction(search)
-        // ONE shared mic: this opens the search surface whose inline host mic is the mic that
-        // works everywhere (user report: our separate capture flow was dead on their unit and a
-        // second mic on the search screen was a duplicate). Voice commands still work - the
-        // search screen parses submitted text through CarCommands.
-        strip.addAction(
-            Action.Builder()
-                .setIcon(icon(app.vela.R.drawable.ic_car_mic2))
-                .setOnClickListener { screenManager.push(SearchCarScreen(carContext, deps)) }
-                .build(),
-        )
+        // The mic honors the phone's voice-engine preference, NO exceptions (user requirement):
+        // resolved LOCAL runs Vela's on-device Whisper through the car mic and the transcript
+        // lands on the search surface (commands parse there); resolved SYSTEM opens that surface
+        // directly - its inline host mic IS the system recognizer. Hidden only when nothing can
+        // serve voice at all (mode NONE), same as the phone.
+        if (voice.available()) {
+            strip.addAction(
+                voice.micAction(
+                    this, ::invalidate,
+                    onTranscript = { q -> screenManager.push(SearchCarScreen(carContext, deps, q)) },
+                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps)) },
+                ),
+            )
+        }
 
         return PlaceListNavigationTemplate.Builder()
             .setItemList(list.build())
