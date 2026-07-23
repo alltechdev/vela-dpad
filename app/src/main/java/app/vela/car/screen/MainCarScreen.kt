@@ -123,7 +123,9 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
             strip.addAction(
                 voice.micAction(
                     this, ::invalidate,
-                    onTranscript = { q -> screenManager.push(SearchCarScreen(carContext, deps, q)) },
+                    onTranscript = { q ->
+                        app.vela.car.VoiceCommandRouter.handle(carContext, deps, screenManager, q, alongRoute = false)
+                    },
                     onSystem = { screenManager.push(SearchCarScreen(carContext, deps, voiceEntry = true)) },
                 ),
             )

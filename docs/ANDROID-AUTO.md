@@ -33,12 +33,16 @@ below.
   palette - the same one the phone's dark theme uses - not a darkened filter.
 - **Search** (keyboard on the head unit) with results biased to your location;
   tapping a result opens the route preview.
-- **Voice search** on head units with Car API level 5+: a mic action on both
-  the landing screen and the search screen records from the **car's**
-  microphone and transcribes with the
-  same on-device Whisper model as the phone mic - nothing leaves the device.
-  It appears only when voice search is enabled in Settings and the on-device
-  model is installed (Settings, Search, Voice search); tap again to stop early.
+- **Voice, honoring your engine preference** (Settings, Search): with Vela's
+  on-device model pinned (or Auto with it installed), the mic buttons record
+  through the car's microphone into on-device Whisper - and if the car mic
+  turns out to be silent (common on aftermarket units), retry once on the
+  phone's mic, still fully on-device. With the system engine pinned, the mic
+  lands you on the search surface whose in-field mic is the system recognizer
+  (the platform reserves direct voice-session starts for Hey Google / the
+  wheel button). Speech is never routed against the pin. Spoken commands -
+  "navigate home", "find my car", "mute", "end navigation" - act in place;
+  anything else loads results directly.
 - **Route preview** with live-traffic alternates, **turn-by-turn** with maneuver
   icons + lane guidance, and instrument-cluster trip updates.
 - **Search along the route while driving**: the nav screen carries a search

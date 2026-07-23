@@ -330,11 +330,21 @@ class WhisperRecognizer @Inject constructor(
         var total = 0
         var sawSpeech = false
         var segment: FloatArray? = null
+        // VAD feed accumulator: Silero only accepts exact windows, and a pipe-backed car source
+        // routinely returns PARTIAL chunks - feeding only exactly-full reads starved the VAD
+        // (review round 2). Partials accumulate here and drain in whole windows.
+        val vadAcc = FloatArray(VAD_WINDOW)
+        var vadFill = 0
+        // Wall-clock deadline: the sample-count cap never trips on a source that yields zero
+        // bytes forever (car mic opens, never delivers) - focus was held indefinitely.
+        val deadlineMs = android.os.SystemClock.elapsedRealtime() + (MAX_SECONDS + 5) * 1000L
         try {
             requestAudioFocus() // pause any playing music/podcast while we listen
             audio.start()
             onListening()
-            while (!cancelled() && segment == null && total < SAMPLE_RATE * MAX_SECONDS) {
+            while (!cancelled() && segment == null && total < SAMPLE_RATE * MAX_SECONDS &&
+                android.os.SystemClock.elapsedRealtime() < deadlineMs
+            ) {
                 val n = audio.read(buf, VAD_WINDOW)
                 // n < 0 is TERMINAL (CarAudioRecord returns -1 forever once the host remote-closes
                 // the mic): continuing spun this loop at 100% CPU holding audio focus (review
@@ -348,7 +358,13 @@ class WhisperRecognizer @Inject constructor(
                 onLevel(rms(f))
                 chunks.add(f)
                 total += n
-                if (n == VAD_WINDOW) vad.acceptWaveform(f)
+                var off = 0
+                while (off < n) {
+                    val take = minOf(VAD_WINDOW - vadFill, n - off)
+                    f.copyInto(vadAcc, vadFill, off, off + take)
+                    vadFill += take; off += take
+                    if (vadFill == VAD_WINDOW) { vad.acceptWaveform(vadAcc.copyOf()); vadFill = 0 }
+                }
                 if (vad.isSpeechDetected()) sawSpeech = true
                 // A finished speech segment (speech then a beat of silence) = the utterance.
                 if (!vad.empty()) {

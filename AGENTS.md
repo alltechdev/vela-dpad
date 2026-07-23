@@ -876,8 +876,13 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     is a query, not lat 12 lng 34); and **in-car voice search** - `CarVoiceSearch` feeds the
     car's mic (`CarAudioRecord`, Car API 5+, 16 kHz) through `WhisperRecognizer.listen`'s
     `PcmSource` seam, so the mic actions on `MainCarScreen` and `SearchCarScreen` (shared flow in `CarVoiceSearch.micAction`) run the same on-device VAD +
-    Whisper pipeline as the phone (gates: host API >= 5, voice-search toggle, model installed;
-    RECORD_AUDIO via `carContext.requestPermissions`).
+    Whisper pipeline as the phone. THE ENGINE PREFERENCE IS LAW (2026-07-23 rework): mic taps
+    branch on `VoiceSearch.resolvedMode` - LOCAL runs CarAudioRecord->Whisper with a
+    silent-car-mic phone-mic retry (peak-level discriminated), SYSTEM opens the search surface
+    (its in-field host mic IS the system recognizer; template apps cannot start host voice
+    sessions). Transcript commands dispatch via `VoiceCommandRouter` AT THE CALLER, never from a
+    pushed screen's init (constructor args evaluate before the caller's push - anything pushed
+    from init gets buried; review-verified). RECORD_AUDIO via `carContext.requestPermissions`.
   - **Fork batch 2 (2026-07-23), all fork-original:** in-drive search-along-route
     (`SearchCarScreen(alongRoute=true)` - corridor filter via `RouteCorridor`, pick calls
     `NavSession.addStop`), `CategoriesCarScreen` (GridTemplate; labels localize, queries stay the

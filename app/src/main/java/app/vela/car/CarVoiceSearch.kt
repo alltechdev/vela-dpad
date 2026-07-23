@@ -29,7 +29,18 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
     /** Should the mic SHOW? Mirrors the phone: whenever the resolved mode is not NONE. NOT gated
      *  on the host API level - the landing templates once at session create, before the handshake
      *  reports carAppApiLevel (that gate silently hid the mic from exactly that screen). */
-    fun available(): Boolean = VoiceSearch.resolvedMode(carContext) != VoiceSearch.Mode.NONE
+    fun available(): Boolean {
+        // Cached ~5 s: resolvedMode walks PackageManager (binder IPC) and the nav screen
+        // re-templates every state tick (review round 2). Settings flips land within a beat.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - availCheckedAt > 5_000) {
+            availCached = VoiceSearch.resolvedMode(carContext) != VoiceSearch.Mode.NONE
+            availCheckedAt = now
+        }
+        return availCached
+    }
+    private var availCached = false
+    private var availCheckedAt = 0L
 
     fun hasPermission(): Boolean = whisper.hasMicPermission()
 
@@ -80,12 +91,14 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
         // leaving no sign the car was still listening.
         CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_LONG).show()
         screen.lifecycleScope.launch {
+            carPeak = 0f
             var result = capture { !listening }
-            // Car-mic ladder: many setups (aftermarket units, phone-screen projection) expose NO
-            // usable car microphone - CarAudioRecord "succeeds" and delivers silence ("not hearing
-            // me", head-unit report). When the car mic yields nothing, retry ONCE on the PHONE's
-            // mic: same on-device Whisper, same preference, and the phone is in the car.
-            if (listening && result !is VoiceResult.Text) {
+            // Car-mic ladder: retry ONCE on the PHONE's mic only when the car mic looks DEAD
+            // (no transcript AND essentially zero audio level) or failed outright - a genuine
+            // "tapped and said nothing" into a WORKING car mic must NOT start a second
+            // full-length capture with media paused (review round 2).
+            val carMicDead = result is VoiceResult.Failed || (result is VoiceResult.NoSpeech && carPeak < 0.02f)
+            if (listening && result !is VoiceResult.Text && carMicDead) {
                 CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_LONG).show()
                 result = whisper.listen(onLevel = {}, onListening = {}, cancelled = { !listening })
             }
@@ -132,6 +145,9 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
                 runCatching { record.stopRecording() }
             }
         }
-        return whisper.listen(onLevel = {}, onListening = {}, cancelled = cancelled, source = source)
+        return whisper.listen(onLevel = { if (it > carPeak) carPeak = it }, onListening = {}, cancelled = cancelled, source = source)
     }
+
+    // Peak level of the last car-mic capture - the dead-mic discriminator for the fallback ladder.
+    private var carPeak = 0f
 }

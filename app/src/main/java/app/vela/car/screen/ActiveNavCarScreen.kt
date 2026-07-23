@@ -161,7 +161,9 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
             strip.addAction(
                 voice.micAction(
                     this, ::invalidate,
-                    onTranscript = { q -> screenManager.push(SearchCarScreen(carContext, deps, q, alongRoute = true)) },
+                    onTranscript = { q ->
+                        app.vela.car.VoiceCommandRouter.handle(carContext, deps, screenManager, q, alongRoute = true, onEndNav = ::stopNav)
+                    },
                     onSystem = { screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true, voiceEntry = true)) },
                 ),
             )
