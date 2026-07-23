@@ -215,4 +215,19 @@ class OsrmRouterTest {
             man(ManeuverType.FORK_LEFT, 100.0), man(ManeuverType.TURN_RIGHT, 50.0),
         )).size)
     }
+    @Test fun signlessStraightRampIsARename() {
+        // A dual carriageway continuing straight through a name change is often tagged *_link in
+        // OSM, so OSRM calls it "on ramp" - with no sign destinations and a straight modifier.
+        // That reclassifies to the rename path (silent CONTINUE), never "Take the ramp".
+        // (Ported with upstream 1aaa5c0c.)
+        assertEquals("new name", RouteGeometry.rampReclass("on ramp", "straight", null))
+        assertEquals("new name", RouteGeometry.rampReclass("on ramp", null, null))
+        assertEquals("new name", RouteGeometry.rampReclass("ramp", "straight", null))
+        // A REAL entrance keeps the ramp: it has a sign, or you must steer onto it.
+        assertEquals("on ramp", RouteGeometry.rampReclass("on ramp", "straight", "I 80 East: Sacramento"))
+        assertEquals("on ramp", RouteGeometry.rampReclass("on ramp", "slight right", null))
+        assertEquals("on ramp", RouteGeometry.rampReclass("on ramp", "right", null))
+        assertEquals("off ramp", RouteGeometry.rampReclass("off ramp", "straight", null)) // exits untouched
+    }
+
 }

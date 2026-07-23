@@ -216,4 +216,20 @@ class NavStringsTest {
         assertTrue(uk.spokenDistance(3000.0, imperial = false).contains("кілометри"))
         assertTrue(uk.spokenDistance(5000.0, imperial = false).contains("кілометрів"))
     }
+    @Test fun fasterRouteSavingOneMinuteIsSingularEverywhere() {
+        // "Faster route available, saving about 1 minutes" - every table hardcoded the plural
+        // (ported with upstream ffad5a6f). Plural-marking languages must not render the bare
+        // digit 1 before their plural noun; and the offer for 2 minutes must still carry the count.
+        val langs = listOf("en", "fr", "de", "es", "it", "pt", "nl", "ru", "pl", "sv", "uk", "zh", "zh-tw", "ja", "iw")
+        for (lang in langs) {
+            val t = NavStringsRegistry.forLanguage(lang)
+            val one = t.fasterRouteAvailable(1)
+            val two = t.fasterRouteAvailable(2)
+            if (lang !in setOf("zh", "zh-tw", "ja")) {
+                org.junit.Assert.assertFalse("$lang still speaks a bare '1' for one minute: $one", one.contains("1"))
+            }
+            org.junit.Assert.assertTrue("$lang lost the count for two minutes: $two", two.contains("2"))
+        }
+    }
+
 }

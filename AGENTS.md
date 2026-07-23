@@ -1407,7 +1407,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     move zeroing bearing/tilt/padding in a single snap (an animated level-out got cancelled
     mid-flight by the next camera write and left the browse map partially rotated);
   - reroutes are single-flight + cooldown + latch-clear-on-failure (a failed fetch must NOT kill
-    rerouting - the event is edge-triggered);
+    rerouting - the event is edge-triggered); and since the ffad5a6f port (2026-07-23) every
+    reroute/replan FETCH runs under a HARD 20 s deadline (`REROUTE_FETCH_TIMEOUT_MS`,
+    `withTimeoutOrNull` at BOTH NavSession fetch sites - deviation reroute AND the add-stop
+    replan, which holds the same single-flight job; upstream fixed only the first): the stacked
+    retry ladders could hold the latch for a minute on a flaky cell link, silently dropping every
+    new RerouteNeeded, and a reroute computed from a minute-old position is stale anyway;
   - WRONG-WAY heading term (upstream 14157b79): a moving fix coursing >60 deg against the route's
     local bearing counts as an off-route hit even INSIDE the distance corridor (a wrong turn onto a
     nearby-parallel road never latched on distance alone), and it resets `onRouteStreak` so the
@@ -1425,8 +1430,9 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     standard. A `navStartJob` guard makes Start re-entrancy-safe (double-tap spoke twice);
   - approach prompts are ~35 s / ~10 s out (were 25/8; floors unchanged so city/walking behaviour is
     byte-identical - upstream real-drive A/B vs Google, 43f67fdd);
-  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, all
-    unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
+  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, plus the
+    ffad5a6f singular-minute fix - "saving about a minute", never "1 minutes", in all 12
+    plural-marking tables with an every-table test - all unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
     2nd/3rd prompts drop the sign-destination tail (`NavStrings.repeatShort`); a MERGE announces at
     most twice; the first prompt speaks only the primary sign destination (`NavStrings.spokenSign`,
     colon-anchored to " toward " so times/addresses are safe); "Take exit 186" speaks as "take the
@@ -1453,6 +1459,11 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     separately ("Take exit 15"…"Keep right"…"Merge"). `RouteGeometry.consolidateExits` folds a ramp's
     immediately-following, <500 m-gapped FORK/MERGE run into the ramp maneuver (sums distances so they
     still tile the polyline; stops at any real turn / far gap) → one prompt. Unit-tested.
+    - **Cousin `RouteGeometry.rampReclass` (ported upstream 1aaa5c0c):** a SIGNLESS, DEAD-STRAIGHT
+      "on ramp" is a divided-road rename transition, not a ramp (OSM tags the transition way
+      `*_link`, OSRM emits "on ramp") - reclassified to "new name" BEFORE typing/phrasing so it
+      rides the rename path (silent CONTINUE, foldable). Deliberately narrow: straight/null
+      modifier only, and any sign destinations keep the ramp. Unit-tested.
     - **Sibling `RouteGeometry.foldRenames`** folds a pure-rename CONTINUE (OSRM `continue`/`new name`
       going straight, no genuine fork - "Oak Ave becomes Cathcart Way") into the PRECEDING maneuver
       so it's not its own banner card / step at all (NavEngine already silences its voice). Applied on
