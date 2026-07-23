@@ -51,7 +51,7 @@ class SearchCarScreen(
         }
         val builder = SearchTemplate.Builder(callback)
             .setHeaderAction(Action.BACK)
-            .setShowKeyboardByDefault(true)
+            .setShowKeyboardByDefault(false) // keyboard only when the driver taps the bar (user request)
         voiceQuery?.let { builder.setInitialSearchText(it) }
         if (voice.available()) {
             builder.setActionStrip(

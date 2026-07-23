@@ -26,10 +26,12 @@ import kotlinx.coroutines.launch
  */
 class CarVoiceSearch(private val carContext: CarContext, private val whisper: WhisperRecognizer) {
 
-    /** Can the mic do anything at all on this head unit? Host API level gate + user toggle + model. */
-    fun available(): Boolean =
-        runCatching { carContext.carAppApiLevel >= 5 }.getOrDefault(false) &&
-            VoiceSearch.enabled.value && VoiceSearch.localReady(carContext)
+    /** Should the mic SHOW? User toggle + installed model only - deliberately NOT the host API
+     *  level: the landing screen templates ONCE at session create, BEFORE the handshake reports
+     *  carAppApiLevel, so gating visibility on it dropped the mic from exactly that screen (head
+     *  unit report; the same gate passed on every later-built screen). The level is checked at
+     *  TAP time instead - an ancient host gets a graceful no-speech toast, not a hidden mic. */
+    fun available(): Boolean = VoiceSearch.enabled.value && VoiceSearch.localReady(carContext)
 
     fun hasPermission(): Boolean = whisper.hasMicPermission()
 
@@ -80,6 +82,9 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
     /** Record one utterance from the car mic and transcribe it. Suspends until speech ends (or
      *  [cancelled] returns true / the 15 s cap); safe to call from the screen's lifecycleScope. */
     suspend fun capture(cancelled: () -> Boolean): VoiceResult {
+        if (runCatching { carContext.carAppApiLevel < 5 }.getOrDefault(true)) {
+            return VoiceResult.Failed(VoiceResult.Reason.AUDIO_INIT, "host below Car API 5 (no CarAudioRecord)")
+        }
         val record = runCatching { CarAudioRecord.create(carContext) }.getOrNull()
             ?: return VoiceResult.Failed(VoiceResult.Reason.AUDIO_INIT, "CarAudioRecord.create failed")
         val bytes = ByteArray(WhisperRecognizer.VAD_WINDOW * 2 + 1)
