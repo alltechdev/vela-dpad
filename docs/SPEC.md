@@ -295,10 +295,22 @@ Two layers.
 - **Navigation**: foreground `NavigationService` + shared `@Singleton NavSession` (survives backgrounding/screen-off, persistent notification, ~2-min faster-route re-check, arrival summary).
   - Spoken `VoiceGuide` (AOSP TTS, best offline voice) + direction-coded `Haptics`. Heading-up tilted camera, blue-dot + heading cone.
   - `NavEngine` (pure, unit-tested) tracks **monotonic forward progress** (`NavState.traveledM`, windowed projection in `projectAlong` - not global-nearest) so "remaining" and "distance to next turn" stay **along-route** and honest on routes that pass near themselves (switchback / cloverleaf / out-and-back); off-route it holds rather than snapping to a far leg.
-- **Android Auto (first cut)**: `app/car/` - a NAVIGATION-category `CarAppService` (`VelaCarAppService`, host validator open because sideloads already require AA's "Unknown sources" developer switch) whose one screen (`CarMapScreen`) renders the live map on the car display and, while navigating, a RoutingInfo card with the current maneuver + distance from the same `@Singleton NavSession` the phone drives.
-  - Rendering: templated car apps get a raw surface, MapLibre needs a View, so the renderer wraps the surface in a `VirtualDisplay` + `Presentation` holding a plain `MapView`, styled with the same Liberty URI + `applyDark`/`applyLight` recolour keyed to the car's own day/night.
-  - Puck = its own AOSP `LocationManager` listener; pan/zoom = `onScroll`/`onScale` camera math; recenter + zoom actions in the strip.
-  - The phone app runs nav and voice; the car is a display for it.
+- **Android Auto (full car-side nav, ported upstream)**: `app/car/` - a NAVIGATION-category
+  `CarAppService` (`VelaCarAppService`, Hilt-injected `:core` singletons bundled as `CarDeps`;
+  host validator open because sideloads already require AA's "Unknown sources" developer switch;
+  `androidx.car.app:app-projected` is REQUIRED - its merged `CarAppMetadataHolderService` is the
+  documented Android Auto glue and the cluster/NavigationManager APIs live in it).
+  - Screens: `MainCarScreen` (Home/Work/recents/saved) -> `SearchCarScreen` (car keyboard, same
+    `MapDataSource`) -> `RoutePreviewCarScreen` (alternates + live ETAs) -> `ActiveNavCarScreen`
+    (maneuver icons + lane guidance via `ManeuverMapper`/`LaneImage`, trip updates to the
+    instrument cluster). `VelaCarSession.onNewIntent` accepts assistant/`geo:` NAVIGATE intents
+    (opaque-URI-safe). The phone still runs `NavSession` and speaks; the car adds no nav logic.
+  - Rendering: `CarMapRenderer` draws the REAL styled basemap via MapLibre's `MapSnapshotter`
+    (off-screen -> Bitmap -> Canvas on the template surface; one shared renderer per session).
+    Nav mode is heading-up with look-ahead camera, speed-tightened zoom, traffic-coloured route
+    and a speed badge; browse is north-up; a ticker smooths puck/bearing between ~1 Hz fixes.
+  - Basemap glyphs are Roboto app-wide via `MapFonts` (probe-guarded patched Liberty style,
+    shared by the phone map and the car snapshotter).
 - **Place-content toggles**: Settings → Map, `ShowReviews` / `LoadPhotos` holders (default on).
   - Off gates BOTH the fetch (`fetchReviews`/`fetchPhotos` in the VM) and the render (review tab / photo strip in `PlaceSheet`), so off means no scrape traffic at all, not just hidden UI.
 - **"Hide adult categories" toggle**: Settings → Map, `HideAdult` holder (default **off**).
