@@ -53,7 +53,7 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
      *  screen should re-template for, [onTranscript] gets the cleaned query. No-speech toasts. */
     fun micAction(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit): Action =
         Action.Builder()
-            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_mic)).build())
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_mic2)).build())
             .setOnClickListener { tap(screen, onUpdate, onTranscript) }
             .build()
 

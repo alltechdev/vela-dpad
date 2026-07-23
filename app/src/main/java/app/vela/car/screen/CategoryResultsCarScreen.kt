@@ -14,14 +14,14 @@ import app.vela.core.model.Place
 import app.vela.core.nav.NavSession
 import kotlinx.coroutines.launch
 
-/** Category tap -> RESULTS, directly - no search box with "Food" typed into it (user feedback:
+/** Category tap OR voice transcript -> RESULTS, directly ("searching..." spinner, then the list) - no search box with "Food" typed into it (user feedback:
  *  Google Maps AA goes straight to the list). Same fetch + pick semantics as SearchCarScreen's
  *  along-route mode: nearby when browsing, corridor-filtered add-a-stop while navigating. */
 class CategoryResultsCarScreen(
     carContext: CarContext,
     private val deps: CarDeps,
-    private val titleRes: Int,
-    private val query: String, // the stable English query literal (the label localizes)
+    private val title: String, // category label or a voice transcript - shown as the list title
+    private val query: String, // what actually gets searched
     private val alongRoute: Boolean,
 ) : Screen(carContext) {
 
@@ -32,12 +32,12 @@ class CategoryResultsCarScreen(
     override fun onGetTemplate(): Template {
         if (!fetched) { fetched = true; fetch() }
         val builder = ListTemplate.Builder()
-            .setTitle(carContext.getString(titleRes))
+            .setTitle(title)
             .setHeaderAction(Action.BACK)
         if (loading) return builder.setLoading(true).build()
         val list = ItemList.Builder()
         if (results.isEmpty()) {
-            list.setNoItemsMessage(carContext.getString(app.vela.R.string.mapvm_no_results, carContext.getString(titleRes)))
+            list.setNoItemsMessage(carContext.getString(app.vela.R.string.mapvm_no_results, title))
         } else {
             results.take(6).forEach { p ->
                 list.addItem(

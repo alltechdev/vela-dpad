@@ -42,7 +42,7 @@ class CategoriesCarScreen(
                     )
                     // Straight to RESULTS - not a search box with the query typed in (user feedback).
                     .setOnClickListener {
-                        screenManager.push(CategoryResultsCarScreen(carContext, deps, labelRes, query, alongRoute))
+                        screenManager.push(CategoryResultsCarScreen(carContext, deps, carContext.getString(labelRes), query, alongRoute))
                     }
                     .build(),
             )

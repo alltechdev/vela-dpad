@@ -170,7 +170,9 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
             CarCommands.Command.Mute -> { deps.voiceGuide.muted = true; invalidate() }
             CarCommands.Command.Unmute -> { deps.voiceGuide.muted = false; invalidate() }
             CarCommands.Command.EndNav -> Unit // nothing to end from the landing screen
-            is CarCommands.Command.Search -> screenManager.push(SearchCarScreen(carContext, deps, c.query))
+            // Voice -> straight to RESULTS ("searching..." then the list), not a search box.
+            is CarCommands.Command.Search ->
+                screenManager.push(CategoryResultsCarScreen(carContext, deps, c.query, c.query, alongRoute = false))
         }
     }
 

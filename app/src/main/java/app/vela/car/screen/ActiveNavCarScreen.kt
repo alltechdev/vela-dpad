@@ -254,7 +254,7 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
                 }
             }
             is CarCommands.Command.Search ->
-                screenManager.push(SearchCarScreen(carContext, deps, c.query, alongRoute = true))
+                screenManager.push(CategoryResultsCarScreen(carContext, deps, c.query, c.query, alongRoute = true))
         }
     }
 
@@ -263,7 +263,7 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
         if (sc != null) {
             screenManager.push(RoutePreviewCarScreen(carContext, deps, sc.name, sc.location))
         } else {
-            screenManager.push(SearchCarScreen(carContext, deps, fallbackQuery, alongRoute = true))
+            screenManager.push(CategoryResultsCarScreen(carContext, deps, fallbackQuery, fallbackQuery, alongRoute = true))
         }
     }
 
