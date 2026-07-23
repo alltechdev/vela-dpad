@@ -551,4 +551,5 @@
     <string name="car_unmute">Geluid aan</string>
     <string name="car_faster_route">Sneller −%1$d min</string>
     <string name="car_no_route">Geen route, controleer je locatie</string>
+    <string name="car_voice_nothing">Niets verstaan</string>
 </resources>

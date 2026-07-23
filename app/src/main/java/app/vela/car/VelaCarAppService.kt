@@ -12,6 +12,7 @@ import app.vela.core.data.SavedPlaceStore
 import app.vela.core.location.LocationProvider
 import app.vela.core.nav.NavSession
 import app.vela.core.voice.VoiceGuide
+import app.vela.voice.WhisperRecognizer
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -36,6 +37,7 @@ class VelaCarAppService : CarAppService() {
     @Inject lateinit var shortcuts: PlaceShortcutStore
     @Inject lateinit var voiceGuide: VoiceGuide
     @Inject lateinit var routeEngine: RouteEngine
+    @Inject lateinit var whisper: WhisperRecognizer
 
     // Allow ANY Android Auto / AAOS host to connect. Vela is sideloaded (never on Play) and must
     // "just work" on whatever head unit / DHU a user plugs into — the
@@ -45,6 +47,6 @@ class VelaCarAppService : CarAppService() {
     override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
     override fun onCreateSession(): Session = VelaCarSession(
-        CarDeps(navSession, locationProvider, mapDataSource, recentPlaces, savedPlaces, shortcuts, voiceGuide, routeEngine),
+        CarDeps(navSession, locationProvider, mapDataSource, recentPlaces, savedPlaces, shortcuts, voiceGuide, routeEngine, whisper),
     )
 }

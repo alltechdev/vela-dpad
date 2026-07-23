@@ -571,4 +571,5 @@
     <string name="car_unmute">取消靜音</string>
     <string name="car_faster_route">更快 −%1$d 分鐘</string>
     <string name="car_no_route">沒有可用路線 — 請檢查位置</string>
+    <string name="car_voice_nothing">未能辨識語音</string>
 </resources>

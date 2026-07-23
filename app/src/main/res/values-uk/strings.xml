@@ -559,4 +559,5 @@
     <string name="car_unmute">Увімкнути звук</string>
     <string name="car_faster_route">Швидше −%1$d хв</string>
     <string name="car_no_route">Немає маршруту, перевірте місцезнаходження</string>
+    <string name="car_voice_nothing">Мовлення не розпізнано</string>
 </resources>

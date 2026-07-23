@@ -10,6 +10,7 @@ import app.vela.core.data.SavedPlaceStore
 import app.vela.core.location.LocationProvider
 import app.vela.core.nav.NavSession
 import app.vela.core.voice.VoiceGuide
+import app.vela.voice.WhisperRecognizer
 
 /** The `:core` singletons the car screens share (all the same instances the phone app uses). */
 data class CarDeps(
@@ -21,6 +22,7 @@ data class CarDeps(
     val shortcuts: PlaceShortcutStore,
     val voiceGuide: VoiceGuide,
     val routeEngine: RouteEngine, // for the speed-limit badge (offline graphs' max_speed)
+    val whisper: WhisperRecognizer, // in-car voice search (the same on-device model as the phone mic)
 ) {
     // ONE shared map renderer for the whole car session. Per-screen renderer instances DON'T work:
     // swapping the surface callback to a new instance doesn't re-deliver onSurfaceAvailable, so the

@@ -26,6 +26,26 @@ needs. Media apps (music, podcasts) do **not** need it, which is why a sideloade
 music player shows up on Android Auto with no fuss while a nav app does not. See
 below.
 
+## What works in the car
+
+- **Browse map** with the styled Vela basemap, puck, camera follow, pan/zoom.
+- **Search** (keyboard on the head unit) with results biased to your location;
+  tapping a result opens the route preview.
+- **Voice search** on head units with Car API level 5+: the mic action on the
+  search screen records from the **car's** microphone and transcribes with the
+  same on-device Whisper model as the phone mic - nothing leaves the device.
+  It appears only when voice search is enabled in Settings and the on-device
+  model is installed (Settings, Search, Voice search); tap again to stop early.
+- **Route preview** with live-traffic alternates, **turn-by-turn** with maneuver
+  icons + lane guidance, and instrument-cluster trip updates.
+- **Assistant / `geo:` intents**: "navigate to X" style NAVIGATE intents open
+  the route preview directly. Coordinates (`geo:lat,lng`,
+  `geo:0,0?q=lat,lng(Label)`) go straight there; a **free-text** destination
+  (`geo:0,0?q=central park`) is geocoded through Vela's own search, biased to
+  your location, and lands in the preview for the top hit (a miss shows a
+  toast). Upstream leaves free-text destinations unhandled; the geocoding is a
+  fork addition.
+
 ## Why a sideloaded music app "just works" but a nav app does not
 
 They ride two completely different integrations:

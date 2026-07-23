@@ -551,4 +551,5 @@
     <string name="car_unmute">Ativar som</string>
     <string name="car_faster_route">Mais rápido −%1$d min</string>
     <string name="car_no_route">Sem rota, verifique a localização</string>
+    <string name="car_voice_nothing">Nada foi entendido</string>
 </resources>

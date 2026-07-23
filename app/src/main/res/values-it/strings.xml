@@ -551,4 +551,5 @@
     <string name="car_unmute">Riattiva</string>
     <string name="car_faster_route">Più veloce −%1$d min</string>
     <string name="car_no_route">Nessun percorso, controlla la posizione</string>
+    <string name="car_voice_nothing">Nessuna voce rilevata</string>
 </resources>

@@ -571,4 +571,5 @@
     <string name="car_unmute">ミュート解除</string>
     <string name="car_faster_route">より速い −%1$d分</string>
     <string name="car_no_route">ルートがありません — 位置情報を確認してください</string>
+    <string name="car_voice_nothing">聞き取れませんでした</string>
 </resources>

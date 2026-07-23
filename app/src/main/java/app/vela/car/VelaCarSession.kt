@@ -3,6 +3,7 @@ package app.vela.car
 import android.content.Intent
 import android.net.Uri
 import androidx.car.app.CarContext
+import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.ScreenManager
 import androidx.car.app.Session
@@ -62,25 +63,61 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
 
     override fun onCreateScreen(intent: Intent): Screen {
         // Launched via a navigation intent (assistant "navigate to X" / another app)? Go straight to
-        // the route preview for that destination; otherwise the normal landing screen.
+        // the route preview for that destination; otherwise the normal landing screen. A free-text
+        // destination geocodes asynchronously and pushes the preview on top of the landing screen.
         parseNavDest(intent)?.let { (dest, name) ->
             return RoutePreviewCarScreen(carContext, deps, name, dest)
         }
+        parseNavQuery(intent)?.let(::resolveFreeText)
         return MainCarScreen(carContext, deps)
     }
 
     /** A navigation intent delivered while the app is already running (the host reuses the session). */
     override fun onNewIntent(intent: Intent) {
-        val (dest, name) = parseNavDest(intent) ?: return
-        carContext.getCarService(ScreenManager::class.java)
-            .push(RoutePreviewCarScreen(carContext, deps, name, dest))
+        parseNavDest(intent)?.let { (dest, name) ->
+            carContext.getCarService(ScreenManager::class.java)
+                .push(RoutePreviewCarScreen(carContext, deps, name, dest))
+            return
+        }
+        parseNavQuery(intent)?.let(::resolveFreeText)
+    }
+
+    /** Geocode a free-text NAVIGATE destination ("navigate to the nearest coffee shop") through the
+     *  same [app.vela.core.data.MapDataSource.search] the search screens use, biased to the last
+     *  known location, and land in the route preview for the top hit. Upstream punts these (the app
+     *  just opens); resolving them is a fork addition. Misses get a toast, not silence. */
+    private fun resolveFreeText(query: String) {
+        scope.launch {
+            val near = deps.locationProvider.lastKnown()
+            val hit = runCatching { deps.mapDataSource.search(query, near).places }
+                .getOrDefault(emptyList()).firstOrNull()
+            if (hit != null) {
+                carContext.getCarService(ScreenManager::class.java)
+                    .push(RoutePreviewCarScreen(carContext, deps, hit.name, hit.location))
+            } else {
+                CarToast.makeText(
+                    carContext,
+                    carContext.getString(app.vela.R.string.mapvm_no_results, query),
+                    CarToast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    /** The free-text `q=` payload of a NAVIGATE `geo:` URI, when [parseNavDest] found no coords in
+     *  it. URL-decoded ("coffee+shop" and %XX escapes arrive encoded). */
+    private fun parseNavQuery(intent: Intent): String? {
+        if (intent.action != CarContext.ACTION_NAVIGATE) return null
+        val ssp = intent.data?.schemeSpecificPart ?: return null
+        val raw = ssp.substringAfter("q=", "").takeIf { it.isNotBlank() } ?: return null
+        return runCatching { java.net.URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw).trim().ifBlank { null }
     }
 
     /** Parse an `androidx.car.app.action.NAVIGATE` intent's `geo:` URI into a destination. Handles
-     *  `geo:lat,lng` and `geo:0,0?q=lat,lng(Label)`; a free-text `q=` (needs geocoding) returns null
-     *  (the app just opens normally). NB `geo:` URIs are OPAQUE (non-hierarchical), so `Uri
-     *  .getQueryParameter()` THROWS ("This isn't a hierarchical URI") — we parse the scheme-specific
-     *  part by hand instead. */
+     *  `geo:lat,lng` and `geo:0,0?q=lat,lng(Label)`; a free-text `q=` goes through [parseNavQuery] +
+     *  [resolveFreeText] (geocoded, then previewed) instead. NB `geo:` URIs are OPAQUE
+     *  (non-hierarchical), so `Uri.getQueryParameter()` THROWS ("This isn't a hierarchical URI") —
+     *  we parse the scheme-specific part by hand instead. */
     private fun parseNavDest(intent: Intent): Pair<LatLng, String>? {
         if (intent.action != CarContext.ACTION_NAVIGATE) return null
         val uri: Uri = intent.data ?: return null
@@ -89,7 +126,9 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
         // Prefer a `q=` payload (geo:0,0?q=lat,lng(Label)); else the bare `geo:lat,lng` coords.
         val qVal = ssp.substringAfter("q=", "").takeIf { it.isNotBlank() }
         val target = qVal ?: ssp.substringBefore('?')
-        coordRe.find(target)?.let { m ->
+        // matchEntire, not find: "Store 12, 34th St" CONTAINS a coord-shaped substring but is a
+        // free-text query for the geocoder, not a destination at lat 12 lng 34.
+        coordRe.matchEntire(target.trim())?.let { m ->
             val lat = m.groupValues[1].toDoubleOrNull(); val lng = m.groupValues[2].toDoubleOrNull()
             // Reject the placeholder 0,0 only when it came from the bare coords (a real q= 0,0 is unheard of).
             if (lat != null && lng != null && !(qVal == null && lat == 0.0 && lng == 0.0)) {

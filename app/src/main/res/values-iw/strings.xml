@@ -554,4 +554,5 @@
     <string name="car_unmute">בטל השתקה</string>
     <string name="car_faster_route">מהיר יותר −%1$d דק׳</string>
     <string name="car_no_route">אין מסלול זמין — בדקו את המיקום</string>
+    <string name="car_voice_nothing">לא נקלט דיבור</string>
 </resources>

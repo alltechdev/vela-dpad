@@ -304,7 +304,13 @@ Two layers.
     `MapDataSource`) -> `RoutePreviewCarScreen` (alternates + live ETAs) -> `ActiveNavCarScreen`
     (maneuver icons + lane guidance via `ManeuverMapper`/`LaneImage`, trip updates to the
     instrument cluster). `VelaCarSession.onNewIntent` accepts assistant/`geo:` NAVIGATE intents
-    (opaque-URI-safe). The phone still runs `NavSession` and speaks; the car adds no nav logic.
+    (opaque-URI-safe); a free-text `q=` destination geocodes via `MapDataSource.search` into the
+    route preview (fork addition - upstream leaves it unhandled). The phone still runs
+    `NavSession` and speaks; the car adds no nav logic.
+  - Voice search (fork addition): `CarVoiceSearch` bridges the car's mic (`CarAudioRecord`, Car
+    API 5+) into `WhisperRecognizer.listen` via its `PcmSource` seam (16 kHz PCM16 on both), so
+    the car search screen's mic action runs the same on-device VAD + Whisper pipeline as the
+    phone. Gated on host API level, the Settings voice toggle, and an installed model.
   - Rendering: `CarMapRenderer` draws the REAL styled basemap via MapLibre's `MapSnapshotter`
     (off-screen -> Bitmap -> Canvas on the template surface; one shared renderer per session).
     Nav mode is heading-up with look-ahead camera, speed-tightened zoom, traffic-coloured route

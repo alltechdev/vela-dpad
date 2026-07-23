@@ -551,4 +551,5 @@
     <string name="car_unmute">Ljud på</string>
     <string name="car_faster_route">Snabbare −%1$d min</string>
     <string name="car_no_route">Ingen rutt, kontrollera platsen</string>
+    <string name="car_voice_nothing">Uppfattade inget</string>
 </resources>
