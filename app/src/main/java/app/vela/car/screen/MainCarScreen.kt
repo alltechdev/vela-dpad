@@ -124,7 +124,7 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
                 voice.micAction(
                     this, ::invalidate,
                     onTranscript = { q -> screenManager.push(SearchCarScreen(carContext, deps, q)) },
-                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps)) },
+                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps, voiceEntry = true)) },
                 ),
             )
         }

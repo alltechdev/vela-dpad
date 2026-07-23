@@ -162,7 +162,7 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
                 voice.micAction(
                     this, ::invalidate,
                     onTranscript = { q -> screenManager.push(SearchCarScreen(carContext, deps, q, alongRoute = true)) },
-                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true)) },
+                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true, voiceEntry = true)) },
                 ),
             )
         }
