@@ -496,6 +496,7 @@
     <string name="settings_asr_langs_whisper">Vela が対応するすべての言語</string>
     <string name="settings_asr_langs_sensevoice">英語、中国語、日本語、韓国語、広東語</string>
     <string name="settings_asr_langs_moonshine">英語のみ</string>
+    <string name="settings_asr_langs_zipformer">英語のみ、メモリ使用量が最小</string>
     <string name="settings_asr_active">使用中</string>
     <string name="settings_asr_use">使う</string>
     <string name="settings_voice_search_download">ダウンロード（%1$d MB）</string>  <!-- format -->
