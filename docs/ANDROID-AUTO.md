@@ -39,6 +39,26 @@ below.
   model is installed (Settings, Search, Voice search); tap again to stop early.
 - **Route preview** with live-traffic alternates, **turn-by-turn** with maneuver
   icons + lane guidance, and instrument-cluster trip updates.
+- **Search along the route while driving**: the nav screen carries a search
+  action and the mic; results are corridor-filtered (the same filter the phone
+  uses) and tapping one adds it as a stop - the drive replans through it.
+  One-tap **category shortcuts** (Gas / Food / Coffee / Groceries) sit behind
+  the grid action on the landing screen and feed the same flow in-drive.
+- **Voice commands**: the mic understands "navigate home", "take me to work",
+  "find my car", "mute" / "unmute", and "end navigation" (English); anything
+  else is a normal search with the leading verb stripped ("navigate to the
+  nearest gas station" searches the destination, not the whole sentence).
+- **Faster-route offers pop as a head-up alert** (Car API 5+) with Go/Done,
+  not just a strip button; the strip button remains for older hosts.
+- **Parking**: arriving shows a card with one-tap "Save parking spot" (shared
+  with the phone's Park feature), and a saved spot adds a "Find my car" row to
+  the landing screen. **Home/Work rows show live drive times.**
+- **Resume**: if navigation is already running when the car connects, the car
+  UI lands straight in guidance.
+- **Driving alerts** (Settings, Navigation, Driving alerts - both off by
+  default): a spoken heads-up approaching a mapped license-plate camera
+  (bundled DeFlock data, offline), and the speed badge turning red over the
+  posted limit.
 - **Assistant / `geo:` intents**: "navigate to X" style NAVIGATE intents open
   the route preview directly. Coordinates (`geo:lat,lng`,
   `geo:0,0?q=lat,lng(Label)`) go straight there; a **free-text** destination

@@ -13,6 +13,7 @@ import androidx.lifecycle.LifecycleOwner
 import app.vela.car.screen.CarDeps
 import app.vela.car.screen.MainCarScreen
 import app.vela.core.model.LatLng
+import app.vela.core.model.distanceTo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,6 +36,12 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var feedJob: Job? = null
 
+    // Camera-alert bookkeeping: cams computed once per route identity (bundled DeFlock dataset,
+    // no network), each camera announced at most once per trip.
+    private var camRouteKey = 0
+    private var camsOnRoute: List<app.vela.core.model.LatLng> = emptyList()
+    private val camAnnounced = HashSet<Int>()
+
     init {
         lifecycle.addObserver(this)
     }
@@ -49,7 +56,9 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
                 val gps = loc.provider == android.location.LocationManager.GPS_PROVIDER
                 if (gps && (!loc.hasAccuracy() || loc.accuracy <= 50f)) {
                     val speed = if (loc.hasSpeed()) loc.speed.toDouble() else null
-                    deps.navSession.onLocation(LatLng(loc.latitude, loc.longitude), app.vela.ui.Units.imperial.value, speed)
+                    val here = LatLng(loc.latitude, loc.longitude)
+                    deps.navSession.onLocation(here, app.vela.ui.Units.imperial.value, speed)
+                    maybeAlertCamera(here)
                 }
             }
         }
@@ -69,6 +78,17 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
             return RoutePreviewCarScreen(carContext, deps, name, dest)
         }
         parseNavQuery(intent)?.let(::resolveFreeText)
+        // Resume: nav already running (started on the phone before plugging in, or the host
+        // recreated the session mid-drive)? Land straight in guidance. Pushed onto the landing
+        // screen (not returned as root) so End/arrival can pop back to something. arrived guards
+        // a push-pop flicker: an arrived-but-undismissed session must not bounce the screen.
+        val nav = deps.navSession.state.value
+        if (nav.navigating && !nav.arrived) {
+            scope.launch {
+                carContext.getCarService(ScreenManager::class.java)
+                    .push(app.vela.car.screen.ActiveNavCarScreen(carContext, deps))
+            }
+        }
         return MainCarScreen(carContext, deps)
     }
 
@@ -80,6 +100,31 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
             return
         }
         parseNavQuery(intent)?.let(::resolveFreeText)
+    }
+
+    /** Spoken heads-up approaching a mapped license-plate camera (Settings -> Navigation ->
+     *  Driving alerts; off by default). Cameras come from the BUNDLED DeFlock dataset filtered to
+     *  the route corridor - instant and offline, the same source the phone's avoid-cameras
+     *  re-rank prefers. Each camera speaks once per trip, within [CAM_ALERT_METERS] of the puck. */
+    private fun maybeAlertCamera(here: LatLng) {
+        if (!app.vela.ui.DriveAlerts.cameras.value) return
+        val s = deps.navSession.state.value
+        val route = s.route ?: return
+        if (!s.navigating || s.arrived) return
+        val key = route.polyline.size * 31 + (route.polyline.firstOrNull()?.lat?.times(1e5)?.toInt() ?: 0)
+        if (key != camRouteKey) {
+            camRouteKey = key
+            camAnnounced.clear()
+            camsOnRoute = if (app.vela.data.FlockCameras.isLoaded) {
+                runCatching { app.vela.data.FlockCameras.along(route.polyline).map { it.loc } }.getOrDefault(emptyList())
+            } else emptyList()
+        }
+        camsOnRoute.forEachIndexed { i, cam ->
+            if (i !in camAnnounced && here.distanceTo(cam) <= CAM_ALERT_METERS) {
+                camAnnounced.add(i)
+                deps.voiceGuide.speak(carContext.getString(app.vela.R.string.car_camera_ahead), interrupt = false)
+            }
+        }
     }
 
     /** Geocode a free-text NAVIGATE destination ("navigate to the nearest coffee shop") through the
@@ -136,5 +181,9 @@ class VelaCarSession(private val deps: CarDeps) : Session(), DefaultLifecycleObs
             }
         }
         return null
+    }
+
+    private companion object {
+        const val CAM_ALERT_METERS = 400.0
     }
 }

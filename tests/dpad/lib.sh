@@ -134,6 +134,45 @@ for m in re.finditer(r"<node [^>]*>", d):
 }
 # on_screen <exact>  - 0 (true) if a node with that exact text exists.
 on_screen() { [ -n "$(find_text "$1")" ]; }
+# find_text_ci / on_screen_ci - case-INSENSITIVE exact match. For text whose casing depends on which
+# UI path produced it: the "Coffee" category chip records its stable English query literal
+# ("Coffee"), the typed fallback records what was typed ("coffee") - a case-sensitive check on
+# either spelling systematically misses the other path (device-found: search-history-astype missed
+# on every leg, on main and branch alike, because the chip path had recorded "Coffee").
+find_text_ci() {
+  ui_dump
+  $ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
+import sys, re, html
+d = sys.stdin.read(); want = sys.argv[1].casefold()
+for m in re.finditer(r"<node [^>]*>", d):
+    s = m.group(0); t = re.search(r"text=\"([^\"]*)\"", s); b = re.search(r"bounds=\"([^\"]*)\"", s)
+    if t and html.unescape(t.group(1)).casefold() == want:
+        print(b.group(1) if b else ""); break
+' "$1"
+}
+on_screen_ci() { [ -n "$(find_text_ci "$1")" ]; }
+# on_screen_within <text> [seconds=6] - poll on_screen until it matches or the deadline passes.
+# ui_dump's thin-tree retry can't catch a STRUCTURALLY-real dump whose text attributes are still
+# empty while Compose populates semantics - device-seen on the search overlay (a dozen nodes, every
+# text="", settled ~1 s later with the same node count). Checks that race an animating surface
+# (IME up, suggestions streaming in) poll here instead of trusting one post-sleep dump.
+on_screen_within() {
+  local deadline=$(( $(date +%s) + ${2:-6} ))
+  while :; do
+    on_screen "$1" && return 0
+    [ "$(date +%s)" -ge "$deadline" ] && return 1
+    sleep 0.7
+  done
+}
+# on_screen_ci_within <text> [seconds=6] - the case-insensitive twin.
+on_screen_ci_within() {
+  local deadline=$(( $(date +%s) + ${2:-6} ))
+  while :; do
+    on_screen_ci "$1" && return 0
+    [ "$(date +%s)" -ge "$deadline" ] && return 1
+    sleep 0.7
+  done
+}
 # find_text_contains <substr>  - bounds of the first node whose text CONTAINS <substr>.
 find_text_contains() {
   ui_dump

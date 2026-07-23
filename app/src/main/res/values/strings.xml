@@ -600,4 +600,12 @@
     <string name="car_faster_route">Faster −%1$d min</string>
     <string name="car_no_route">No route available — check your location</string>
     <string name="car_voice_nothing">Didn\'t catch that</string>
+    <string name="car_stop_added">Stop added</string>
+    <string name="car_categories">Categories</string>
+    <string name="settings_drive_alerts">Driving alerts</string>
+    <string name="settings_alert_cameras">Camera alerts</string>
+    <string name="settings_alert_cameras_hint">Spoken heads-up near a license-plate camera. Android Auto only.</string>
+    <string name="settings_alert_speeding">Speeding warning</string>
+    <string name="settings_alert_speeding_hint">The car speed badge turns red over the posted limit.</string>
+    <string name="car_camera_ahead">Camera ahead</string>
 </resources>

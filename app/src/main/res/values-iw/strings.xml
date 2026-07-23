@@ -555,4 +555,12 @@
     <string name="car_faster_route">מהיר יותר −%1$d דק׳</string>
     <string name="car_no_route">אין מסלול זמין — בדקו את המיקום</string>
     <string name="car_voice_nothing">לא נקלט דיבור</string>
+    <string name="car_stop_added">העצירה נוספה</string>
+    <string name="car_categories">קטגוריות</string>
+    <string name="settings_drive_alerts">התראות נהיגה</string>
+    <string name="settings_alert_cameras">התראות מצלמות</string>
+    <string name="settings_alert_cameras_hint">הכרזה קולית ליד מצלמת לוחיות רישוי. רק ב-Android Auto.</string>
+    <string name="settings_alert_speeding">אזהרת מהירות</string>
+    <string name="settings_alert_speeding_hint">תג המהירות ברכב הופך אדום מעל המגבלה.</string>
+    <string name="car_camera_ahead">מצלמה לפניך</string>
 </resources>

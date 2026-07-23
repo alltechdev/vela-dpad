@@ -572,4 +572,12 @@
     <string name="car_faster_route">より速い −%1$d分</string>
     <string name="car_no_route">ルートがありません — 位置情報を確認してください</string>
     <string name="car_voice_nothing">聞き取れませんでした</string>
+    <string name="car_stop_added">経由地を追加しました</string>
+    <string name="car_categories">カテゴリ</string>
+    <string name="settings_drive_alerts">運転アラート</string>
+    <string name="settings_alert_cameras">カメラ警告</string>
+    <string name="settings_alert_cameras_hint">ナンバープレートカメラ付近で音声通知。Android Autoのみ。</string>
+    <string name="settings_alert_speeding">速度超過警告</string>
+    <string name="settings_alert_speeding_hint">制限速度を超えると車の速度バッジが赤くなります。</string>
+    <string name="car_camera_ahead">この先にカメラ</string>
 </resources>

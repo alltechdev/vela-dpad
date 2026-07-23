@@ -138,6 +138,8 @@ class CarMapRenderer(
         3 to strokePaint("#8e1414", 15f), // severe
     )
     private val badgeBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#cc1b1f2b") }
+    // Speeding: the same badge with a red fill (Settings -> Navigation -> Driving alerts).
+    private val badgeBgOver = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#e0c62828") }
     private val badgeNum = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = 42f; isFakeBoldText = true
     }
@@ -492,7 +494,12 @@ class CarMapRenderer(
         val num = v.roundToInt().coerceAtLeast(0)
         val unit = if (imperial) "mph" else "km/h"
         val cx = width - 62f; val cy = height - 66f; val rad = 46f
-        canvas.drawRoundRect(RectF(cx - rad, cy - rad, cx + rad, cy + rad), 20f, 20f, badgeBg)
+        // Over the posted limit (with a small tolerance: 5% + 2 km/h, so GPS speed jitter at
+        // exactly the limit doesn't strobe the badge) -> red fill, when the warning is enabled.
+        val over = app.vela.ui.DriveAlerts.speeding.value && speedLimitKmh?.let { lim ->
+            speedMps * 3.6 > lim * 1.05 + 2.0
+        } == true
+        canvas.drawRoundRect(RectF(cx - rad, cy - rad, cx + rad, cy + rad), 20f, 20f, if (over) badgeBgOver else badgeBg)
         canvas.drawText(num.toString(), cx, cy + 6f, badgeNum)
         canvas.drawText(unit, cx, cy + 30f, badgeUnit)
 

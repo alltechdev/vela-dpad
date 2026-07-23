@@ -309,8 +309,16 @@ Two layers.
     `NavSession` and speaks; the car adds no nav logic.
   - Voice search (fork addition): `CarVoiceSearch` bridges the car's mic (`CarAudioRecord`, Car
     API 5+) into `WhisperRecognizer.listen` via its `PcmSource` seam (16 kHz PCM16 on both), so
-    the car search screen's mic action runs the same on-device VAD + Whisper pipeline as the
-    phone. Gated on host API level, the Settings voice toggle, and an installed model.
+    the mic actions (landing, search, and active-nav screens; shared flow in
+    `CarVoiceSearch.micAction`) run the same on-device VAD + Whisper pipeline as the phone.
+    Gated on host API level, the Settings voice toggle, and an installed model. Transcripts go
+    through `core/voice/CarCommands` first (offline grammar: navigate home/work, find my car,
+    mute/unmute, end navigation; fallback = search with the nav verb stripped).
+  - In-drive additions (fork): search-along-route (`SearchCarScreen(alongRoute)` +
+    `RouteCorridor`; a pick calls `NavSession.addStop`), `CategoriesCarScreen` grid,
+    faster-route head-up `Alert`, `ArrivalCarScreen` -> `ParkingStore` (+ Find-my-car landing
+    row, live Home/Work ETAs), resume-into-guidance, and `DriveAlerts` camera/speeding warnings
+    (bundled FlockCameras corridor scan in `VelaCarSession`; badge tint in `CarMapRenderer`).
   - Rendering: `CarMapRenderer` draws the REAL styled basemap via MapLibre's `MapSnapshotter`
     (off-screen -> Bitmap -> Canvas on the template surface; one shared renderer per session).
     Nav mode is heading-up with look-ahead camera, speed-tightened zoom, traffic-coloured route

@@ -552,4 +552,12 @@
     <string name="car_faster_route">Snabbare −%1$d min</string>
     <string name="car_no_route">Ingen rutt, kontrollera platsen</string>
     <string name="car_voice_nothing">Uppfattade inget</string>
+    <string name="car_stop_added">Stopp tillagt</string>
+    <string name="car_categories">Kategorier</string>
+    <string name="settings_drive_alerts">Körvarningar</string>
+    <string name="settings_alert_cameras">Kameravarningar</string>
+    <string name="settings_alert_cameras_hint">Röstvarning nära en registreringsskyltkamera. Endast Android Auto.</string>
+    <string name="settings_alert_speeding">Fortkörningsvarning</string>
+    <string name="settings_alert_speeding_hint">Hastighetsmärket blir rött över gränsen.</string>
+    <string name="car_camera_ahead">Kamera framför</string>
 </resources>

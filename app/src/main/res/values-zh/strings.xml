@@ -572,4 +572,12 @@
     <string name="car_faster_route">更快 −%1$d 分钟</string>
     <string name="car_no_route">没有可用路线 — 请检查位置</string>
     <string name="car_voice_nothing">未能识别语音</string>
+    <string name="car_stop_added">已添加停靠点</string>
+    <string name="car_categories">类别</string>
+    <string name="settings_drive_alerts">驾驶提醒</string>
+    <string name="settings_alert_cameras">摄像头提醒</string>
+    <string name="settings_alert_cameras_hint">接近车牌摄像头时语音提示。仅限Android Auto。</string>
+    <string name="settings_alert_speeding">超速警告</string>
+    <string name="settings_alert_speeding_hint">超过限速时车内速度标志变红。</string>
+    <string name="car_camera_ahead">前方有摄像头</string>
 </resources>

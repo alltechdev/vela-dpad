@@ -560,4 +560,12 @@
     <string name="car_faster_route">Швидше −%1$d хв</string>
     <string name="car_no_route">Немає маршруту, перевірте місцезнаходження</string>
     <string name="car_voice_nothing">Мовлення не розпізнано</string>
+    <string name="car_stop_added">Зупинку додано</string>
+    <string name="car_categories">Категорії</string>
+    <string name="settings_drive_alerts">Сповіщення в дорозі</string>
+    <string name="settings_alert_cameras">Сповіщення про камери</string>
+    <string name="settings_alert_cameras_hint">Голосове попередження біля камери номерів. Лише Android Auto.</string>
+    <string name="settings_alert_speeding">Попередження про швидкість</string>
+    <string name="settings_alert_speeding_hint">Значок швидкості червоніє при перевищенні ліміту.</string>
+    <string name="car_camera_ahead">Попереду камера</string>
 </resources>

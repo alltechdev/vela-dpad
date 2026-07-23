@@ -552,4 +552,12 @@
     <string name="car_faster_route">Plus rapide −%1$d min</string>
     <string name="car_no_route">Aucun itinéraire, vérifiez votre position</string>
     <string name="car_voice_nothing">Rien n\'a été entendu</string>
+    <string name="car_stop_added">Arrêt ajouté</string>
+    <string name="car_categories">Catégories</string>
+    <string name="settings_drive_alerts">Alertes de conduite</string>
+    <string name="settings_alert_cameras">Alertes caméras</string>
+    <string name="settings_alert_cameras_hint">Annonce vocale près d\'une caméra de plaques. Android Auto uniquement.</string>
+    <string name="settings_alert_speeding">Alerte de vitesse</string>
+    <string name="settings_alert_speeding_hint">Le badge de vitesse devient rouge au-dessus de la limite.</string>
+    <string name="car_camera_ahead">Caméra devant</string>
 </resources>

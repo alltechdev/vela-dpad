@@ -552,4 +552,12 @@
     <string name="car_faster_route">Schneller −%1$d Min</string>
     <string name="car_no_route">Keine Route, Standort prüfen</string>
     <string name="car_voice_nothing">Nichts verstanden</string>
+    <string name="car_stop_added">Stopp hinzugefügt</string>
+    <string name="car_categories">Kategorien</string>
+    <string name="settings_drive_alerts">Fahrwarnungen</string>
+    <string name="settings_alert_cameras">Kamerawarnungen</string>
+    <string name="settings_alert_cameras_hint">Sprachhinweis nahe einer Kennzeichenkamera. Nur Android Auto.</string>
+    <string name="settings_alert_speeding">Tempowarnung</string>
+    <string name="settings_alert_speeding_hint">Die Tempoanzeige im Auto wird über dem Limit rot.</string>
+    <string name="car_camera_ahead">Kamera voraus</string>
 </resources>

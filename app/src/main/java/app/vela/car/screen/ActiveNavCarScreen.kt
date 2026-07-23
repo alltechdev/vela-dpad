@@ -5,7 +5,10 @@ import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
+import androidx.car.app.model.Alert
+import androidx.car.app.model.AlertCallback
 import androidx.car.app.model.CarColor
+import androidx.car.app.model.CarText
 import androidx.car.app.model.Template
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.NavigationManagerCallback
@@ -13,7 +16,9 @@ import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import app.vela.car.CarVoiceSearch
 import app.vela.car.ManeuverMapper
+import app.vela.core.voice.CarCommands
 import app.vela.service.NavigationService
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -26,6 +31,10 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
 
     // Leave the nav screen at most once — on arrival OR when nav stops (from here or elsewhere).
     private var left = false
+    private val voice = CarVoiceSearch(carContext, deps.whisper)
+    // One head-up alert per faster-route offer (keyed by the candidate's duration+distance; a new
+    // offer alerts again, the same one doesn't re-pop every state tick).
+    private var alertedFasterKey = 0L
 
     private val navManager by lazy { carContext.getCarService(NavigationManager::class.java) }
     // The host only renders the RoutingInfo turn card once the app DECLARES it is navigating via
@@ -45,8 +54,14 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
                     left = true
                     endNavDeclaration()
                     screenManager.pop()
+                    // Arrival (not a manual End): land on the arrival card so the driver can save
+                    // the parking spot where the car now sits - the phone offers the same.
+                    if (s.arrived) {
+                        screenManager.push(ArrivalCarScreen(carContext, deps, s.destinationLabel))
+                    }
                 } else {
                     declareNavStartedIfNeeded()
+                    maybeAlertFasterRoute()
                     invalidate()
                 }
             }
@@ -134,6 +149,17 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
         }
 
         val strip = ActionStrip.Builder()
+        // In-drive search-along-route: the mic and a search action (both push the corridor-filtered
+        // SearchCarScreen; a pick becomes a stop). Icon-only - the strip's text budget stays on
+        // Faster/Mute/End. The mic's transcript skips the keyboard entirely.
+        if (voice.available()) {
+            strip.addAction(voice.micAction(this, ::invalidate, ::handleVoice))
+        }
+        strip.addAction(
+            carAction(android.R.drawable.ic_menu_search) {
+                screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true))
+            },
+        )
         // A faster-route offer (when present) takes the first slot as a tappable "Faster −N min".
         val faster = s.fasterRoute
         if (faster != null && s.fasterSavingSeconds >= 60) {
@@ -189,9 +215,79 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
             .setOnClickListener(onClick)
             .build()
 
+    /** In-drive voice ([CarCommands]): "mute"/"unmute" flip guidance, "end navigation" ends the
+     *  drive, "navigate home"/"work" preview the NEW trip, and anything else is a corridor search
+     *  whose pick becomes a stop. */
+    private fun handleVoice(q: String) {
+        when (val c = CarCommands.parse(q)) {
+            CarCommands.Command.Mute -> { deps.voiceGuide.muted = true; invalidate() }
+            CarCommands.Command.Unmute -> { deps.voiceGuide.muted = false; invalidate() }
+            CarCommands.Command.EndNav -> stopNav()
+            CarCommands.Command.GoHome -> previewShortcut(app.vela.core.model.ShortcutKind.HOME, q)
+            CarCommands.Command.GoWork -> previewShortcut(app.vela.core.model.ShortcutKind.WORK, q)
+            CarCommands.Command.FindMyCar ->
+                screenManager.push(SearchCarScreen(carContext, deps, q, alongRoute = true))
+            is CarCommands.Command.Search ->
+                screenManager.push(SearchCarScreen(carContext, deps, c.query, alongRoute = true))
+        }
+    }
+
+    private fun previewShortcut(kind: app.vela.core.model.ShortcutKind, fallbackQuery: String) {
+        val sc = deps.shortcuts.get(kind)
+        if (sc != null) {
+            screenManager.push(RoutePreviewCarScreen(carContext, deps, sc.name, sc.location))
+        } else {
+            screenManager.push(SearchCarScreen(carContext, deps, fallbackQuery, alongRoute = true))
+        }
+    }
+
+    /** Surface a faster-route offer as a HEAD-UP alert (Car API 5+), not just a strip button the
+     *  driver never notices. Accept/dismiss mirror the strip action; the strip button stays as the
+     *  fallback (and for hosts below API 5). One alert per distinct candidate. */
+    private fun maybeAlertFasterRoute() {
+        val s = deps.navSession.state.value
+        val faster = s.fasterRoute ?: return
+        if (s.fasterSavingSeconds < 60) return
+        if (runCatching { carContext.carAppApiLevel < 5 }.getOrDefault(true)) return
+        val key = (faster.durationSeconds.toLong() shl 20) xor faster.distanceMeters.toLong()
+        if (key == alertedFasterKey) return
+        alertedFasterKey = key
+        val mins = (s.fasterSavingSeconds / 60).roundToInt().coerceAtLeast(1)
+        runCatching {
+            val alert = Alert.Builder(
+                ALERT_FASTER_ID,
+                CarText.create(carContext.getString(app.vela.R.string.car_faster_route, mins)),
+                ALERT_DURATION_MS,
+            )
+                .addAction(
+                    Action.Builder()
+                        .setTitle(carContext.getString(app.vela.R.string.car_go))
+                        .setOnClickListener { deps.navSession.acceptFasterRoute(); invalidate() }
+                        .build(),
+                )
+                .addAction(
+                    Action.Builder()
+                        .setTitle(carContext.getString(app.vela.R.string.nav_done))
+                        .setOnClickListener { deps.navSession.dismissFasterRoute(); invalidate() }
+                        .build(),
+                )
+                .setCallback(object : AlertCallback {
+                    override fun onCancel(reason: Int) {}
+                    override fun onDismiss() {}
+                })
+                .build()
+            carContext.getCarService(AppManager::class.java).showAlert(alert)
+        }
+    }
+
     private fun stopNav() {
         // Only stop — the state collector observes navigating=false and pops once (no double-pop).
         deps.navSession.stop()
         runCatching { NavigationService.stop(carContext.applicationContext) }
+    }
+
+    private companion object {
+        const val ALERT_FASTER_ID = 1
+        const val ALERT_DURATION_MS = 15_000L
     }
 }

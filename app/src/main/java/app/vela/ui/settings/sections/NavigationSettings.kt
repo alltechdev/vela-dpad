@@ -107,6 +107,27 @@ internal fun NavigationSettingsScreen(vm: MapViewModel, onBack: () -> Unit) {
         )
         }
 
+        // Driving alerts (Android Auto side today): a spoken heads-up approaching a mapped
+        // license-plate camera, and a red speed badge over the posted limit. Reactive holder
+        // (DriveAlerts) so the car session reads flips live, same shape as VoiceSearch.
+        SettingsGroup(stringResource(R.string.settings_drive_alerts)) {
+        val cameraAlerts by app.vela.ui.DriveAlerts.cameras
+        ToggleRow(
+            label = stringResource(R.string.settings_alert_cameras),
+            checked = cameraAlerts,
+            onCheckedChange = { app.vela.ui.DriveAlerts.setCameras(context, it) },
+            hint = stringResource(R.string.settings_alert_cameras_hint),
+        )
+        val speedWarn by app.vela.ui.DriveAlerts.speeding
+        GroupDivider()
+        ToggleRow(
+            label = stringResource(R.string.settings_alert_speeding),
+            checked = speedWarn,
+            onCheckedChange = { app.vela.ui.DriveAlerts.setSpeeding(context, it) },
+            hint = stringResource(R.string.settings_alert_speeding_hint),
+        )
+        }
+
         SettingsGroup {
         androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 4.dp)) {
         Text(stringResource(R.string.settings_vibrate_on_turns), style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, modifier = Modifier.padding(top = 2.dp))

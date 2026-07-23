@@ -560,4 +560,12 @@
     <string name="car_faster_route">Szybciej −%1$d min</string>
     <string name="car_no_route">Brak trasy, sprawdź lokalizację</string>
     <string name="car_voice_nothing">Nic nie usłyszano</string>
+    <string name="car_stop_added">Dodano przystanek</string>
+    <string name="car_categories">Kategorie</string>
+    <string name="settings_drive_alerts">Alerty podczas jazdy</string>
+    <string name="settings_alert_cameras">Alerty o kamerach</string>
+    <string name="settings_alert_cameras_hint">Głosowe ostrzeżenie przy kamerze tablic. Tylko Android Auto.</string>
+    <string name="settings_alert_speeding">Ostrzeżenie o prędkości</string>
+    <string name="settings_alert_speeding_hint">Wskaźnik prędkości robi się czerwony powyżej limitu.</string>
+    <string name="car_camera_ahead">Kamera przed tobą</string>
 </resources>

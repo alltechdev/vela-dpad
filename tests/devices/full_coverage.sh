@@ -131,8 +131,12 @@ cover_one() {
   # "coffee" in recents, so typing a prefix now surfaces it as a local (History-icon) match ABOVE the
   # network suggestions - instant, offline, no fetch. Best-effort: only assert when the recent exists.
   if [ "$haveResults" = 1 ]; then
-    goto_map; open_search; $ADB shell input text "cof" >/dev/null 2>&1; sleep 1.5
-    if on_screen "coffee"; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
+    goto_map; open_search; $ADB shell input text "cof" >/dev/null 2>&1
+    # POLL (the IME + suggestion fetch race a single post-sleep dump) and match CASE-INSENSITIVE:
+    # run_coffee's chip path records its stable English query literal "Coffee", the typed fallback
+    # records "coffee" - the old exact-lowercase check systematically missed the chip path on every
+    # leg, on main and branch alike (A/B-confirmed 2026-07-23).
+    if on_screen_ci_within "coffee" 8; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
     key "$K_BACK" 1
   else mark "search-history-astype" 0; fi
   fi

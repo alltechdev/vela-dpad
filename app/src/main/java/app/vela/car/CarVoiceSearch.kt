@@ -33,9 +33,12 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
 
     fun hasPermission(): Boolean = whisper.hasMicPermission()
 
-    /** Ask the host to run the phone-side RECORD_AUDIO grant flow, then invalidate via [onDone]. */
+    /** Ask the host to run the phone-side RECORD_AUDIO grant flow, then invalidate via [onDone].
+     *  Guarded: a host that can't service the request must degrade to a dead tap, not a crash card. */
     fun requestPermission(onDone: () -> Unit) {
-        carContext.requestPermissions(listOf(android.Manifest.permission.RECORD_AUDIO)) { _, _ -> onDone() }
+        runCatching {
+            carContext.requestPermissions(listOf(android.Manifest.permission.RECORD_AUDIO)) { _, _ -> onDone() }
+        }
     }
 
     /** True while a capture is in flight. Screens read it for their loading state; a second mic tap

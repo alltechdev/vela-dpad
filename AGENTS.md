@@ -850,6 +850,18 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     `PcmSource` seam, so the mic actions on `MainCarScreen` and `SearchCarScreen` (shared flow in `CarVoiceSearch.micAction`) run the same on-device VAD +
     Whisper pipeline as the phone (gates: host API >= 5, voice-search toggle, model installed;
     RECORD_AUDIO via `carContext.requestPermissions`).
+  - **Fork batch 2 (2026-07-23), all fork-original:** in-drive search-along-route
+    (`SearchCarScreen(alongRoute=true)` - corridor filter via `RouteCorridor`, pick calls
+    `NavSession.addStop`), `CategoriesCarScreen` (GridTemplate; labels localize, queries stay the
+    stable English literals - same rule as the phone chips), `CarCommands` offline voice grammar
+    in `:core` (unit-tested; parse-don't-guess: only EXACT keywords command, everything else
+    searches with the nav verb stripped), faster-route head-up `Alert` (API 5+, one per candidate
+    key), `ArrivalCarScreen` (save parking -> `ParkingStore`, shared with phone Park) + Find-my-car
+    landing row + live Home/Work ETA subtitles, resume-into-guidance on session create (guarded on
+    `!arrived` - an arrived-but-undismissed session must not bounce screens), and `DriveAlerts`
+    (Settings -> Navigation -> Driving alerts; camera heads-up reads the BUNDLED FlockCameras set
+    along the route - offline, one announce per camera per trip; speeding = red badge at 5% + 2
+    km/h over `speedLimitKmh`). Settings rows live in the NAVIGATION spoke (not a new spoke).
   - **`CarMapRenderer` draws the REAL styled map via MapLibre's `MapSnapshotter`** (off-screen ->
     Bitmap -> Canvas onto the template surface; ONE shared renderer per session - a second
     instance never receives onSurfaceAvailable, so screens switch its MODE instead). Nav mode is

@@ -3,6 +3,7 @@ package app.vela.car.screen
 import androidx.car.app.CarContext
 import app.vela.car.CarMapRenderer
 import app.vela.core.data.MapDataSource
+import app.vela.core.data.ParkingStore
 import app.vela.core.data.PlaceShortcutStore
 import app.vela.core.data.RecentPlaceStore
 import app.vela.core.data.RouteEngine
@@ -23,6 +24,7 @@ data class CarDeps(
     val voiceGuide: VoiceGuide,
     val routeEngine: RouteEngine, // for the speed-limit badge (offline graphs' max_speed)
     val whisper: WhisperRecognizer, // in-car voice search (the same on-device model as the phone mic)
+    val parkingStore: ParkingStore, // arrival "save parking" + the landing screen's Find my car row
 ) {
     // ONE shared map renderer for the whole car session. Per-screen renderer instances DON'T work:
     // swapping the surface callback to a new instance doesn't re-deliver onSurfaceAvailable, so the

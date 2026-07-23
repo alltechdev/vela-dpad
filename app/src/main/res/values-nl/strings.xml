@@ -552,4 +552,12 @@
     <string name="car_faster_route">Sneller −%1$d min</string>
     <string name="car_no_route">Geen route, controleer je locatie</string>
     <string name="car_voice_nothing">Niets verstaan</string>
+    <string name="car_stop_added">Stop toegevoegd</string>
+    <string name="car_categories">Categorieën</string>
+    <string name="settings_drive_alerts">Rijwaarschuwingen</string>
+    <string name="settings_alert_cameras">Camerawaarschuwingen</string>
+    <string name="settings_alert_cameras_hint">Gesproken melding bij een kentekencamera. Alleen Android Auto.</string>
+    <string name="settings_alert_speeding">Snelheidswaarschuwing</string>
+    <string name="settings_alert_speeding_hint">De snelheidsbadge wordt rood boven de limiet.</string>
+    <string name="car_camera_ahead">Camera vooruit</string>
 </resources>

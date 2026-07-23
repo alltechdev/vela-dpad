@@ -552,4 +552,12 @@
     <string name="car_faster_route">Más rápido −%1$d min</string>
     <string name="car_no_route">No hay ruta disponible: comprueba tu ubicación</string>
     <string name="car_voice_nothing">No se entendió</string>
+    <string name="car_stop_added">Parada añadida</string>
+    <string name="car_categories">Categorías</string>
+    <string name="settings_drive_alerts">Alertas de conducción</string>
+    <string name="settings_alert_cameras">Alertas de cámaras</string>
+    <string name="settings_alert_cameras_hint">Aviso hablado cerca de una cámara de matrículas. Solo Android Auto.</string>
+    <string name="settings_alert_speeding">Aviso de exceso de velocidad</string>
+    <string name="settings_alert_speeding_hint">El indicador de velocidad del coche se pone rojo sobre el límite.</string>
+    <string name="car_camera_ahead">Cámara adelante</string>
 </resources>
