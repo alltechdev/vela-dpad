@@ -845,13 +845,15 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     Conformer CTC small is a 46 MB int8 file that ballooned to ~760 MB-1.2 GB PSS through
     onnxruntime on the M5 (rejected); Moonshine's small weights still cost ~212 MB across its four
     ORT sessions - no lighter resident than Whisper tiny's ~214 MB (both same-protocol launch
-    deltas, 32-bit M5). Zipformer small (26 MB encoder, one tiny decoder/joiner pair) is the
-    structural low-memory candidate; its isolated reap-delta number is tracked in PR #86 and MUST
-    be written here before any low-RAM default is switched to it. "Encoder-only means small" and
-    "fewer MB means less RAM" were both device-refuted in one afternoon. The clean way to isolate
-    one model's resident cost: let the IDLE REAP fire (it releases ONLY the recognizer) and diff
-    `Native Heap` pre/post inside one settled process - launch-to-launch totals swing +-150 MB with
-    map content and prove nothing at engine granularity.
+    deltas, 32-bit M5). k2 Zipformer small (26 MB encoder) was built, wired and then REMOVED
+    before merge: resident size is not the only bar - it is a 2023 librispeech (audiobook-domain)
+    model, and a maps app lives on the proper nouns that domain mishears; no post-processing fixes
+    that. The 267 MB Whisper hold is TRANSIENT now (idle reap), which is what actually makes it
+    viable on small phones. "Encoder-only means small" and "fewer MB means less RAM" were both
+    device-refuted in one afternoon. The clean way to isolate one model's resident cost: let the
+    IDLE REAP fire (it releases ONLY the recognizer) and diff `Native Heap` pre/post inside one
+    settled process - launch-to-launch totals swing +-150 MB with map content and prove nothing at
+    engine granularity.
   - **Do not reach for a device gate when an IDLE gate will do.** The warm-at-startup behaviour was
     first made low-RAM-conditional, which protected the instant-first-mic-tap UX on roomier phones
     but left them holding 267 MB all session. Reaping on idle keeps that UX AND reclaims the memory
@@ -1743,14 +1745,14 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     D-pad-focusable `Dialog`, Done auto-focuses); wiring + the RECORD_AUDIO launcher + the
     download-offer are in `MapScreen`; the Settings -> Search per-engine picker is in `SettingsScreen`.
     Needs `RECORD_AUDIO` (manifest; asked at the mic tap).
-    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; first three ported upstream
-      5d2a6636 / 118e7e8c / 137beea9).** Four: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`),
-      `SENSE_VOICE` (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB),
-      `ZIPFORMER_SMALL` (English-only, ~28 MB, this fork's low-memory pick - and it emits ALL-CAPS
-      spoken-form text, so `SpeechText.cleanSearchTranscript` lowercases and runs
-      `spokenNumbersToDigits`, the unit-tested inverse text normalization that turns "ONE TWENTY
-      THREE MAIN STREET" into "123 main street"; Whisper writes digits itself and passes through
-      unchanged). Each is an OPTIONAL download to
+    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 /
+      118e7e8c / 137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`),
+      `SENSE_VOICE` (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Transcripts
+      pass through `SpeechText.cleanSearchTranscript`, which also lowercases ALL-CAPS output and
+      runs `spokenNumbersToDigits` - unit-tested inverse text normalization ("ONE TWENTY THREE
+      MAIN STREET" -> "123 main street") kept as insurance for any future word-form engine; the
+      current three write digits themselves and pass through unchanged. Each is an OPTIONAL
+      download to
       `filesDir/asr/<id>/`; `active()` is the picked engine (pref `asr_engine`), `forRecognition(lang)`
       falls back to Whisper when the pick can't do the app language. **Whisper stays the default and
       the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =

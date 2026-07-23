@@ -476,7 +476,6 @@
     <string name="settings_asr_langs_whisper">כל השפות ש-Vela תומכת בהן</string>
     <string name="settings_asr_langs_sensevoice">אנגלית, סינית, יפנית, קוריאנית, קנטונזית</string>
     <string name="settings_asr_langs_moonshine">אנגלית בלבד</string>
-    <string name="settings_asr_langs_zipformer">אנגלית בלבד, צורכת הכי מעט זיכרון</string>
     <string name="settings_asr_active">פעיל</string>
     <string name="settings_asr_use">השתמש</string>
     <string name="settings_voice_search_download">הורד (%1$d מ\"ב)</string>

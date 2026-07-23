@@ -14,7 +14,6 @@ import timber.log.Timber
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
-import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
@@ -285,7 +284,6 @@ class WhisperRecognizer @Inject constructor(
             AsrEngine.WHISPER_TINY -> l.takeIf { it in app.vela.ui.AppLocale.SUPPORTED } ?: ""
             AsrEngine.SENSE_VOICE -> l.takeIf { it in AsrEngine.SENSE_VOICE_LANGS } ?: "auto"
             AsrEngine.MOONSHINE -> ""
-            AsrEngine.ZIPFORMER_SMALL -> "" // English-only transducer, takes no language
         }
     }
 
@@ -403,16 +401,6 @@ class WhisperRecognizer @Inject constructor(
                     encoder = p("encode.int8.onnx"),
                     uncachedDecoder = p("uncached_decode.int8.onnx"),
                     cachedDecoder = p("cached_decode.int8.onnx"),
-                ),
-                tokens = p("tokens.txt"),
-                numThreads = 2,
-                modelType = engine.modelType,
-            )
-            AsrEngine.ZIPFORMER_SMALL -> OfflineModelConfig(
-                transducer = OfflineTransducerModelConfig(
-                    encoder = p("encoder.int8.onnx"),
-                    decoder = p("decoder.int8.onnx"),
-                    joiner = p("joiner.int8.onnx"),
                 ),
                 tokens = p("tokens.txt"),
                 numThreads = 2,

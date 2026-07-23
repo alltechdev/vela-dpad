@@ -489,7 +489,6 @@
     <string name="settings_asr_langs_whisper">Alla språk som Vela stöder</string>
     <string name="settings_asr_langs_sensevoice">Engelska, kinesiska, japanska, koreanska, kantonesiska</string>
     <string name="settings_asr_langs_moonshine">Endast engelska</string>
-    <string name="settings_asr_langs_zipformer">Endast engelska, använder minst minne</string>
     <string name="settings_asr_active">Aktiv</string>
     <string name="settings_asr_use">Använd</string>
     <string name="settings_voice_search_download">Ladda ner (%1$d MB)</string>  <!-- format -->

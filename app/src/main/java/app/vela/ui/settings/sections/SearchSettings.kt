@@ -80,7 +80,6 @@ internal fun SearchSettingsScreen(vm: MapViewModel, onBack: () -> Unit) {
                     app.vela.voice.AsrEngine.WHISPER_TINY -> R.string.settings_asr_langs_whisper
                     app.vela.voice.AsrEngine.SENSE_VOICE -> R.string.settings_asr_langs_sensevoice
                     app.vela.voice.AsrEngine.MOONSHINE -> R.string.settings_asr_langs_moonshine
-                    app.vela.voice.AsrEngine.ZIPFORMER_SMALL -> R.string.settings_asr_langs_zipformer
                 },
             )
             val meta = stringResource(R.string.settings_asr_engine_meta, langs, engine.sizeMb)

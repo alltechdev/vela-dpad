@@ -489,7 +489,6 @@
     <string name="settings_asr_langs_whisper">Alle talen die Vela ondersteunt</string>
     <string name="settings_asr_langs_sensevoice">Engels, Chinees, Japans, Koreaans, Kantonees</string>
     <string name="settings_asr_langs_moonshine">Alleen Engels</string>
-    <string name="settings_asr_langs_zipformer">Alleen Engels, gebruikt het minste geheugen</string>
     <string name="settings_asr_active">Actief</string>
     <string name="settings_asr_use">Gebruiken</string>
     <string name="settings_voice_search_download">Downloaden (%1$d MB)</string>  <!-- format -->

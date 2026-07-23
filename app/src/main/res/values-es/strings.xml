@@ -489,7 +489,6 @@
     <string name="settings_asr_langs_whisper">Todos los idiomas que admite Vela</string>
     <string name="settings_asr_langs_sensevoice">Inglés, chino, japonés, coreano, cantonés</string>
     <string name="settings_asr_langs_moonshine">Solo inglés</string>
-    <string name="settings_asr_langs_zipformer">Solo inglés, usa menos memoria</string>
     <string name="settings_asr_active">Activo</string>
     <string name="settings_asr_use">Usar</string>
     <string name="settings_voice_search_download">Descargar (%1$d MB)</string>  <!-- format -->
