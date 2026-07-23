@@ -80,7 +80,15 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
         // leaving no sign the car was still listening.
         CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_LONG).show()
         screen.lifecycleScope.launch {
-            val result = capture { !listening }
+            var result = capture { !listening }
+            // Car-mic ladder: many setups (aftermarket units, phone-screen projection) expose NO
+            // usable car microphone - CarAudioRecord "succeeds" and delivers silence ("not hearing
+            // me", head-unit report). When the car mic yields nothing, retry ONCE on the PHONE's
+            // mic: same on-device Whisper, same preference, and the phone is in the car.
+            if (listening && result !is VoiceResult.Text) {
+                CarToast.makeText(carContext, R.string.voice_capture_listening, CarToast.LENGTH_LONG).show()
+                result = whisper.listen(onLevel = {}, onListening = {}, cancelled = { !listening })
+            }
             listening = false
             when (result) {
                 is VoiceResult.Text -> onTranscript(result.query)
