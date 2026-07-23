@@ -272,7 +272,7 @@ Compose does **not** give this for free:
 | Screen / overlay | Auto-focus target |
 |---|---|
 | Bare map | **nothing** on open - the map neither auto-focuses nor auto-engages; the user's first arrow lands on the search bar (the first focusable). See note below. |
-| **Settings** | back button (top of screen) |
+| **Settings** (the hub AND every spoke) | back button (top of screen), via the shared `SettingsScaffold`; returning from a spoke to the hub restores focus to the hub row you came from |
 | **Welcome** | Get-started button |
 | **Place sheet** | drag handle (else focus leaks to the search bar behind it) |
 | **Directions panel** | first travel-mode tab (Drive) |
@@ -317,6 +317,41 @@ auto-engage that Choose-on-map depended on, so pick mode opened dead.
   arrows pan immediately to place the pin and OK confirms.
 - This works (unlike the cold-open bare map) because pick mode is entered mid-session, so focus
   already exists and `requestFocus` lands.
+
+**Settings is hub-and-spoke (2026-07-22 redesign), and its focus plumbing lives in ONE place.**
+Settings was a single extremely long page; it is now a short hub of category rows
+(`SettingsHub.kt`), each opening its own small sub-screen (`ui/settings/sections/*.kt`). Every page
+- the hub and each spoke - renders through **`SettingsScaffold`** (`ui/settings/SettingsScaffold.kt`),
+which carries, once, all of the device-found Settings focus plumbing described below: Back
+auto-focus, the DOWN-from-Back and UP-from-top-row bridges, and the horizontal swallow. Its content
+lambda hands the page a `topRow` modifier - **attach it to the page's FIRST focusable control** or
+the Back bridges dead-end. BACK peels spoke -> hub -> map; the hub explicitly re-focuses the row a
+spoke returned from (Compose's recovery is nondeterministic when the focused tree unmounts). When
+you add a Settings page, build it on `SettingsScaffold` - do not re-inline any of this. The shared
+row vocabulary is `SettingsComponents.kt`: `SettingsGroup` (accent `SubHead` over a plain column -
+standard settings layout, no cards), `ToggleRow` (label + supporting hint + `VelaSwitch`, ring on
+the track), `SelectableRow`, `GroupDivider` (the hairline between rows), `PageIntro`, `Hint`.
+Purely visual - no focus behaviour of their own. Settings pages provide a compact 44dp
+`LocalMinimumInteractiveComponentSize`; the ring helpers pin to each control's REAL size, so rings
+are unaffected.
+
+Two focus findings from the redesign's verification (both in `SettingsScaffold`, do not relearn):
+
+- **The Back auto-focus needs a SETTLE WINDOW, not a land-once retry.** Opening Settings tears the
+  Yapchik soft-key bar down (`SuppressBarWhile`), and that Android-View removal churns window focus
+  and steals freshly-landed focus off Back - the same churn the search bar's armed field defends
+  against. `dpadAutoFocus` stops at the first landing, so the steal left the page unfocused. The
+  scaffold re-requests for ~2 s whenever focus is neither on Back nor anywhere in the content; any
+  key press ends the window at once.
+- **A second instance of the cold-open focus WALL.** When Settings is the session's FIRST
+  focus-touching surface - entered via the soft-key Options menu, whose key events live in the bar
+  and the menu's own Dialog window, so the main window has never held Compose focus -
+  `requestFocus` AND `moveFocus` both no-op (device-logged: 40 calls each, zero landings; the same
+  wall as the cold-open bare map above). Accepted behaviour, same as the bare map: the first key
+  press establishes focus ON the Back button (the first focusable), ring and all, costing exactly
+  one press. Once any focus has existed in the session, Settings opens focused with no press
+  (screenshot-verified both ways at 240x320; `tests/dpad/tests/02_settings_autofocus.sh` asserts
+  the established-focus path and documents the wall).
 
 **Settings horizontal-key focus trap.** Settings is a `Column(verticalScroll)`.
 

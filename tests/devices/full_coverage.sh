@@ -208,35 +208,89 @@ cover_one() {
   else mark "directions" 0; mark "route-steps" 0; fi
   fi
 
-  # --- Settings + sub-screens -----------------------------------------------------------------
-  if phase settings; then i=16
+  # --- Settings (hub-and-spoke: the hub category list, then EVERY spoke) ------------------------
+  # Settings is a hub of category rows, each opening its own short sub-screen. The phase captures
+  # the hub, then OPENS every spoke and asserts a row unique to that spoke is on screen (a menu
+  # that draws is not a menu that works - a hub row whose tap bounces fails its mark). The old
+  # dump-per-swipe crawls through one very long page (the ~9 min bottleneck) are gone; each spoke
+  # is a couple of taps. The expanded pickers (voice catalog, offline region list) are entered +
+  # navigated by audit_dynamic.sh's D-pad tour, as before.
+  # Settings numbers from 40 - ABOVE every other phase's range in every config - so its 13 frames
+  # never renumber the later phases' goldens (the hub-and-spoke rewrite grew this phase from 6 to
+  # 13 frames; shifting voice/parking/softkey instead would have renamed ~40 committed goldens
+  # across six config dirs). Frame numbers are per-phase ranges, NOT capture-chronological.
+  if phase settings; then i=40
+  # open_spoke <hub row label> <in-spoke anchor>: from the hub, tap the row (swiping the hub if the
+  # row sits below the fold on a small screen - BACK from a spoke reopens the hub scrolled to the
+  # top, so each call starts from a known scroll) and wait for the spoke's anchor to confirm the
+  # spoke actually opened.
+  open_spoke() {
+    local row="$1" anchor="$2" t
+    # If the hub row can't be found (e.g. a failed previous spoke's BACK left the map), re-enter
+    # Settings once and retry - one bad spoke must not cascade into every later mark.
+    if ! { on_screen "$row" || swipe_up_to "$row" 16; }; then
+      open_settings || return 1
+      { on_screen "$row" || swipe_up_to "$row" 16; } || return 1
+    fi
+    tap_center "$row" || return 1
+    # The anchor alone is not proof: on the OLD single-page Settings the tapped "row" was a plain
+    # section TITLE (tap = no-op) with the anchor text sitting right below it on the same page - a
+    # false pass the negative-control run surfaced. A real spoke replaces the top bar, so "Settings"
+    # (the hub's title) must be GONE as well.
+    for t in 1 2 3; do { on_screen "$anchor" && ! on_screen "Settings"; } && return 0; sleep 0.5; done
+    return 1
+  }
+  spoke() {  # <mark label> <hub row label> <in-spoke anchor>
+    if open_spoke "$2" "$3"; then mark "$1" 1; key "$K_BACK" 1
+    else mark "$1" 0; key "$K_BACK" 1; fi
+  }
   if open_settings; then
     mark "settings-top" 1
-    # walk down a bit to capture the mid + lower sections
-    for _ in 1 2 3 4 5 6; do key "$K_DOWN"; key "$K_DOWN"; key "$K_DOWN"; done; shot "settings-lower"; covered=$((covered+1)); checklist="$checklist\n  COVERED  settings-lower"
+    spoke "settings-appearance"  "Appearance"  "Follow system"
+    spoke "settings-map"         "Map"         "Live traffic overlay"
+    # The restricted flavor hides the Place pages category entirely (its toggles are hard-locked).
+    case "${VELA_PKG:-}" in
+      *restricted*) na "settings-place-pages" "not in the restricted build" ;;
+      *)            spoke "settings-place-pages" "Place pages" "Show reviews" ;;
+    esac
+    spoke "settings-navigation"  "Navigation"  "Keep screen on while navigating"
+    spoke "settings-voice"       "Voice"       "Voice library"
+    # The Search spoke plus the ASR ENGINE PICKER inside it: the Whisper/SenseVoice/Moonshine rows
+    # with Download / Use / Active / Remove (upstream 5d2a6636). "Whisper tiny" is always present
+    # (the default catalog entry) so it anchors the frame regardless of what is installed.
+    if open_spoke "Search" "Voice search mic"; then
+      mark "settings-search" 1
+      if swipe_up_to "Whisper tiny" 8; then nudge_up; mark "settings-asr-engines" 1
+      else mark "settings-asr-engines" 0; fi
+      key "$K_BACK" 1
+    else mark "settings-search" 0; mark "settings-asr-engines" 0; key "$K_BACK" 1; fi
+    spoke "settings-offline"      "Offline"               "Map area"
+    spoke "settings-saved-places" "Saved places"          "Export"
+    spoke "settings-privacy"      "Data source & privacy" "What data Google receives"
+    spoke "settings-diagnostics"  "Diagnostics"           "Share diagnostics"
+    spoke "settings-about"        "About"                 "Support Vela"
+    # THEMES are part of the surface (visual-verification rule: both themes wherever a change can
+    # show, plus the AMOLED mode added with this redesign): capture the hub in Light and in AMOLED
+    # black, then restore Follow system. A failed pick marks MISSED, never a silent skip.
+    set_theme() {  # <theme row label> - picks it in the Appearance spoke, returns to the hub
+      { on_screen "Appearance" || swipe_up_to "Appearance" 4; } || return 1
+      tap_center "Appearance" || return 1; sleep 1
+      { on_screen "$1" || swipe_up_to "$1" 6; } || { key "$K_BACK" 1; return 1; }
+      tap_center "$1" || { key "$K_BACK" 1; return 1; }
+      sleep 1.5; key "$K_BACK" 1; sleep 1
+      return 0
+    }
+    if set_theme "Light"; then mark "settings-theme-light" 1; else mark "settings-theme-light" 0; fi
+    if set_theme "AMOLED black"; then mark "settings-theme-amoled" 1; else mark "settings-theme-amoled" 0; fi
+    set_theme "Follow system" || true
     key "$K_BACK" 1
-    # Deep sub-sections sit near the BOTTOM of a long list: Voice library, Offline (collapsible), and
-    # Saved places (a plain SectionTitle). Per-row DOWN polling is too slow (uiautomator dump ~2.6s each)
-    # and overshoots a non-focusable header; instead reach each from a FRESH Settings by controlled drags
-    # (swipe_up_to - checks on_screen once per short slow drag, which can't fling a thin header past),
-    # then nudge it up so the row is fully framed (not clipped at the fold). We DON'T tap-to-expand the
-    # collapsibles: their expand/collapse state PERSISTS, so a tap is a non-deterministic TOGGLE (it
-    # collapsed as often as it expanded). This captures each sub-section HEADER rendering clip-free at the
-    # geometry - the coverage question here; the expanded pickers (voice catalog, offline region list)
-    # are entered + navigated by audit_dynamic.sh's D-pad tour.
-    for sub in "Voice library" "Offline" "Saved places"; do
-      if open_settings && swipe_up_to "$sub"; then nudge_up; mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 1; key "$K_BACK" 1
-      else mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 0; fi
+  else
+    mark "settings-top" 0
+    for s in appearance map navigation voice search asr-engines offline saved-places privacy diagnostics about theme-light theme-amoled; do
+      mark "settings-$s" 0
     done
-    # On-device ASR ENGINE PICKER (Search section): the Whisper/SenseVoice/Moonshine rows with
-    # Download / Use / Active / Remove - the pickable-engines surface (upstream 5d2a6636). "Whisper
-    # tiny" is always present (the default catalog entry) so it anchors the swipe regardless of what
-    # is installed.
-    if open_settings && swipe_up_to "Whisper tiny"; then nudge_up; mark "settings-asr-engines" 1; key "$K_BACK" 1
-    else mark "settings-asr-engines" 0; fi
-  else mark "settings-top" 0; mark "settings-lower" 0
-       mark "settings-voice-library" 0; mark "settings-offline" 0; mark "settings-saved-places" 0
-       mark "settings-asr-engines" 0; fi
+    case "${VELA_PKG:-}" in *restricted*) na "settings-place-pages" "not in the restricted build" ;; *) mark "settings-place-pages" 0 ;; esac
+  fi
   fi  # phase settings
 
   # --- Voice search (mic + capture sheet) ------------------------------------------------------

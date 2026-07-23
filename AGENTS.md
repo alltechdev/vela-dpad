@@ -186,9 +186,9 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   **HARD RULE - one surface fails, re-run ONLY that phase, NEVER the whole leg.** A full leg is
   ~13-14 min (~35 min for both geometries); iterating a fix by re-running the whole tour is
   unacceptable waste. `PHASES=<phase> bash tests/devices/full_coverage.sh <id>` runs just that group -
-  a light phase (map/place) in ~1-2 min; the `settings` phase is the slow one (~9 min measured at
-  240x320) because its three deep sub-sections each dump-per-swipe scroll, so that swipe overhead is
-  the real bottleneck to optimize next. Every phase re-establishes its own state (no `pm clear` outside `firstrun`, each does
+  a light phase (map/place) in ~1-2 min; the `settings` phase walks the hub-and-spoke pages (one
+  tap per spoke + an in-spoke anchor assertion - the old ~9 min dump-per-swipe crawl through the
+  single long page is gone with that page). Every phase re-establishes its own state (no `pm clear` outside `firstrun`, each does
   `goto_map`; `place`/`directions` re-run search if needed), so any single phase runs standalone as
   long as the app is past first-run. Iterate the fix with `PHASES=<failing-phase>` at the ONE affected
   geometry/flavor; only once it passes, run the full leg (no `PHASES`) ONCE for the verdict. Do NOT
@@ -841,11 +841,28 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     `MapLibreMap.scrollBy` isn't a thing in 11.x).
   - The PHONE runs nav (MapViewModel feeds NavSession) and speaks; the car is a display. Car-side
     search/route-start is a follow-up; untested on a real head unit yet.
-- **Settings ORDER is deliberate:** Appearance → Map (traffic/transit/3D) →
-  **Place pages** (ShowReviews / read-all-reviews / LoadPhotos) → Navigation (keep-screen-on,
-  traffic lights, vibrate-on-turns as FilterChips one per mode, demo LAST) → Voice → Offline →
-  Saved places → Data & privacy → Diagnostics → About/Support/Version(+updater). Put a new setting
-  in the section it serves, not at the end; place-content settings go under Place pages, not Map.
+- **Settings is HUB-AND-SPOKE (2026-07-22), and the hub ORDER is deliberate:** a short category
+  list (`ui/settings/SettingsHub.kt`) where each row opens its own sub-screen
+  (`ui/settings/sections/*.kt`), in this order: Appearance (theme/map style/units/language) →
+  Map (traffic/transit/3D) → **Place pages** (ShowReviews / read-all-reviews / LoadPhotos; the hub
+  row is hidden in restricted) → Navigation (keep-screen-on, traffic lights, vibrate-on-turns as
+  FilterChips one per mode, demo LAST) → Voice (engines + Voice library + Advanced) → Search
+  (voice search + ASR engines) → Offline → Saved places → Data & privacy → Diagnostics →
+  About(/Support/Version+updater). Put a new setting in the SPOKE it serves, not at the end;
+  place-content settings go under Place pages, not Map. **Every Settings page renders through
+  `SettingsScaffold`** (one copy of the Back auto-focus settle window + the two focus bridges + the
+  horizontal swallow - docs/dpad.md, incl. the second cold-open focus WALL found here); its
+  `topRow` modifier MUST land on the page's first focusable control. **Rows come from
+  `SettingsComponents.kt`** - `SettingsGroup` (accent SubHead over a PLAIN column - deliberately
+  NOT a card; containers everywhere read as clutter, user feedback 2026-07-23), `ToggleRow`
+  (hint inside the row, ring on the VelaSwitch track), `SelectableRow`, `GroupDivider` (hairline
+  between rows), `PageIntro` (plain page caption) - reuse them so the spokes stay uniform. The
+  hub rows carry thin outline borders; the scaffold's TopAppBar separates via the neutral
+  `surfaceContainerHigh` (a teal bar in light was rejected). Settings pages run a 44dp
+  `LocalMinimumInteractiveComponentSize` (compact density; rings pin to real control sizes).
+  Hint STRINGS are one tight line each (33 were cut to size across all 15 locales - keep new
+  hints short). The
+  onboarding offline prompt deep-links straight into the Offline spoke (`openOffline`).
 - **Nav UI style:** ManeuverBanner + NavControls are RoundedCornerShape(24/28dp)
   Cards with elevation 6dp, 54dp turn glyph, headlineMedium-bold distance, titleMedium-medium road
   name, FilledTonalIconButton for mute/steps. On screens under 500dp tall the banner runs COMPACT (36dp glyph, titleLarge distance, tighter padding - issue #41; every text line is maxLines-capped so a long arrive card can never bury the map). Keep new nav chrome on this treatment (no flat
@@ -1034,7 +1051,11 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 - **Light/dark is `AppTheme` (`ui/theme/AppTheme.kt`), not the OS.** Read the
   in-app theme with the composable **`isAppInDarkTheme()`** - never call
   `isSystemInDarkTheme()` directly in app UI (it ignores the user's Light/Dark/
-  System choice in Settings → Appearance). `AppTheme.mode` is a process-wide
+  System choice in Settings → Appearance). FOUR modes since 2026-07-23: SYSTEM /
+  LIGHT / DARK / **AMOLED** (the dark scheme on true-black surfaces, `AmoledColors`
+  in `Theme.kt`; `isAppInDarkTheme()` is true for it, so the map and every dark
+  branch follow automatically). Light mode uses soft teal-cast off-whites, never
+  pure white (user feedback - harsh). `AppTheme.mode` is a process-wide
   reactive `mutableStateOf` (same shape as `ui/Units`), persisted to
   `vela_settings`, `init()`-ed in `VelaApp`; flipping it recomposes the theme and
   reloads the map style (`VelaMapView`'s styleKey carries `dark=`).

@@ -114,18 +114,22 @@ if open_settings; then
   if on_screen "Restaurants" || on_screen "Search"; then ok "back-button exits Settings"; else key "$K_BACK" 1; ok "exited Settings"; fi
 else bad "could not open Settings (search bar -> gear -> OK did not reach it)"; fi
 
-echo "== Settings sub-screens (voice library / saved places / offline) =="
+echo "== Settings spokes (EVERY hub row -> its sub-screen) =="
+# Settings is hub-and-spoke: each hub row opens its own sub-screen, which must itself open focused
+# (on its Back button, via the shared SettingsScaffold) and stay traversable - ALL ELEVEN spokes,
+# not a sample: the two-control Saved places page proved short pages carry their own edge traps
+# (the vertical focus-clear at the page bottom) that a sampled walk missed on every other spoke.
 open_settings
-for sub in "Voice library" "Saved places" "Offline"; do
+for sub in "Appearance" "Map" "Place pages" "Navigation" "Voice" "Search" "Offline" "Saved places" "Data source & privacy" "Diagnostics" "About"; do
   if focus_and_ok "$sub"; then
     sleep 1
-    [ -n "$(focused)" ] && ok "'$sub' opens focused" || echo "  note: '$sub' opened unfocused (may be a scroll-to section, not a new screen)"
-    integrity "'$sub' traversal" 8
+    [ -n "$(focused)" ] && ok "'$sub' spoke opens focused" || bad "'$sub' spoke opened unfocused (SettingsScaffold auto-focus never landed)"
+    integrity "'$sub' spoke traversal" 8
     key "$K_BACK" 1
-    # re-enter Settings for the next sub (BACK may have left it)
+    # BACK peels the spoke back to the hub; re-enter Settings if it left entirely
     on_screen "Appearance" || open_settings
   else
-    echo "  SKIP '$sub' - not reachable by scroll from the top"
+    bad "'$sub' hub row not reachable by D-pad from the top of the hub"
     on_screen "Appearance" || open_settings
   fi
 done
