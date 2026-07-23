@@ -20,10 +20,8 @@ import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import app.vela.car.CarMapRenderer
-import app.vela.car.CarVoiceSearch
 import app.vela.core.model.LatLng
 import app.vela.core.model.ShortcutKind
-import app.vela.core.voice.CarCommands
 
 /**
  * Car landing screen: Home/Work shortcuts + recent + saved destinations, and a Search action.
@@ -34,8 +32,6 @@ import app.vela.core.voice.CarCommands
  */
 class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
     Screen(carContext), DefaultLifecycleObserver {
-
-    private val voice = CarVoiceSearch(carContext, deps.whisper)
 
     // Live drive-time subtitles for the Home/Work rows, fetched once per screen instance (a cheap
     // pair of directions calls); rows render plain until they land, then invalidate() fills them in.
@@ -151,46 +147,6 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
 
     private fun rowKey(loc: LatLng) = "%.5f,%.5f".format(loc.lat, loc.lng)
 
-    /** Voice beyond search ([CarCommands]): "navigate home" previews the trip directly, "find my
-     *  car" opens the parked spot, "mute"/"unmute" flip guidance. Anything unmatched (or a command
-     *  whose target isn't set up, e.g. no Home shortcut) falls back to a plain search. */
-    private fun handleVoice(q: String) {
-        when (val c = CarCommands.parse(q)) {
-            CarCommands.Command.GoHome -> previewShortcut(ShortcutKind.HOME, q)
-            CarCommands.Command.GoWork -> previewShortcut(ShortcutKind.WORK, q)
-            CarCommands.Command.FindMyCar -> {
-                val spot = deps.parkingStore.current()
-                if (spot != null) {
-                    screenManager.push(
-                        RoutePreviewCarScreen(
-                            carContext, deps,
-                            carContext.getString(app.vela.R.string.map_parking_find),
-                            LatLng(spot.lat, spot.lng),
-                        ),
-                    )
-                } else {
-                    androidx.car.app.CarToast.makeText(
-                        carContext, app.vela.R.string.map_parking_no_fix, androidx.car.app.CarToast.LENGTH_SHORT,
-                    ).show()
-                }
-            }
-            CarCommands.Command.Mute -> { deps.voiceGuide.muted = true; invalidate() }
-            CarCommands.Command.Unmute -> { deps.voiceGuide.muted = false; invalidate() }
-            CarCommands.Command.EndNav -> Unit // nothing to end from the landing screen
-            // Voice -> straight to RESULTS ("searching..." then the list), not a search box.
-            is CarCommands.Command.Search ->
-                screenManager.push(CategoryResultsCarScreen(carContext, deps, c.query, c.query, alongRoute = false))
-        }
-    }
-
-    private fun previewShortcut(kind: ShortcutKind, fallbackQuery: String) {
-        val sc = deps.shortcuts.get(kind)
-        if (sc != null) {
-            screenManager.push(RoutePreviewCarScreen(carContext, deps, sc.name, sc.location))
-        } else {
-            screenManager.push(SearchCarScreen(carContext, deps, fallbackQuery))
-        }
-    }
 
     /** Fetch live ETAs for Home + Work (the two rows a commuter reads daily). Once per screen;
      *  best-effort - a failed fetch just leaves the row plain. */

@@ -16,9 +16,7 @@ import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import app.vela.car.CarVoiceSearch
 import app.vela.car.ManeuverMapper
-import app.vela.core.voice.CarCommands
 import app.vela.service.NavigationService
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -31,7 +29,6 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
 
     // Leave the nav screen at most once — on arrival OR when nav stops (from here or elsewhere).
     private var left = false
-    private val voice = CarVoiceSearch(carContext, deps.whisper)
     // One head-up alert per faster-route offer (keyed by the candidate's duration+distance; a new
     // offer alerts again, the same one doesn't re-pop every state tick).
     private var alertedFasterKey = 0L
@@ -226,48 +223,6 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
             )
             .setOnClickListener(onClick)
             .build()
-
-    /** In-drive voice ([CarCommands]): "mute"/"unmute" flip guidance, "end navigation" ends the
-     *  drive, "navigate home"/"work" preview the NEW trip, and anything else is a corridor search
-     *  whose pick becomes a stop. */
-    private fun handleVoice(q: String) {
-        when (val c = CarCommands.parse(q)) {
-            CarCommands.Command.Mute -> { deps.voiceGuide.muted = true; invalidate() }
-            CarCommands.Command.Unmute -> { deps.voiceGuide.muted = false; invalidate() }
-            CarCommands.Command.EndNav -> stopNav()
-            CarCommands.Command.GoHome -> previewShortcut(app.vela.core.model.ShortcutKind.HOME, q)
-            CarCommands.Command.GoWork -> previewShortcut(app.vela.core.model.ShortcutKind.WORK, q)
-            CarCommands.Command.FindMyCar -> {
-                // Same as the landing screen's handler: the SAVED SPOT, not a literal-text search
-                // for "where's my car" along the corridor (review finding).
-                val spot = deps.parkingStore.current()
-                if (spot != null) {
-                    screenManager.push(
-                        RoutePreviewCarScreen(
-                            carContext, deps,
-                            carContext.getString(app.vela.R.string.map_parking_find),
-                            app.vela.core.model.LatLng(spot.lat, spot.lng),
-                        ),
-                    )
-                } else {
-                    androidx.car.app.CarToast.makeText(
-                        carContext, app.vela.R.string.map_parking_no_fix, androidx.car.app.CarToast.LENGTH_SHORT,
-                    ).show()
-                }
-            }
-            is CarCommands.Command.Search ->
-                screenManager.push(CategoryResultsCarScreen(carContext, deps, c.query, c.query, alongRoute = true))
-        }
-    }
-
-    private fun previewShortcut(kind: app.vela.core.model.ShortcutKind, fallbackQuery: String) {
-        val sc = deps.shortcuts.get(kind)
-        if (sc != null) {
-            screenManager.push(RoutePreviewCarScreen(carContext, deps, sc.name, sc.location))
-        } else {
-            screenManager.push(CategoryResultsCarScreen(carContext, deps, fallbackQuery, fallbackQuery, alongRoute = true))
-        }
-    }
 
     /** Surface a faster-route offer as a HEAD-UP alert (Car API 5+), not just a strip button the
      *  driver never notices. Accept/dismiss mirror the strip action; the strip button stays as the
