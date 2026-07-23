@@ -10,7 +10,11 @@ reachable by D-pad. A control pushed past an edge exists but is unusable.
 
 ## Requirements
 
-- A connected device or emulator (`adb`), `python3` on the host, and the app installed.
+- A connected device (`adb`), `python3` on the host, and the app installed.
+- **The APK is ARM-only** (`arm64-v8a` + `armeabi-v7a`; see `abiFilters` in
+  `app/build.gradle.kts`). A standard **x86_64 AVD will not work** - the APK installs, then
+  dies at map init because MapLibre has no x86_64 `.so`, and every capture comes back empty.
+  Use a real device, or an **arm64 system image** if you want an emulator.
 - The suite shrinks the display with `wm size`/`wm density` and **restores it on exit** (even on
   failure, via a trap). If a run is killed hard, reset manually: `adb shell wm size reset && adb shell wm density reset`.
 

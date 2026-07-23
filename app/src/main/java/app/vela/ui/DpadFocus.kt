@@ -18,7 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusEvent
@@ -266,6 +268,28 @@ fun Modifier.dpadSwallowHorizontal(): Modifier =
     this.onKeyEvent { ev -> ev.key == Key.DirectionLeft || ev.key == Key.DirectionRight }
 
 /**
+ * Keeps a vertical D-pad move from CLEARING focus at a scroll container's top/bottom edge - the
+ * VERTICAL twin of [dpadSwallowHorizontal]'s trap. A DOWN on the last focusable (or UP on the
+ * first, where no bridge intercepts) has no target, and Compose's focus search then clears focus
+ * irrecoverably. Device-found by audit_dynamic on the redesigned Settings' two-control Saved
+ * places page (focus LOST 5/17 walk samples); every short page has the trap at its bottom edge.
+ * `focusProperties.exit` returning [FocusRequester.Cancel] BLOCKS the subtree-leaving move, so
+ * focus stays where it is - unlike a key swallow, this leaves the KEYS themselves untouched, so
+ * in-page moves and bridges (which use requestFocus, not a focus search) work exactly as before.
+ * Apply to the scrolling content container (SettingsScaffold does).
+ */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+fun Modifier.dpadContainVertical(): Modifier =
+    this
+        .focusProperties {
+            exit = { dir ->
+                if (dir == FocusDirection.Down || dir == FocusDirection.Up) FocusRequester.Cancel
+                else FocusRequester.Default
+            }
+        }
+        .focusGroup()
+
+/**
  * Wires LEFT/RIGHT D-pad movement across a ROW of focusable siblings (buttons/chips), so a
  * horizontal row is reachable inside a vertical list whose container swallows bare LEFT/RIGHT
  * (see [dpadSwallowHorizontal] - without this, only the sibling that DOWN happens to land on is
@@ -335,9 +359,9 @@ private val DpadFocusRing = androidx.compose.ui.graphics.Color(0xFFFF6D00)
  */
 fun Modifier.dpadHighlight(
     shape: Shape = RoundedCornerShape(14.dp),
-    // The ring is primary by default; a control FILLED with primary must pass a contrasting
-    // colour (e.g. onPrimary) or the focused state is invisible - a teal ring on a teal pill
-    // (device-found on VelaDialog's filled confirm button, 2026-07-15).
+    // The ring is the fixed ORANGE DpadFocusRing by default (0xFFFF6D00 - the exact colour
+    // ring_walk.sh pixel-asserts); pass a contrasting colour only when a control's own fill
+    // would swallow it (the reason this param exists - VelaDialog's filled confirm, 2026-07-15).
     ringColor: androidx.compose.ui.graphics.Color? = null,
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }

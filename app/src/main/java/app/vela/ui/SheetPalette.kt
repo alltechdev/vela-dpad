@@ -21,14 +21,24 @@ object SheetPalette {
     val DimLight = Color(0xFF5F6368)
     val RowDark = Color(0xFF202124)  // inset row / chip background
     val RowLight = Color(0xFFF1F3F4)
+    // AMOLED: the sheets go TRUE BLACK (they are the app's largest chrome surfaces - a grey sheet
+    // on a black theme defeats the mode's whole point), with the inset rows stepped to a near-black
+    // so chips/rows still read as layers. Ink/Dim stay the dark values (contrast is higher on black).
+    val Amoled = Color(0xFF000000)
+    val RowAmoled = Color(0xFF000000) // rows too - black is black; hairlines separate
+
+    /** True while the app-wide theme is the AMOLED mode - a state read, so composables that call
+     *  the helpers below recompose when the mode flips (same mechanism as isAppInDarkTheme). */
+    private val amoled: Boolean
+        get() = app.vela.ui.theme.AppTheme.mode.value == app.vela.ui.theme.ThemeMode.AMOLED
 
     // Shared traffic-coded colours (route ETAs, the route line, the steps header).
     val TrafficGreen = Color(0xFF1E8E3E)
     val TrafficAmber = Color(0xFFE8923D)
     val TrafficRed = Color(0xFFD93838)
 
-    fun bg(dark: Boolean) = if (dark) Dark else Light
+    fun bg(dark: Boolean) = if (dark) { if (amoled) Amoled else Dark } else Light
     fun ink(dark: Boolean) = if (dark) InkDark else InkLight
     fun dim(dark: Boolean) = if (dark) DimDark else DimLight
-    fun row(dark: Boolean) = if (dark) RowDark else RowLight
+    fun row(dark: Boolean) = if (dark) { if (amoled) RowAmoled else RowDark } else RowLight
 }

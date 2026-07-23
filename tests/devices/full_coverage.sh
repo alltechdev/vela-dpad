@@ -18,7 +18,7 @@
 #   SOFTKEYS=off bash ... sonim-x320   # the TOUCH layout (search bar/gear/Park FAB on screen) -> full-touch/
 #   DENS=225     bash ... sonim-x320   # the reported 480x854 @ 225 dpi variant -> full-dens225/
 # (Both write to their own dir so they never clobber the default soft-key/@320 committed goldens.)
-# Phases: firstrun map search place directions settings voice parking. A partial run reports
+# Phases: firstrun map search place directions settings voice parking blacktheme. A partial run reports
 # PARTIAL, not a verdict - only a full run (no PHASES) can call a device FULLY COVERED.
 # RULE: every NEW feature adds its surfaces as its OWN phase here (own numbered frames), so
 # verifying it on a device never needs the full tour.
@@ -53,7 +53,7 @@ cover_one() {
   # redoing the whole ~13 min tour (e.g. PHASES=settings to iterate just the deep Settings sub-sections).
   # Each phase pins its own screenshot NUMBER base, so a subset writes the SAME 01..16 filenames a full
   # run would - a partial run overwrites only its slice and leaves the rest in place. Default = all.
-  local ALLPHASES="firstrun map search place streetview directions settings voice parking softkey"
+  local ALLPHASES="firstrun map search place streetview directions settings voice parking softkey blacktheme"
   local phases="${PHASES:-$ALLPHASES}" full=0; [ "$phases" = "$ALLPHASES" ] && full=1
   phase() { case " $phases " in *" $1 "*) return 0;; *) return 1;; esac; }
   # Flavor-aware output: a run against the RESTRICTED flavor writes to its own directory so it can
@@ -127,24 +127,45 @@ cover_one() {
   # decluttered, #76), else DOWN onto the on-screen search bar + OK - so touch runs still pass too.
   goto_map; open_search; on_screen "Home" || on_screen_contains "Search"; mark "search-overlay" 1; key "$K_BACK" 1
   goto_map; if run_coffee; then haveResults=1; mark "search-results" 1; else mark "search-results" 0; fi
+  # Search-as-you-type against your OWN history (upstream 40873d96): the coffee search above left
+  # "coffee" in recents, so typing a prefix now surfaces it as a local (History-icon) match ABOVE the
+  # network suggestions - instant, offline, no fetch. Best-effort: only assert when the recent exists.
+  if [ "$haveResults" = 1 ]; then
+    goto_map; open_search; $ADB shell input text "cof" >/dev/null 2>&1; sleep 1.5
+    if on_screen "coffee"; then mark "search-history-astype" 1; else mark "search-history-astype" 0; fi
+    key "$K_BACK" 1
+  else mark "search-history-astype" 0; fi
   fi
 
   # --- place sheet (+ expand) -----------------------------------------------------------------
-  if phase place; then i=7
+  if phase place; then i=8
   # standalone (search phase not run this pass): get a result set first
   [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
   if [ "$haveResults" = 1 ]; then
     open_first_place; mark "place-sheet" 1
     key "$K_OK" 1; mark "place-sheet-expanded" 1
+    # Review collapse (upstream 2fb6ed30): a long review shows ~4 lines behind a "More" toggle; OK on
+    # the toggle expands it to "Less". The reviews sit below the fold of the expanded sheet, so scroll
+    # to the toggle first. A place whose reviews are all short never shows "More" - that's not a gap in
+    # the BUILD, so mark the frames n/a (not MISSED) when the toggle genuinely is not on this sheet.
+    if swipe_up_to "More" 24; then
+      mark "place-review-collapsed" 1
+      if focus_and_ok "More" && on_screen "Less"; then mark "place-review-expanded" 1
+      else mark "place-review-expanded" 0; fi
+    else
+      na "place-review-collapsed" "no long review on the first result - toggle absent"
+      na "place-review-expanded" "no long review on the first result - toggle absent"
+    fi
     key "$K_BACK" 1
-  else mark "place-sheet" 0; mark "place-sheet-expanded" 0; fi
+  else mark "place-sheet" 0; mark "place-sheet-expanded" 0
+       mark "place-review-collapsed" 0; mark "place-review-expanded" 0; fi
   fi
 
   # --- in-app Street View (keyless GL panorama) -----------------------------------------------
   # Drop a pin (clean 2-pill sheet so Street View is on-screen without scrolling the pill row),
   # tap it, wait for the tile stitch + GL render, then D-pad look-around (OK engages, RIGHT pans).
   # NEEDS network (tile CDN) + a mock fix over a covered area; MISSED if the pill/render doesn't show.
-  if phase streetview; then i=20
+  if phase streetview; then i=12
   case "${VELA_PKG:-}" in
     *restricted*)
       # The restricted flavor ships no Street View (RESTRICTED_BUILD drops the pill and the screen),
@@ -171,42 +192,159 @@ cover_one() {
   fi
 
   # --- directions + steps ---------------------------------------------------------------------
-  if phase directions; then i=9
+  if phase directions; then i=14
   goto_map
   if reach_directions; then
     mark "directions" 1
-    # steps sheet: from the Drive tab, DOWN to Steps and OK (best-effort)
-    if focus_and_ok "Steps"; then mark "route-steps" 1; key "$K_BACK" 1; else mark "route-steps" 0; fi
+    # Steps sheet. Under soft-keys "Steps" IS the LEFT soft key (the directions panel puts Steps/Start
+    # on the bar) - focus_and_ok can never land on a Yapchik bar label, so the old walk stalled on the
+    # Search-along-route chips and route-steps read MISSED while the feature worked (device-seen
+    # @240x320; same lesson as reach_directions' RIGHT-soft-key press). On touch it stays a panel row.
+    if softkeys_shown; then key "$K_SOFT_LEFT" 2; else focus_and_ok "Steps"; fi
+    if on_screen_contains "Head " || on_screen_contains "Turn " || on_screen "Close"; then
+      mark "route-steps" 1; key "$K_BACK" 1
+    else mark "route-steps" 0; fi
     key "$K_BACK" 1
   else mark "directions" 0; mark "route-steps" 0; fi
   fi
 
-  # --- Settings + sub-screens -----------------------------------------------------------------
-  if phase settings; then i=11
+  # --- Settings (hub-and-spoke: the hub category list, then EVERY spoke) ------------------------
+  # Settings is a hub of category rows, each opening its own short sub-screen. The phase captures
+  # the hub, then OPENS every spoke and asserts a row unique to that spoke is on screen (a menu
+  # that draws is not a menu that works - a hub row whose tap bounces fails its mark). The old
+  # dump-per-swipe crawls through one very long page (the ~9 min bottleneck) are gone; each spoke
+  # is a couple of taps. The expanded pickers (voice catalog, offline region list) are entered +
+  # navigated by audit_dynamic.sh's D-pad tour, as before.
+  # Settings numbers from 40 - ABOVE every other phase's range in every config - so its 13 frames
+  # never renumber the later phases' goldens (the hub-and-spoke rewrite grew this phase from 6 to
+  # 13 frames; shifting voice/parking/softkey instead would have renamed ~40 committed goldens
+  # across six config dirs). Frame numbers are per-phase ranges, NOT capture-chronological.
+  if phase settings; then i=40
+  # open_spoke <hub row label> <in-spoke anchor>: from the hub, tap the row (swiping the hub if the
+  # row sits below the fold on a small screen - BACK from a spoke reopens the hub scrolled to the
+  # top, so each call starts from a known scroll) and wait for the spoke's anchor to confirm the
+  # spoke actually opened.
+  open_spoke() {
+    local row="$1" anchor="$2" t
+    # If the hub row can't be found (e.g. a failed previous spoke's BACK left the map), re-enter
+    # Settings once and retry - one bad spoke must not cascade into every later mark.
+    if ! { on_screen "$row" || swipe_up_to "$row" 16; }; then
+      open_settings || return 1
+      { on_screen "$row" || swipe_up_to "$row" 16; } || return 1
+    fi
+    tap_center "$row" || return 1
+    # The anchor alone is not proof: on the OLD single-page Settings the tapped "row" was a plain
+    # section TITLE (tap = no-op) with the anchor text sitting right below it on the same page - a
+    # false pass the negative-control run surfaced. A real spoke replaces the top bar, so "Settings"
+    # (the hub's title) must be GONE as well.
+    for t in 1 2 3; do { on_screen "$anchor" && ! on_screen "Settings"; } && return 0; sleep 0.5; done
+    return 1
+  }
+  spoke() {  # <mark label> <hub row label> <in-spoke anchor>
+    if open_spoke "$2" "$3"; then mark "$1" 1; key "$K_BACK" 1
+    else mark "$1" 0; key "$K_BACK" 1; fi
+  }
   if open_settings; then
     mark "settings-top" 1
-    # walk down a bit to capture the mid + lower sections
-    for _ in 1 2 3 4 5 6; do key "$K_DOWN"; key "$K_DOWN"; key "$K_DOWN"; done; shot "settings-lower"; covered=$((covered+1)); checklist="$checklist\n  COVERED  settings-lower"
+    spoke "settings-appearance"  "Appearance"  "Follow system"
+    spoke "settings-map"         "Map"         "Live traffic overlay"
+    # The restricted flavor hides the Place pages category entirely (its toggles are hard-locked).
+    case "${VELA_PKG:-}" in
+      *restricted*) na "settings-place-pages" "not in the restricted build" ;;
+      *)            spoke "settings-place-pages" "Place pages" "Show reviews" ;;
+    esac
+    spoke "settings-navigation"  "Navigation"  "Keep screen on while navigating"
+    spoke "settings-voice"       "Voice"       "Voice library"
+    # The Search spoke plus the ASR ENGINE PICKER inside it: the Whisper/SenseVoice/Moonshine rows
+    # with Download / Use / Active / Remove (upstream 5d2a6636). "Whisper tiny" is always present
+    # (the default catalog entry) so it anchors the frame regardless of what is installed.
+    if open_spoke "Search" "Voice search mic"; then
+      mark "settings-search" 1
+      if swipe_up_to "Whisper tiny" 8; then nudge_up; mark "settings-asr-engines" 1
+      else mark "settings-asr-engines" 0; fi
+      key "$K_BACK" 1
+    else mark "settings-search" 0; mark "settings-asr-engines" 0; key "$K_BACK" 1; fi
+    spoke "settings-offline"      "Offline"               "Map area"
+    spoke "settings-saved-places" "Saved places"          "Export"
+    spoke "settings-privacy"      "Data source & privacy" "What data Google receives"
+    spoke "settings-diagnostics"  "Diagnostics"           "Share diagnostics"
+    spoke "settings-about"        "About"                 "Support Vela"
+    # THEMES are part of the surface (visual-verification rule: both themes wherever a change can
+    # show, plus the AMOLED mode added with this redesign): capture the hub in Light and in AMOLED
+    # black, then restore Follow system. A failed pick marks MISSED, never a silent skip.
+    set_theme() {  # <theme row label> - picks it in the Appearance spoke, returns to the hub
+      { on_screen "Appearance" || swipe_up_to "Appearance" 4; } || return 1
+      tap_center "Appearance" || return 1; sleep 1
+      { on_screen "$1" || swipe_up_to "$1" 6; } || { key "$K_BACK" 1; return 1; }
+      tap_center "$1" || { key "$K_BACK" 1; return 1; }
+      sleep 1.5; key "$K_BACK" 1; sleep 1
+      return 0
+    }
+    if set_theme "Light"; then mark "settings-theme-light" 1; else mark "settings-theme-light" 0; fi
+    if set_theme "Black"; then mark "settings-theme-amoled" 1; else mark "settings-theme-amoled" 0; fi
+    set_theme "Follow system" || true
     key "$K_BACK" 1
-    # Deep sub-sections sit near the BOTTOM of a long list: Voice library, Offline (collapsible), and
-    # Saved places (a plain SectionTitle). Per-row DOWN polling is too slow (uiautomator dump ~2.6s each)
-    # and overshoots a non-focusable header; instead reach each from a FRESH Settings by controlled drags
-    # (swipe_up_to - checks on_screen once per short slow drag, which can't fling a thin header past),
-    # then nudge it up so the row is fully framed (not clipped at the fold). We DON'T tap-to-expand the
-    # collapsibles: their expand/collapse state PERSISTS, so a tap is a non-deterministic TOGGLE (it
-    # collapsed as often as it expanded). This captures each sub-section HEADER rendering clip-free at the
-    # geometry - the coverage question here; the expanded pickers (voice catalog, offline region list)
-    # are entered + navigated by audit_dynamic.sh's D-pad tour.
-    for sub in "Voice library" "Offline" "Saved places"; do
-      if open_settings && swipe_up_to "$sub"; then nudge_up; mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 1; key "$K_BACK" 1
-      else mark "settings-$(echo "$sub"|tr ' A-Z' '-a-z')" 0; fi
+  else
+    mark "settings-top" 0
+    for s in appearance map navigation voice search asr-engines offline saved-places privacy diagnostics about theme-light theme-amoled; do
+      mark "settings-$s" 0
     done
-  else mark "settings-top" 0; mark "settings-lower" 0
-       mark "settings-voice-library" 0; mark "settings-offline" 0; mark "settings-saved-places" 0; fi
+    case "${VELA_PKG:-}" in *restricted*) na "settings-place-pages" "not in the restricted build" ;; *) mark "settings-place-pages" 0 ;; esac
+  fi
   fi  # phase settings
 
+  # --- Black theme, app-wide surfaces ---------------------------------------------------------
+  # "App-wide AMOLED black" is a claim about MORE than Settings: the place sheet's backgrounds
+  # (SheetPalette Amoled/RowAmoled), the reviews carve, and the soft-key bar all flip to true
+  # black. The settings phase only proves the theme PICKER; this phase flips Black on, walks
+  # those surfaces, records them, and flips back. Frames 57+ (after the settings phase's 41-55).
+  if phase blacktheme; then i=56
+  pick_theme() {  # <label> - open Settings, enter Appearance, tap the theme, back out to the map
+    open_settings || return 1
+    { on_screen "Appearance" || swipe_up_to "Appearance" 4; } || { key "$K_BACK" 1; return 1; }
+    tap_center "Appearance" || { key "$K_BACK" 1; return 1; }; sleep 1
+    { on_screen "$1" || swipe_up_to "$1" 6; } || { key "$K_BACK" 1; key "$K_BACK" 1; return 1; }
+    tap_center "$1" || { key "$K_BACK" 1; key "$K_BACK" 1; return 1; }
+    sleep 1.5; key "$K_BACK" 1; sleep 0.5; key "$K_BACK" 1; sleep 1
+    return 0
+  }
+  if pick_theme "Black"; then
+    goto_map; softkeys_shown && key "$K_DOWN"
+    mark "black-bare-map" 1                                    # soft-key bar (black) in frame
+    if run_coffee; then
+      mark "black-search-results" 1
+      open_first_place; mark "black-place-sheet" 1             # SheetPalette.bg = #000000
+      key "$K_OK" 1; mark "black-place-sheet-expanded" 1       # rows on RowAmoled #141414
+      # The reviews CARVE (#000000) lives on the standard flavor's Read-all-reviews page; a place
+      # with no reviews button (or the restricted build, which drops reviews) is n/a, not a miss.
+      case "${VELA_PKG:-}" in
+        *restricted*) na "black-reviews" "reviews not in the restricted build" ;;
+        *)
+          # The button label embeds a live count ("All 128 reviews · sort & search") - contains-
+          # match on the stable tail. Swipe manually (swipe_up_to is exact-match only).
+          rv=0
+          for _ in $(seq 1 24); do
+            on_screen_contains "sort & search" && { rv=1; break; }
+            $ADB shell input swipe "$((SW / 2))" "$((SH * 6 / 10))" "$((SW / 2))" "$((SH * 4 / 10))" 700 >/dev/null 2>&1
+            sleep 0.6
+          done
+          if [ "$rv" = 1 ] && tap_contains "sort & search"; then
+            sleep 4; mark "black-reviews" 1; key "$K_BACK" 1.5
+          else na "black-reviews" "no reviews button on this place"; fi ;;
+      esac
+      key "$K_BACK" 1
+    else
+      mark "black-search-results" 0; mark "black-place-sheet" 0; mark "black-place-sheet-expanded" 0
+      mark "black-reviews" 0
+    fi
+    pick_theme "Follow system" || true
+  else
+    for s2 in bare-map search-results place-sheet place-sheet-expanded reviews; do mark "black-$s2" 0; done
+  fi
+  fi  # phase blacktheme
+
   # --- Voice search (mic + capture sheet) ------------------------------------------------------
-  if phase voice; then i=16
+  if phase voice; then i=22
   $ADB shell pm grant "$PKG" android.permission.RECORD_AUDIO >/dev/null 2>&1
   goto_map
   # The mic sits in the search bar when the field is empty. Under soft-keys that bar is decluttered
@@ -244,7 +382,7 @@ cover_one() {
   fi
 
   # --- Parking (P button, hub menu, parked-car sheet) -------------------------------------------
-  if phase parking; then i=17
+  if phase parking; then i=23
   goto_map; softkeys_shown && key "$K_DOWN"   # DOWN focuses the map for the LEFT-soft-key Options menu; in touch it would expand the search overlay and hide the FAB, so skip it
   # Park: under soft-keys the on-screen P FAB is decluttered away (#76) and Park lives in the bare-map
   # Options menu (LEFT soft key); on touch the FAB is still there. park_action opens it the right way
@@ -268,7 +406,7 @@ cover_one() {
   # --- hardware soft-key menus (keypad bar) ---------------------------------------------------
   # The base phases capture the BAR in every frame (dpad is forced), but never PRESS a soft key, so
   # the Options popups + zoom mode go uncaptured. Drive them here: LEFT opens the bottom-left menu.
-  if phase softkey && [ "$softkeys" = on ]; then i=22   # no soft-key bar to press in the touch (SOFTKEYS=off) layout
+  if phase softkey && [ "$softkeys" = on ]; then i=26   # no soft-key bar to press in the touch (SOFTKEYS=off) layout
   goto_map; key "$K_DOWN"
   key "$K_SOFT_LEFT" 1                              # bare map: LEFT -> Options menu
   if on_screen "Recenter"; then
@@ -290,10 +428,15 @@ cover_one() {
       key "$K_BACK" 1
     else mark "softkey-layers-panel" 0; fi
   else mark "softkey-map-options" 0; mark "softkey-move-map" 0; mark "softkey-zoom-mode" 0; mark "softkey-layers-panel" 0; fi
-  [ "$haveResults" = 0 ] && { goto_map; run_coffee && haveResults=1; }
-  if [ "$haveResults" = 1 ]; then
+  # The zoom/layers walk above leaves the results overlay CLOSED, so re-run the search fresh -
+  # open_first_place from a stale state walked the bare map and SOFT_LEFT opened the MAP Options
+  # menu, which the old unconditional mark then recorded as the place menu (a check that could not
+  # fail - caught by eyeballing the frame: the "Move map" banner was visible behind the menu).
+  if goto_map && run_coffee; then
+    haveResults=1
     open_first_place; key "$K_SOFT_LEFT" 1           # place sheet: LEFT -> place Options menu
-    on_screen_contains "Directions" || on_screen "Street View"; mark "softkey-place-options" 1
+    if on_screen_contains "Directions" || on_screen "Street View"; then mark "softkey-place-options" 1
+    else mark "softkey-place-options" 0; fi
     key "$K_BACK" 1; key "$K_BACK" 1
   else mark "softkey-place-options" 0; fi
   fi

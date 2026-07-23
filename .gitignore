@@ -44,3 +44,6 @@ app/libs/*.aar
 /CLAUDE.md
 */screenshots/selftour*/run-recording.mkv
 tests/devices/*/screenshots/*/run-recording.mkv
+
+# python bytecode from tools/ scripts
+tools/__pycache__/

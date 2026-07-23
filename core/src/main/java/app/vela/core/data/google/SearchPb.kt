@@ -39,9 +39,25 @@ object SearchPb {
         "!23b1!25b1!26b1!31b1!37m1!1e81!42b1!49m10!3b1!6m2!1b1!2b1!7m2!1e3!2b1!8b1!9b1!10e2!50m3" +
         "!2e2!3m1!3b1!61b1!67m5!7b1!10b1!14b1!15m1!1b0!69i782!77b1"
 
-    fun build(query: String, viewport: LatLng, template: String = DEFAULT_TEMPLATE): String =
-        template
+    fun build(query: String, viewport: LatLng, template: String = DEFAULT_TEMPLATE, offset: Int = 0): String {
+        var pb = template
             .replace("{QUERY}", query.replace('!', ' ').trim())
             .replace("{LNG}", viewport.lng.toString())
             .replace("{LAT}", viewport.lat.toString())
+        // Result offset (!8i) rides directly after the page-size token (!7iN) - the same pagination
+        // the web map uses: offset 20 asks for Google's ranks 21-40, and so on. Keyed on the REGEX,
+        // not the literal "!7i20", because searchPb is remote-calibratable (calibration.json ships its
+        // own template); a recaptured template with a different page size must still paginate, and a
+        // literal miss would silently refetch page 1 and dedupe it away as wasted requests (upstream
+        // b3bb48fa).
+        if (offset > 0) pb = pb.replaceFirst(PAGE_SIZE_RX, "\$0!8i$offset")
+        return pb
+    }
+
+    private val PAGE_SIZE_RX = Regex("!7i\\d+")
+
+    /** The page size the [template] actually requests (its !7iN token), or null when a recalibrated
+     *  template dropped the token - callers then skip pagination rather than guess. */
+    fun pageSize(template: String): Int? =
+        PAGE_SIZE_RX.find(template)?.value?.removePrefix("!7i")?.toIntOrNull()
 }

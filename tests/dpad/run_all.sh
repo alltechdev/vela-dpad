@@ -4,7 +4,10 @@
 #
 #   ./run_all.sh                 # run everything
 #   ./run_all.sh 01 02           # run only tests whose filename starts with 01 / 02
-#   ADB="adb -s emulator-5554" ./run_all.sh
+#   ADB="adb -s <serial>" ./run_all.sh   # pick a device
+#
+# The APK is ARM-only (arm64-v8a + armeabi-v7a). A standard x86_64 AVD installs it and then dies
+# at map init with no MapLibre .so - use a real device or an arm64 system image.
 set -uo pipefail
 D="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; source "$D/lib.sh"
 

@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.compose.runtime.mutableStateOf
-import app.vela.voice.AsrModel
+import app.vela.voice.AsrEngine
 
 /**
  * Voice search for the search bar. TWO ways to turn speech into a query:
@@ -32,9 +32,15 @@ object VoiceSearch {
     /** What the mic will actually do when tapped, given the toggle + engine pref + what's available. */
     enum class Mode { LOCAL, SYSTEM, NONE }
 
+    /** True once the user has answered the first-mic-tap offer of Vela's own model with "Not now".
+     *  Only ever set when a voice app was there to fall back to - a phone with no alternative keeps
+     *  being offered the one thing that would make its mic work at all. */
+    val offerDeclined = mutableStateOf(false)
+
     fun init(context: Context) {
         enabled.value = prefs(context).getBoolean(KEY, true)
         engine.value = readEngine(prefs(context).getString(ENGINE_KEY, null))
+        offerDeclined.value = prefs(context).getBoolean(OFFER_KEY, false)
         // Legacy migration: an old explicit LOCAL pin (pre-picker) hid the mic entirely when the
         // model was later deleted, even with voice apps installed. AUTO behaves identically while
         // the model exists and degrades gracefully without it.
@@ -66,8 +72,15 @@ object VoiceSearch {
     fun providers(context: Context): List<Provider> = runCatching {
         val pm = context.packageManager
         pm.queryIntentActivities(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0).map {
+            // A provider whose activity declares NO label rendered a BLANK radio row in the
+            // Settings picker (user screenshot, 2026-07-23) - the row worked but named nothing.
+            // Fall back activity label -> application label -> package name, so every row names
+            // itself no matter how the provider is declared.
+            val label = it.loadLabel(pm).toString().ifBlank {
+                runCatching { it.activityInfo.applicationInfo.loadLabel(pm).toString() }.getOrDefault("")
+            }.ifBlank { it.activityInfo.packageName }
             Provider(
-                it.loadLabel(pm).toString(),
+                label,
                 android.content.ComponentName(it.activityInfo.packageName, it.activityInfo.name),
             )
         }
@@ -132,7 +145,27 @@ object VoiceSearch {
     }.getOrDefault(false)
 
     /** Is Vela's own on-device model downloaded (tier-1)? File-existence check, no model load. */
-    fun localReady(context: Context): Boolean = AsrModel.isInstalled(context)
+    fun localReady(context: Context): Boolean = AsrEngine.anyInstalled(context)
+
+    fun declineOffer(context: Context) {
+        offerDeclined.value = true
+        prefs(context).edit().putBoolean(OFFER_KEY, true).apply()
+    }
+
+    /** Should a mic tap OFFER Vela's on-device model rather than going straight to a voice app?
+     *
+     *  [Engine.AUTO] used to prefer a provider silently whenever the model was absent, so on any
+     *  phone that ships a recogniser - i.e. every phone with Google - the on-device option was never
+     *  mentioned at all. The mic's download offer was gated on [Mode.NONE], which only happens when
+     *  NOTHING can service the mic, so the one audience it reached was degoogled phones: exactly the
+     *  users who least needed telling. Someone on an ordinary phone tapped the mic, got Google, and
+     *  had no way to learn Vela could do it on-device (2026-07-21).
+     *
+     *  So AUTO now asks first. An explicit System pick in Settings is a decision, not a default, and
+     *  is respected untouched; and one "Not now" is remembered forever, so this asks once, never
+     *  nags, and never quietly routes speech off the phone without having offered the alternative. */
+    fun shouldOfferLocal(context: Context): Boolean =
+        engine.value == Engine.AUTO && !offerDeclined.value && !localReady(context)
 
     /** Resolve what the mic should do right now. NONE -> hide the mic. */
     fun resolvedMode(context: Context): Mode {
@@ -157,4 +190,5 @@ object VoiceSearch {
     private const val KEY = "voice_search_button"
     private const val ENGINE_KEY = "voice_search_engine"
     private const val PROVIDER_KEY = "voice_search_provider"
+    private const val OFFER_KEY = "voice_search_offer_declined"
 }

@@ -13,6 +13,8 @@ import androidx.core.content.ContextCompat
 import timber.log.Timber
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
@@ -46,7 +48,7 @@ class WhisperRecognizer @Inject constructor(
 ) {
     private val loadLock = Any()
     @Volatile private var recognizer: OfflineRecognizer? = null
-    @Volatile private var loadedLang: String? = null
+    @Volatile private var loadedKey: String? = null
 
     /** Non-zero while a [listen] is inside the native recognizer. [release] refuses to free the
      *  model while this is set: `OfflineRecognizer.release()` frees C++ memory that an in-flight
@@ -67,7 +69,7 @@ class WhisperRecognizer @Inject constructor(
         // Measured on an M5 (2.9 GB, standardDebug, issue #83): the loaded Whisper tiny int8 model
         // costs ~267 MB PSS - ~101 MB of weights in scudo:secondary plus ~146 MB of onnxruntime
         // arena in scudo:primary. That was resident for the whole process with no way to reclaim it,
-        // and it survived deleteAsrModel(). It is by far the largest single reclaimable allocation
+        // and it survived deleteAsrEngine(). It is by far the largest single reclaimable allocation
         // in the app, so it releases on any severe trim and reloads (~1 s) on the next listen.
         app.vela.ui.MemoryPressure.register { level ->
             if (app.vela.ui.MemoryPressure.isSevere(level)) release()
@@ -102,7 +104,7 @@ class WhisperRecognizer @Inject constructor(
         synchronized(loadLock) {
             val r = recognizer ?: return
             recognizer = null
-            loadedLang = null
+            loadedKey = null
             runCatching { r.release() }
                 .onFailure { Timber.tag(TAG).w(it, "recognizer release failed") }
             Timber.tag(TAG).i("recognizer released")
@@ -140,11 +142,14 @@ class WhisperRecognizer @Inject constructor(
         // Grep target for a tester's logcat: every listen() failure logs under this tag with its
         // VoiceResult.Reason, so "it doesn't work" arrives already diagnosed (issue #81).
         const val TAG = "VELAASR"
-        // Set across the native model load, cleared once it returns. Still set at the next attempt =
-        // the process died inside it. KEY_MODEL_BAD latches the quarantine so a bad model is not
-        // retried on every launch; a fresh download clears it (see AsrModel.clearQuarantine)."
-        const val KEY_LOAD_INFLIGHT = "asr_load_inflight"
-        const val KEY_MODEL_BAD = "asr_model_bad"
+        // Crash-sentinel keys are PER-ENGINE (suffixed with the engine id): a truncated SenseVoice
+        // must never quarantine or delete Whisper. KEY_LOAD_STRIKES counts loads the process died
+        // inside (bumped before the native load, zeroed once it returns); TWO in a row quarantine -
+        // one stranded load is as likely a mid-load kill (user swipe-away, memory reclaim) as a
+        // crash, and must not delete a healthy download. KEY_MODEL_BAD_ latches the quarantine so a
+        // bad model is not retried every launch; a fresh download clears it.
+        const val KEY_LOAD_STRIKES = "asr_load_strikes_"
+        const val KEY_MODEL_BAD = "asr_model_bad_"
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
         const val MAX_SECONDS = 15            // hard cap on one utterance
@@ -154,42 +159,53 @@ class WhisperRecognizer @Inject constructor(
         const val REAP_IDLE_MS = 120_000L
     }
 
-    fun isInstalled(): Boolean =
-        AsrModel.isInstalled(context) &&
-            !context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
-                .getBoolean(KEY_MODEL_BAD, false)
+    private fun prefs() = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+    private fun isQuarantined(engine: AsrEngine) = prefs().getBoolean(KEY_MODEL_BAD + engine.id, false)
 
-    /** Lift the quarantine after a fresh download - the bad files are gone, so the next load is
-     *  allowed to try again. Called by the installer path, never automatically. */
-    fun clearQuarantine() {
-        context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_MODEL_BAD, false).putBoolean(KEY_LOAD_INFLIGHT, false).apply()
+    /** Voice search is available when at least one engine is installed AND not quarantined. */
+    fun isInstalled(): Boolean = AsrEngine.installed(context).any { !isQuarantined(it) }
+
+    /** Lift the quarantine for [engine] after a fresh download - the bad files are gone, so the next
+     *  load may try again. Called by the installer path, never automatically. */
+    fun clearQuarantine(engine: AsrEngine = AsrEngine.DEFAULT) {
+        prefs().edit()
+            .putBoolean(KEY_MODEL_BAD + engine.id, false)
+            .putInt(KEY_LOAD_STRIKES + engine.id, 0).apply()
     }
 
     fun hasMicPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
-    /** The language Whisper is pinned to: the app language when it's one Vela supports, else
+    /** The app language, normalized: Android hands back the LEGACY code for Hebrew ("iw"), not "he"
+     *  (upstream PR #87), so map it. */
+    private fun appLang(): String =
+        app.vela.ui.AppLocale.effective().language.let { if (it == "iw") "he" else it }
+
+    /** The engine the recognizer should LOAD for the current language: the user's pick when it can do
+     *  the language, else Whisper (upstream 137beea9). */
+    private fun engineForNow(): AsrEngine = AsrEngine.forRecognition(context, appLang())
+
+    /** The language to pin recognition to: the app language when the engine supports it, else
      *  auto-detect. Pinning matters - with auto-detect, a noisy capture can be misread as a whole
      *  other language and come back in the wrong script (a garbled far-field test transcribed to
-     *  Cyrillic). The app language is what the user speaks to a maps app in practice. */
-    private fun whisperLang(): String {
-        // Android hands back the LEGACY code for Hebrew ("iw"), which isn't in SUPPORTED ("he"), so
-        // without this normalize Hebrew dictation fell through to Whisper auto-detect instead of
-        // being pinned. Whisper's own code for Hebrew is "he". (Ports upstream PR #87.)
-        val l = app.vela.ui.AppLocale.effective().language.let { if (it == "iw") "he" else it }
-        return l.takeIf { it in app.vela.ui.AppLocale.SUPPORTED } ?: ""
+     *  Cyrillic). Moonshine is English-only and takes no language, so this is unused for it. */
+    private fun pinnedLang(engine: AsrEngine): String {
+        val l = appLang()
+        return when (engine) {
+            AsrEngine.WHISPER_TINY -> l.takeIf { it in app.vela.ui.AppLocale.SUPPORTED } ?: ""
+            AsrEngine.SENSE_VOICE -> l.takeIf { it in AsrEngine.SENSE_VOICE_LANGS } ?: "auto"
+            AsrEngine.MOONSHINE -> ""
+        }
     }
 
     /** Build the recognizer ahead of the first mic tap, off the main thread. The ONNX load takes a
      *  second or two on a phone, which used to show as a "Getting ready" beat on the FIRST dictation
-     *  of a session (user 2026-07-10); warmed, the mic listens immediately. Cheap to call when the
-     *  model isn't installed (no-op), and safe to call repeatedly - the synchronized loader keeps a
-     *  built recognizer for the current language. A mid-session app-language switch still rebuilds
-     *  lazily on the next listen (rare enough not to chase). */
+     *  of a session (user 2026-07-10); warmed, the mic listens immediately. Cheap to call when no
+     *  engine is installed (no-op), and safe to call repeatedly - the synchronized loader keeps a
+     *  built recognizer for the current engine+language. */
     fun warmUp() {
-        if (!AsrModel.isInstalled(context)) return
+        if (!AsrEngine.anyInstalled(context)) return
         // On a low-RAM device the warm-up is a bad trade: it spends ~267 MB (measured, issue #83) at
         // EVERY launch to save ~1 s on a mic tap the user may never make, and refreshAsr() calls this
         // from VM init plus two LaunchedEffects. Those phones load on first listen instead. Roomier
@@ -201,64 +217,106 @@ class WhisperRecognizer @Inject constructor(
         Thread({ runCatching { ensureRecognizer() } }, "asr-warmup").start()
     }
 
-    /** Load the Whisper recognizer once per language (rebuilt if the app language changes). Returns
-     *  null if the model isn't installed or the native load fails - callers then fall back to the
-     *  provider intent or hide the mic. */
+    /** Load the recognizer for the engine we'd run NOW (the pick, or Whisper for a language the pick
+     *  can't do), rebuilt when the engine or app language changes. Returns null if no engine is
+     *  installed/usable or the native load fails - callers fall back to the provider intent or hide
+     *  the mic. */
     private fun ensureRecognizer(): OfflineRecognizer? {
-        val lang = whisperLang()
-        recognizer?.let { if (loadedLang == lang) return it }
+        val engine = engineForNow()
+        val lang = pinnedLang(engine)
+        val key = "${engine.id}|$lang"
+        recognizer?.let { if (loadedKey == key) return it }
         synchronized(loadLock) {
-            recognizer?.let { if (loadedLang == lang) return it else runCatching { it.release() } }
+            recognizer?.let { if (loadedKey == key) return it else runCatching { it.release() } }
             recognizer = null
-            if (!AsrModel.isInstalled(context)) return null
+            if (!engine.isInstalled(context)) return null
 
-            // CRASH SENTINEL around the native load. sherpa-onnx parses the .onnx files in C++, and a
-            // TRUNCATED-but-non-empty model segfaults inside libsherpa-onnx-jni rather than throwing -
-            // `runCatching` cannot catch a native abort, it takes the whole process down. That is
-            // reachable in the real world: the installer deletes destDir BEFORE moving staging into
-            // place, so a copy that stops partway (storage full on a flip phone, process killed) can
-            // leave a short file that isInstalled()'s present-and-non-empty test happily accepts.
-            // Because warmUp() runs at STARTUP, the result was an unrecoverable crash loop - the user
-            // cannot even reach Settings to delete the model, since the app dies before any UI.
-            // So: mark before the load, clear after. Finding the mark still set means the previous
-            // attempt never returned - quarantine the model, tell the UI it is not installed, and let
-            // the app start. Same idiom as the map's two-crash sentinel in VelaMapView.
-            val prefs = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
-            if (prefs.getBoolean(KEY_LOAD_INFLIGHT, false)) {
-                Timber.tag(TAG).e("previous ASR load never returned (native crash) - quarantining the model")
-                prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).putBoolean(KEY_MODEL_BAD, true).apply()
-                runCatching { AsrModel.dir(context).deleteRecursively() }
+            // CRASH SENTINEL around the native load, PER ENGINE. sherpa-onnx parses the .onnx files in
+            // C++, and a TRUNCATED-but-non-empty model segfaults inside libsherpa-onnx-jni rather than
+            // throwing - `runCatching` cannot catch a native abort, it takes the whole process down.
+            // Reachable in the real world: a copy that stops partway (storage full, process killed)
+            // leaves a short file that isInstalled()'s present-and-non-empty test happily accepts, and
+            // warmUp() runs at STARTUP, so the result was an unrecoverable crash loop. So: bump a
+            // strike counter before the load, zero it after; a counter that reaches TWO stranded
+            // loads means the process died inside the load twice in a row - quarantine THAT engine
+            // only and delete THAT engine's dir (a bad SenseVoice must never take out Whisper),
+            // report not-installed, let the app start. A fresh download clears the quarantine.
+            // TWO strikes, not one (the map sentinel's idiom, and device-measured necessity): the
+            // load takes seconds, and a process killed DURING it - the user swiping the app away, the
+            // system reclaiming memory, a test harness force-stop - strands the counter exactly like
+            // a native crash. One stranded load used to delete a healthy 154 MB download; a genuinely
+            // bad model crashes EVERY load, so it still self-heals one launch later.
+            val prefs = prefs()
+            val strikesKey = KEY_LOAD_STRIKES + engine.id
+            val badKey = KEY_MODEL_BAD + engine.id
+            val strikes = prefs.getInt(strikesKey, 0)
+            if (strikes >= 2) {
+                Timber.tag(TAG).e("two ASR loads never returned (native crash) - quarantining ${engine.id}")
+                prefs.edit().putInt(strikesKey, 0).putBoolean(badKey, true).apply()
+                runCatching { engine.dir(context).deleteRecursively() }
                 return null
             }
-            if (prefs.getBoolean(KEY_MODEL_BAD, false)) return null
-            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, true).apply()
+            if (prefs.getBoolean(badKey, false)) return null
+            prefs.edit().putInt(strikesKey, strikes + 1).apply()
 
-            val dir = AsrModel.dir(context)
+            val dir = engine.dir(context)
+            fun p(name: String) = File(dir, name).absolutePath
+            val modelConfig = when (engine) {
+                AsrEngine.WHISPER_TINY -> OfflineModelConfig(
+                    whisper = OfflineWhisperModelConfig(
+                        encoder = p("tiny-encoder.int8.onnx"),
+                        decoder = p("tiny-decoder.int8.onnx"),
+                        language = lang,      // pinned to the app language ("" = auto)
+                        task = "transcribe",
+                        tailPaddings = -1,
+                    ),
+                    tokens = p("tiny-tokens.txt"),
+                    numThreads = 2,
+                    modelType = engine.modelType,
+                )
+                AsrEngine.SENSE_VOICE -> OfflineModelConfig(
+                    senseVoice = OfflineSenseVoiceModelConfig(
+                        model = p("model.int8.onnx"),
+                        language = lang,      // "auto" or one of zh/en/ja/ko/yue
+                        useInverseTextNormalization = true,   // "5 pm" not "five p m"
+                    ),
+                    tokens = p("tokens.txt"),
+                    numThreads = 2,
+                    modelType = engine.modelType,
+                )
+                AsrEngine.MOONSHINE -> OfflineModelConfig(
+                    moonshine = OfflineMoonshineModelConfig(
+                        preprocessor = p("preprocess.onnx"),
+                        encoder = p("encode.int8.onnx"),
+                        uncachedDecoder = p("uncached_decode.int8.onnx"),
+                        cachedDecoder = p("cached_decode.int8.onnx"),
+                    ),
+                    tokens = p("tokens.txt"),
+                    numThreads = 2,
+                    modelType = engine.modelType,
+                )
+            }
             val r = runCatching {
                 OfflineRecognizer(
                     config = OfflineRecognizerConfig(
                         featConfig = FeatureConfig(sampleRate = SAMPLE_RATE, featureDim = 80),
-                        modelConfig = OfflineModelConfig(
-                            whisper = OfflineWhisperModelConfig(
-                                encoder = File(dir, AsrModel.ENCODER).absolutePath,
-                                decoder = File(dir, AsrModel.DECODER).absolutePath,
-                                language = lang,      // pinned to the app language ("" = auto)
-                                task = "transcribe",
-                                tailPaddings = -1,
-                            ),
-                            tokens = File(dir, AsrModel.TOKENS).absolutePath,
-                            numThreads = 2,
-                            modelType = "whisper",
-                        ),
+                        modelConfig = modelConfig,
                     ),
                 )
+            }.onFailure {
+                // NAME the throwable. #84 fixed "the reason was discarded at the point of failure"
+                // for listen(), but left it here: getOrNull() ate the one fact that separates a
+                // missing .so (UnsatisfiedLinkError - the v7a strip, see app/build.gradle.kts) from
+                // an OOM on a small phone, and both surfaced as "re-download the model". A tester
+                // re-downloaded 47 MB twice on that advice. The class name alone decides it.
+                Timber.tag(TAG).e(it, "native ASR load failed (${engine.id}): ${it::class.java.simpleName}")
             }.getOrNull()
-            // The load RETURNED (success or a catchable failure), so the process survived it: clear
-            // the sentinel. Only a native abort leaves it set, which is exactly the case we want the
-            // next launch to notice.
-            prefs.edit().putBoolean(KEY_LOAD_INFLIGHT, false).apply()
+            // The load RETURNED (success or a catchable failure), so the process survived it: zero
+            // the strikes. Only a native abort (or a mid-load kill) leaves a strike standing, and
+            // only two in a row quarantine.
+            prefs.edit().putInt(strikesKey, 0).apply()
             recognizer = r
-            loadedLang = lang
+            loadedKey = key
             if (r != null) armIdleReap() // start the quiet-period countdown from the load
             return r
         }
@@ -308,7 +366,7 @@ class WhisperRecognizer @Inject constructor(
             Vad(
                 config = VadModelConfig(
                     sileroVadModelConfig = SileroVadModelConfig(
-                        model = File(AsrModel.dir(context), AsrModel.VAD).absolutePath,
+                        model = File(engineForNow().dir(context), AsrEngine.VAD).absolutePath,
                         threshold = 0.5f,
                         minSilenceDuration = 0.6f,   // ~0.6 s of quiet ends the utterance
                         minSpeechDuration = 0.25f,

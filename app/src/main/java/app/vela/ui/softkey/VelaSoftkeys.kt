@@ -116,12 +116,13 @@ object VelaSoftkeys {
         // visible flash on each screen change. So rebuild ONLY when the theme actually flipped; a plain
         // label change just re-set()s in place (no churn, no flash).
         val dark = app.vela.ui.theme.isAppInDarkTheme()
+        val themeMode = app.vela.ui.theme.AppTheme.mode.value
         val modal = modalDepth.intValue > 0 // a VelaDialog is up -> hide the bar (keys go to it)
-        val lastDark = remember { mutableStateOf<Boolean?>(null) }
-        LaunchedEffect(left?.label, right?.label, dark, modal) {
+        val lastTheme = remember { mutableStateOf<app.vela.ui.theme.ThemeMode?>(null) }
+        LaunchedEffect(left?.label, right?.label, dark, themeMode, modal) {
             val ctl = Softkeys.of(activity)
-            val themeFlipped = lastDark.value?.let { it != dark } == true
-            lastDark.value = dark
+            val themeFlipped = lastTheme.value?.let { it != themeMode } == true
+            lastTheme.value = themeMode
             applyThemeColors(dark)
             if (modal || (leftNow == null && rightNow == null)) {
                 ctl.clear()
@@ -139,9 +140,12 @@ object VelaSoftkeys {
     /** Paint the bar for the in-app theme. A dark toolbar in dark, a light one in light - both
      * single-ink, matching Vela's map chrome. Applied before a rebuild (see [MapSoftkeys]). */
     private fun applyThemeColors(dark: Boolean) {
+        // AMOLED: the bar goes true black with a slightly stronger divider so it still separates
+        // from a black map bezel; every other colour keeps the dark set (contrast only improves).
+        val amoled = app.vela.ui.theme.AppTheme.mode.value == app.vela.ui.theme.ThemeMode.AMOLED
         Yapchik.style.apply {
             if (dark) {
-                backgroundColor = 0xFF14343A.toInt()
+                backgroundColor = if (amoled) 0xFF000000.toInt() else 0xFF14343A.toInt()
                 textColor = 0xFFECECEC.toInt()
                 pressedTextColor = 0xFF4DD0C4.toInt()
                 dividerColor = 0x33FFFFFF

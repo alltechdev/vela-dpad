@@ -102,3 +102,11 @@ Google's traffic tiles, grow as coverage allows.
 
 The signed `calibration.json` channel already hot-pushes config, field paths, user notices, and
 sandboxed JS parse-logic with no app update (see SPEC section 5). Fix future breakages there first.
+
+- **Material 3 stable + selective Expressive adoption.** The app is fully on Material 3 but pins
+  `material3 1.4.0-alpha06`. Follow-up: bump to the 1.4.x stable in its own PR, adopt the cheap
+  static Expressive tokens (shape scale, emphasized type) where they help, and explicitly SKIP the
+  expressive motion scheme on keypad-first devices (spring-heavy animation is jank, not delight, on
+  the MTK flip-phone targets). Verification = the full golden matrix, both themes; the calibrated
+  relationships to keep intact are the teal containers (stock defaults read purple) and the orange
+  0xFFFF6D00 focus ring's contrast against them.
