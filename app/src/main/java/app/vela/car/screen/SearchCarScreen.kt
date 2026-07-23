@@ -30,7 +30,6 @@ class SearchCarScreen(
     private val deps: CarDeps,
     initialQuery: String? = null, // a transcript from another screen's mic, searched on entry
     private val alongRoute: Boolean = false,
-    private val voiceEntry: Boolean = false, // arrived via a mic button: surface the voice affordance
 ) : Screen(carContext) {
 
     private var results: List<Place> = emptyList()
@@ -53,11 +52,7 @@ class SearchCarScreen(
         }
         val builder = SearchTemplate.Builder(callback)
             .setHeaderAction(Action.BACK)
-            // Keyboard only on a bar tap (user request) - EXCEPT when the driver arrived via a
-            // mic button in SYSTEM mode: template apps cannot trigger the host's voice input
-            // programmatically (reserved for Hey Google / the wheel button), so the closest to
-            // one-tap voice is landing with the keyboard + its voice key already up.
-            .setShowKeyboardByDefault(voiceEntry)
+            .setShowKeyboardByDefault(false) // keyboard only on a bar tap (user request)
         voiceQuery?.let { builder.setInitialSearchText(it) }
         // The host's in-field mic is the SYSTEM recognizer and cannot be removed or rewired. For
         // a SYSTEM-resolved user that is correct - one mic, theirs. For a LOCAL (Vela) pin it
@@ -69,7 +64,6 @@ class SearchCarScreen(
                     voiceLocal.micAction(
                         this, ::invalidate,
                         onTranscript = { q -> voiceQuery = q; handleSubmitted(q) },
-                        onSystem = {},
                     ),
                 ).build(),
             )

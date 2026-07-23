@@ -164,7 +164,6 @@ class ActiveNavCarScreen(carContext: CarContext, private val deps: CarDeps) :
                     onTranscript = { q ->
                         app.vela.car.VoiceCommandRouter.handle(carContext, deps, screenManager, q, alongRoute = true, onEndNav = ::stopNav)
                     },
-                    onSystem = { screenManager.push(SearchCarScreen(carContext, deps, alongRoute = true, voiceEntry = true)) },
                 ),
             )
         }

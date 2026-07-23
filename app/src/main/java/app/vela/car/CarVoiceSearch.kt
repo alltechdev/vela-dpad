@@ -34,7 +34,11 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
         // re-templates every state tick (review round 2). Settings flips land within a beat.
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - availCheckedAt > 5_000) {
-            availCached = VoiceSearch.resolvedMode(carContext) != VoiceSearch.Mode.NONE
+            // LOCAL only: in SYSTEM mode Vela cannot start the host voice session (platform
+            // reserves it for Hey Google / the wheel button, which already routes into Vela via
+            // NAVIGATE intents), so a Vela mic button would be a dead button - the phone's own
+            // never-a-dead-button rule hides it (user requirement: no nonsense).
+            availCached = VoiceSearch.resolvedMode(carContext) == VoiceSearch.Mode.LOCAL
             availCheckedAt = now
         }
         return availCached
@@ -64,22 +68,16 @@ class CarVoiceSearch(private val carContext: CarContext, private val whisper: Wh
         screen: Screen,
         onUpdate: () -> Unit,
         onTranscript: (String) -> Unit,
-        onSystem: () -> Unit,
     ): Action =
         Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_car_mic2)).build())
-            .setOnClickListener { tap(screen, onUpdate, onTranscript, onSystem) }
+            .setOnClickListener { tap(screen, onUpdate, onTranscript) }
             .build()
 
-    /** THE USER'S ENGINE PREFERENCE IS LAW (Settings -> Search): resolved LOCAL runs Vela's
-     *  on-device Whisper through the car mic; resolved SYSTEM routes to [onSystem] (the search
-     *  surface whose inline host mic is the system recognizer). A LOCAL failure toasts and stops -
-     *  it never silently reroutes speech to Google. */
-    private fun tap(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit, onSystem: () -> Unit) {
-        when (VoiceSearch.resolvedMode(carContext)) {
-            VoiceSearch.Mode.SYSTEM, VoiceSearch.Mode.NONE -> { onSystem(); return }
-            VoiceSearch.Mode.LOCAL -> Unit
-        }
+    /** LOCAL-mode only (see [available]): Vela's on-device Whisper through the car mic, phone-mic
+     *  retry when the car mic is dead. A failure toasts and stops - speech never reroutes. */
+    private fun tap(screen: Screen, onUpdate: () -> Unit, onTranscript: (String) -> Unit) {
+        if (VoiceSearch.resolvedMode(carContext) != VoiceSearch.Mode.LOCAL) return
         if (listening) { listening = false; return }
         if (!hasPermission()) {
             requestPermission { screen.invalidate() }
