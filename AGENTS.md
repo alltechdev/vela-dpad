@@ -829,10 +829,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   - `VelaCarAppService` is a Hilt `@AndroidEntryPoint` NAVIGATION-category `CarAppService`
     injecting the same `:core` singletons the phone uses (NavSession, LocationProvider,
     MapDataSource, the three place stores, VoiceGuide, RouteEngine), bundled into `CarDeps` for
-    the screens. `androidx.car.app:app` alone is NOT enough for the app to APPEAR in Android
-    Auto: **`app-projected` merges the `CarAppMetadataHolderService` the AA host discovers apps
-    through** - the first-cut port lacked it and Vela was invisible to every head unit
-    (device-found, OnePlus 12). `HostValidator.ALLOW_ALL_HOSTS_VALIDATOR` stays (sideload-only
+    the screens. **`app-projected` merges the `CarAppMetadataHolderService`
+    projection glue and is the documented Android Auto artifact** - the first-cut port lacked it,
+    and this fork's builds were not listed on the reporting head unit (OnePlus 12) until it was
+    added. NB the causality is not fully isolated (the AA app-list rescan happened in the same
+    step), and upstream's interim builds may never have had the issue - the artifact is REQUIRED
+    regardless (NavigationManager / cluster APIs live in it). `HostValidator.ALLOW_ALL_HOSTS_VALIDATOR` stays (sideload-only
     distribution).
   - Screens (`car/screen/`): `MainCarScreen` (Home/Work/recents/saved rows, capped at the
     template's MAX_ROWS, de-duped by location) -> `SearchCarScreen` (car keyboard search via
