@@ -72,7 +72,36 @@ class SearchCarScreen(
             builder.setLoading(true)
         } else {
             val list = ItemList.Builder()
-            if (results.isEmpty()) {
+            if (results.isEmpty() && alongRoute) {
+                // Google Maps-style: in-drive search offers the quick categories UNDER the bar
+                // before you type (user request) - each goes straight to corridor results whose
+                // pick becomes a stop. Exactly 6 rows = the template's row cap.
+                listOf(
+                    Triple(app.vela.R.string.cat_gas, "Gas", app.vela.R.drawable.ic_car_gas),
+                    Triple(app.vela.R.string.cat_food, "Food", app.vela.R.drawable.ic_car_food),
+                    Triple(app.vela.R.string.cat_coffee, "Coffee", app.vela.R.drawable.ic_car_coffee),
+                    Triple(app.vela.R.string.cat_groceries, "Groceries", app.vela.R.drawable.ic_car_grocery),
+                    Triple(app.vela.R.string.cat_parking, "Parking", app.vela.R.drawable.ic_car_parking),
+                    Triple(app.vela.R.string.cat_charging, "EV charging", app.vela.R.drawable.ic_car_charging),
+                ).forEach { (labelRes, query, iconRes) ->
+                    list.addItem(
+                        Row.Builder()
+                            .setTitle(carContext.getString(labelRes))
+                            .setImage(
+                                androidx.car.app.model.CarIcon.Builder(
+                                    androidx.core.graphics.drawable.IconCompat.createWithResource(carContext, iconRes),
+                                ).build(),
+                                Row.IMAGE_TYPE_SMALL,
+                            )
+                            .setOnClickListener {
+                                screenManager.push(
+                                    CategoryResultsCarScreen(carContext, deps, carContext.getString(labelRes), query, true),
+                                )
+                            }
+                            .build(),
+                    )
+                }
+            } else if (results.isEmpty()) {
                 list.setNoItemsMessage(carContext.getString(app.vela.R.string.car_search_hint))
             } else {
                 results.take(6).forEach { p ->
