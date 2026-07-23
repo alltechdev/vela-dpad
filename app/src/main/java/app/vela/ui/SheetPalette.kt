@@ -25,7 +25,7 @@ object SheetPalette {
     // on a black theme defeats the mode's whole point), with the inset rows stepped to a near-black
     // so chips/rows still read as layers. Ink/Dim stay the dark values (contrast is higher on black).
     val Amoled = Color(0xFF000000)
-    val RowAmoled = Color(0xFF141414)
+    val RowAmoled = Color(0xFF000000) // rows too - black is black; hairlines separate
 
     /** True while the app-wide theme is the AMOLED mode - a state read, so composables that call
      *  the helpers below recompose when the mode flips (same mechanism as isAppInDarkTheme). */

@@ -148,6 +148,17 @@ for m in re.finditer(r"<node [^>]*>", d):
 }
 # on_screen_contains <substr>  - 0 (true) if any node's text contains <substr> (partial match).
 on_screen_contains() { [ -n "$(find_text_contains "$1")" ]; }
+# tap_contains <substring> - tap the centre of the first node whose text CONTAINS <substring>.
+# For controls whose label embeds a live count ("All 128 reviews · sort & search") - exact-match
+# tap_center can never hit those.
+tap_contains() {
+  local b cx cy
+  b="$(find_text_contains "$1")"; [ -z "$b" ] && return 1
+  cx="$(echo "$b" | sed -E 's/^\[([0-9]+),[0-9]+\]\[([0-9]+),[0-9]+\]$/\1 \2/' | awk '{print int(($1+$2)/2)}')"
+  cy="$(ycenter "$b")"
+  { [ -z "$cx" ] || [ -z "$cy" ]; } && return 1
+  $ADB shell input tap "$cx" "$cy" >/dev/null 2>&1; sleep 1; return 0
+}
 # ycenter <bounds>  - the vertical centre of an [x1,y1][x2,y2] bounds string.
 ycenter() { echo "$1" | sed -E 's/^\[[0-9]+,([0-9]+)\]\[[0-9]+,([0-9]+)\].*/\1 \2/' | awk '{print int(($1+$2)/2)}'; }
 # focus_and_ok <exact>  - press DOWN until the focused row vertically contains the node with that

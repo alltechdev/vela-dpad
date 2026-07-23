@@ -43,18 +43,19 @@ private val DarkColors = darkColorScheme(
     tertiary = VelaAmber,
 )
 
-// AMOLED: the dark scheme on TRUE BLACK surfaces (every lit pixel costs battery on OLED, and
-// pure black is its own look). Container roles step up in near-blacks so cards and the title bar
-// still read as layers; the thin borders on Settings cards carry the structure.
+// Black: the dark scheme on TRUE BLACK - every surface AND container role is #000000 ("black
+// should be black", user 2026-07-23; the earlier near-black stepping read as grey areas). The
+// hairline outlines and the Settings cards' thin borders carry ALL of the structure; nothing
+// separates by fill any more.
 private val AmoledColors = DarkColors.copy(
     background = androidx.compose.ui.graphics.Color(0xFF000000),
     surface = androidx.compose.ui.graphics.Color(0xFF000000),
     surfaceDim = androidx.compose.ui.graphics.Color(0xFF000000),
     surfaceContainerLowest = androidx.compose.ui.graphics.Color(0xFF000000),
-    surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF060809),
-    surfaceContainer = androidx.compose.ui.graphics.Color(0xFF0B0E0F),
-    surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF121617),
-    surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF191E1F),
+    surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF000000),
+    surfaceContainer = androidx.compose.ui.graphics.Color(0xFF000000),
+    surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF000000),
+    surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF000000),
 )
 
 /**
