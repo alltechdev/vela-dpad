@@ -85,7 +85,15 @@ echo "== Settings on a small screen (the tall one - every row + button must stay
 # markers vs the search row - makes scripted gear-reaching unreliable), that is NOT a vacuous pass and
 # NOT a misleading app FAIL: Settings D-pad operation is VERIFIED VISUALLY (tests/devices/: opens
 # focused on Back, DOWN enters the content list). So emit a NOTE, per "verified visually is the proof".
-if open_settings; then traverse_bounds "Settings" 26; key "$K_BACK" 1
+if open_settings; then
+  # The hub (the category list) plus one representative spoke - Settings is hub-and-spoke now, so
+  # clip-checking one long page no longer covers it; the spoke walk proves a sub-screen opens
+  # focused and stays clip-free at the small geometry too (the rest are the same SettingsScaffold).
+  traverse_bounds "Settings hub" 14
+  for _ in $(seq 1 16); do key "$K_UP"; done   # back to the top of the hub
+  key "$K_DOWN"; key "$K_OK" 1.5               # first hub row -> the Appearance spoke
+  traverse_bounds "Settings spoke (Appearance)" 12
+  key "$K_BACK" 1; key "$K_BACK" 1
 else echo "  NOTE Settings - harness could not script-navigate to the gear; VERIFIED VISUALLY instead (see tests/devices/, screenshots 02+06). Not a pass, not a fail."; fi
 
 echo "== place sheet on a small screen =="

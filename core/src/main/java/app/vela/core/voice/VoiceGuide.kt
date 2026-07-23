@@ -240,10 +240,7 @@ class VoiceGuide @Inject constructor(
             ready = true // the neural synth loads + queues internally
             working = neural != null
             neural?.warmUp()
-            while (pending.isNotEmpty()) {
-                val (text, interrupt) = pending.removeFirst()
-                speakNow(text, interrupt)
-            }
+            drainPendingLatest()
             return
         }
         useNeural = false
@@ -301,10 +298,19 @@ class VoiceGuide @Inject constructor(
         systemInitFailed = false
         lastSystemLang = null // force setLanguage on the first utterance
         if (!useNeural) { ready = true; working = true } // this system engine is the PRIMARY voice
-        while (pending.isNotEmpty()) {
-            val (text, interrupt) = pending.removeFirst()
-            speakNow(text, interrupt)
-        }
+        drainPendingLatest()
+    }
+
+    /** Speak only the MOST RECENT queued line when a voice (re-)attaches, never the whole backlog.
+     *  Prompts pile into [pending] while nothing can speak them - a drive begun with no voice
+     *  installed, then a voice installed mid-way - and replaying the entire pile dumps a burst of
+     *  stale, out-of-order instructions at once (upstream edb891b1; user 2026-07-20: "it
+     *  automatically started speaking ... random letters"). Only the latest line is still relevant,
+     *  and the live nav loop re-announces the current maneuver anyway. */
+    private fun drainPendingLatest() {
+        val last = pending.lastOrNull()
+        pending.clear()
+        last?.let { (text, interrupt) -> speakNow(text, interrupt) }
     }
 
     /** Pick the highest-quality voice for [lang] that works offline - engines
@@ -443,6 +449,9 @@ class VoiceGuide @Inject constructor(
         openerToken++ // cancel any deferred nav-start opener still waiting for its road name
         tts?.stop()
         neural?.stop()
+        // Drop queued-but-unspoken prompts: once guidance stops (nav end / mute), a backlog is stale
+        // and must not survive to be flushed later when a voice attaches (upstream edb891b1).
+        pending.clear()
         releaseAllFocus()
     }
 

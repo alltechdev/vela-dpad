@@ -60,6 +60,13 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import app.vela.R
 
+// How long an armed search field defends its focus against the overlay-open window churn (the
+// soft-key bar clearing steals focus to the Back arrow ~165 ms after it lands - device-measured
+// @240x320). Long enough to outlive the churn, short enough that a user's own key travel is
+// never fought - and deliberate navigation ends the window immediately anyway (fieldNavAway).
+private const val FIELD_SETTLE_MS = 700L
+private const val FIELD_SETTLE_STEPS = 14 // x50 ms = the settle window
+
 @Composable
 fun SearchBar(
     query: String,
@@ -91,9 +98,29 @@ fun SearchBar(
     // hasTouchscreen note below): a touchscreen/T9 phone needs it to type; a truly touchless
     // hardware-keyboard phone keeps it hidden so a shown IME can't swallow the BACK key.
     var fieldArmed by remember { mutableStateOf(false) }
+    // Focus-steal defence (device-measured @240x320, soft-key mode): arming DOES land focus on the
+    // field, but ~165 ms later the window churn from the overlay opening (the Yapchik soft-key bar
+    // clears when search opens - an Android View removal) STEALS it to the first focusable, the Back
+    // arrow - leaving the IME hidden and the field disabled, so a keypad user pressing "Search" could
+    // not type at all (logged: focus true -> stolen false -> disarm). So the arm holds a short SETTLE
+    // window during which (a) a blur does NOT disarm and (b) the arm effect re-requests focus - the
+    // same confirm-until-landed idiom as dpadAutoFocus, extended to confirm it STAYS. Deliberate
+    // navigation out of the field (DOWN into the rows, LEFT/RIGHT escape at the text ends, a submit)
+    // sets [fieldNavAway], which ends the settle window immediately so it never fights the user.
+    var fieldEverFocused by remember { mutableStateOf(false) }
+    var fieldFocused by remember { mutableStateOf(false) }
+    var fieldNavAway by remember { mutableStateOf(false) }
+    var armedAtMs by remember { mutableStateOf(0L) }
     val fieldFocus = remember { FocusRequester() }
-    // External open (a "Search" soft key): arming the field focuses it, which opens the overlay.
-    LaunchedEffect(armFieldSignal) { if (armFieldSignal > 0) fieldArmed = true }
+    // External open (a "Search" soft key): arming the field focuses it, which opens the overlay. Reset
+    // the latches each fresh arm so re-opening search arms cleanly.
+    LaunchedEffect(armFieldSignal) {
+        if (armFieldSignal > 0) {
+            fieldEverFocused = false; fieldNavAway = false
+            armedAtMs = android.os.SystemClock.uptimeMillis()
+            fieldArmed = true
+        }
+    }
     // The field is driven by a TextFieldValue (not the bare String) so we OWN the caret: on a D-pad
     // device LEFT/RIGHT then move the cursor WITHIN the text and only escape to Back/X at the ends
     // (issue #24 - L/R jumped straight out of the field). Kept in sync with the external String query
@@ -112,9 +139,21 @@ fun SearchBar(
     // the IME shown to enter text - hiding it left them unable to type at all (issue #24).
     val hasTouchscreen = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
     LaunchedEffect(fieldArmed) {
-        if (fieldArmed) {
-            runCatching { fieldFocus.requestFocus() }
-            if (hasTouchscreen) keyboard?.show() else keyboard?.hide()
+        if (!fieldArmed) return@LaunchedEffect
+        // Hold focus on the field through the settle window (see the focus-steal note above): request
+        // until it lands (a single requestFocus can race the overlay's first composition), re-raise the
+        // IME each time it lands, and re-request if the window churn steals it back off the field.
+        // Ends early the moment the user deliberately navigates away.
+        var landed = false
+        repeat(FIELD_SETTLE_STEPS) {
+            if (fieldNavAway) return@LaunchedEffect
+            if (fieldFocused) {
+                if (!landed) { landed = true; if (hasTouchscreen) keyboard?.show() else keyboard?.hide() }
+            } else {
+                landed = false
+                runCatching { fieldFocus.requestFocus() }
+            }
+            kotlinx.coroutines.delay(50)
         }
     }
     // Match the darker tone of the category chips (elevated chips sit on
@@ -163,7 +202,11 @@ fun SearchBar(
                                 .dpadHighlight(DpadRoundedCornerShape(20.dp))
                                 // dpadClickable, not clickable: a raw clickable here drew
                                 // Material's grey focus layer under the ring (docs/dpad.md).
-                                .dpadClickable { fieldArmed = true }
+                                .dpadClickable {
+                                    fieldEverFocused = false; fieldNavAway = false
+                                    armedAtMs = android.os.SystemClock.uptimeMillis()
+                                    fieldArmed = true
+                                }
                                 // Inset the text INSIDE the focus ring - with none, the first
                                 // letter started at the Box edge and the 2dp ring stroke drew
                                 // straight through it (keypad phones see this on every search).
@@ -196,7 +239,7 @@ fun SearchBar(
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+                    keyboardActions = KeyboardActions(onSearch = { fieldNavAway = true; onSearch() }),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -226,6 +269,7 @@ fun SearchBar(
                                 // D-pad (measured). Explicitly hand focus downward instead.
                                 dpadMode && ev.key == Key.DirectionDown -> {
                                     if (ev.type == KeyEventType.KeyDown) {
+                                        fieldNavAway = true // deliberate leave - end the settle window
                                         focusManager.moveFocus(FocusDirection.Down)
                                     }
                                     true
@@ -240,6 +284,9 @@ fun SearchBar(
                                         if (ev.key == Key.DirectionLeft) sel.start > 0
                                         else sel.end < fieldValue.text.length
                                     if (!canMove) {
+                                        // Falling through lets focus escape to Back / the clear X -
+                                        // a deliberate leave, so end the settle window.
+                                        if (ev.type == KeyEventType.KeyDown) fieldNavAway = true
                                         false
                                     } else {
                                         if (ev.type == KeyEventType.KeyDown) {
@@ -253,7 +300,19 @@ fun SearchBar(
                             }
                         }
                         .onFocusChanged {
-                            if (!it.isFocused) fieldArmed = false
+                            // Disarm only on a genuine leave: after the field has really held focus
+                            // (never on the initial "not focused yet" event the arming frame fires),
+                            // AND only once the settle window is over or the user deliberately
+                            // navigated away - a blur inside the window is the overlay-open focus
+                            // steal, which the arm effect reverses (see the focus-steal note above).
+                            fieldFocused = it.isFocused
+                            if (it.isFocused) {
+                                fieldEverFocused = true
+                            } else if (fieldEverFocused &&
+                                (fieldNavAway || android.os.SystemClock.uptimeMillis() - armedAtMs > FIELD_SETTLE_MS)
+                            ) {
+                                fieldArmed = false
+                            }
                             onFocusChange(it.isFocused)
                         },
                 )

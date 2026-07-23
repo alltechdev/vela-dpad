@@ -15,7 +15,16 @@ ADB="${ADB:-adb}"
 # are present (the dev workflow). Override with VELA_PKG. This mismatch was a silent, load-bearing bug:
 # a hardcoded app.vela made launch_fresh force-stop/monkey a NON-EXISTENT package (no-op), so Vela
 # never launched and the auditor drove whatever app was already foreground.
-PKG="${VELA_PKG:-$($ADB shell pm list packages 2>/dev/null | grep -oE 'app\.vela(\.restricted)?(\.debug)?$' | sort | tail -1)}"
+# PKG auto-detect prefers the STANDARD build: both flavors install side by side and a plain
+# `sort | tail -1` alphabetically picked app.vela.RESTRICTED.debug, so a run without VELA_PKG
+# silently drove the restricted app (device-found: the touch leg reported Place pages MISSED -
+# a false negative measuring the wrong binary). Restricted runs always set VELA_PKG explicitly;
+# the restricted fallback below only fires when it is the ONLY Vela installed.
+PKG="${VELA_PKG:-}"
+if [ -z "$PKG" ]; then
+  PKG="$($ADB shell pm list packages 2>/dev/null | grep -oE 'app\.vela(\.restricted)?(\.debug)?$' | grep -v restricted | sort | tail -1)"
+  [ -z "$PKG" ] && PKG="$($ADB shell pm list packages 2>/dev/null | grep -oE 'app\.vela(\.restricted)?(\.debug)?$' | sort | tail -1)"
+fi
 PKG="${PKG:-app.vela}"
 
 # ---- D-pad keycodes -------------------------------------------------------------------------
@@ -111,12 +120,15 @@ focus_ytop() {
 # find_text <exact>  - bounds of the first node whose text== <exact> (empty if not found).
 find_text() {
   ui_dump
+  # html.unescape: uiautomator XML-escapes attribute text ("Data source &amp; privacy"), so a raw
+  # compare can NEVER match a label containing & < > - device-found when the Settings hub's
+  # "Data source & privacy" row was unreachable by every text helper while plainly on screen.
   $ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
-import sys, re
+import sys, re, html
 d = sys.stdin.read(); want = sys.argv[1]
 for m in re.finditer(r"<node [^>]*>", d):
     s = m.group(0); t = re.search(r"text=\"([^\"]*)\"", s); b = re.search(r"bounds=\"([^\"]*)\"", s)
-    if t and t.group(1) == want:
+    if t and html.unescape(t.group(1)) == want:
         print(b.group(1) if b else ""); break
 ' "$1"
 }
@@ -136,6 +148,17 @@ for m in re.finditer(r"<node [^>]*>", d):
 }
 # on_screen_contains <substr>  - 0 (true) if any node's text contains <substr> (partial match).
 on_screen_contains() { [ -n "$(find_text_contains "$1")" ]; }
+# tap_contains <substring> - tap the centre of the first node whose text CONTAINS <substring>.
+# For controls whose label embeds a live count ("All 128 reviews · sort & search") - exact-match
+# tap_center can never hit those.
+tap_contains() {
+  local b cx cy
+  b="$(find_text_contains "$1")"; [ -z "$b" ] && return 1
+  cx="$(echo "$b" | sed -E 's/^\[([0-9]+),[0-9]+\]\[([0-9]+),[0-9]+\]$/\1 \2/' | awk '{print int(($1+$2)/2)}')"
+  cy="$(ycenter "$b")"
+  { [ -z "$cx" ] || [ -z "$cy" ]; } && return 1
+  $ADB shell input tap "$cx" "$cy" >/dev/null 2>&1; sleep 1; return 0
+}
 # ycenter <bounds>  - the vertical centre of an [x1,y1][x2,y2] bounds string.
 ycenter() { echo "$1" | sed -E 's/^\[[0-9]+,([0-9]+)\]\[[0-9]+,([0-9]+)\].*/\1 \2/' | awk '{print int(($1+$2)/2)}'; }
 # focus_and_ok <exact>  - press DOWN until the focused row vertically contains the node with that

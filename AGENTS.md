@@ -27,6 +27,34 @@ messages, UI strings, or script output. Plain text only. Also no em-dashes; writ
 plain human voice (commit subjects are the user-facing changelog). Use words like `PASS`/
 `FAIL`, not pictographs.
 
+## The verification bar: a UI change is "verified" ONLY when every box below is checked
+
+Phases passing + host gates green is NOT the bar - twice in one session (2026-07-23) a change
+was declared verified with boxes missing, and the user caught both. Before writing "verified":
+
+1. **Coverage phases - ONLY the phases the change touches, never the full tour.** The full
+   multi-hour matrix for a scoped change is a waste of device time and delays the verdict;
+   `PHASES="..."` exists precisely so a settings change re-runs ~5 min/leg, not ~40. Same
+   scoping on the OTHER axes: both flavors only when the change can differ between them, the
+   `SOFTKEYS=off` touch leg only when the change touches a surface the soft-key declutter
+   diverges (search bar, FABs, place-sheet buttons, Options menus) - a spoke-only settings
+   change does not need it. Run the touched phases at all 4 geometries; skip axes the change
+   provably cannot vary across, and SAY which were skipped and why.
+2. **Dynamic focus walk** of any changed/added settings spoke
+   (`AUDIT_SECTIONS=<Spoke> tests/dpad/audit_dynamic.sh`): every row takes focus in ORDER with
+   the orange ring on each stop. Reusing an enforced component does not waive this.
+3. **Ring evidence** for new focusable controls - a walk frame or ring_walk assertion, not an
+   inference from the component used.
+4. **Enumerate EVERY surface the change touches** and verify each one. A theme touches every
+   screen; a palette role touches every consumer; a shared component touches every caller. If
+   no phase reaches a touched surface, ADD ONE (same PR) - that is the fix-the-harness rule.
+5. **Eyeball the frames yourself**, show them in chat, and put grids in the PR body.
+6. **A/B against main** whenever a check fails - regression and pre-existing look identical
+   until you run the same check on main's build.
+
+State the boxes explicitly when declaring verification; if one is genuinely unmet, name it and
+why instead of letting "verified" slide.
+
 ## Visual verification (HARD RULE, NO EXCEPTIONS)
 
 **Anything a user can see MUST be verified VISUALLY, by looking at an actual on-device
@@ -77,6 +105,39 @@ NEVER the final word on UX. This is not optional and not satisfied by audits alo
   romanization, unit formatting) that means a throwaway probe printing input => output for a
   dozen realistic cases, including the ones where the same token means two different things.
   Whatever the probe catches becomes a permanent test before the probe is deleted.
+
+## Fix the harness, never work around it (HARD RULE, NO EXCEPTIONS)
+
+When the verification harness (`tests/devices/full_coverage.sh`, `tests/dpad/nav.sh`,
+`run_all.sh`, the small-screen suites) flakes or cannot reach a feature you built, the ONLY
+acceptable response is to **make the harness accommodate the feature** - never hand-capture the
+frames with ad-hoc `adb` commands and call it verified. Hand-grabbing frames leaves the harness
+permanently unable to prove the feature, so the next run flakes exactly the same way and the proof
+is gone the moment you stop babysitting it.
+
+- **Every new user-visible feature adds its own capture/`mark` step** in the relevant phase of
+  `full_coverage.sh`, wired to a check that can fail (see the section below). If the feature isn't
+  driven by the harness, it isn't done.
+- **Harden nav, don't route around it.** When the chip-search path raced the overlay and missed at
+  240x320, the fix was a typed-search fallback inside `run_coffee` (`type_search` in `nav.sh`) - the
+  reliable path a real user takes - NOT a one-off manual screenshot. Nav that races timing gets a
+  dump+find+tap loop or a fallback path, in the harness, so every future run benefits.
+- **A green harness is the deliverable, not a pile of PNGs.** If you found yourself typing `adb
+  input`/`screencap` by hand to prove something works, stop and put that flow into the harness first.
+
+## Refactors must not orphan resources (HARD RULE)
+
+The CI `Dead-resource audit (lint)` step fails the build on any unused `R.string`/drawable/etc. When
+a refactor removes the LAST usage of a string (e.g. the ASR rework dropped
+`settings_voice_search_model*`), you MUST in the same commit:
+
+- delete the string from `values/strings.xml` **and all 14 locale files** (`grep -rn <name>
+  app/src/main/res/values*/strings.xml` to catch every copy), then
+- re-run `python3 tools/check-translations.py --update` to re-record the lock, and
+- run `./gradlew :app:lintStandardDebug` locally - the same gate CI runs - before pushing.
+
+Removing a string's usage without removing the string turns CI red. Adding a string without wiring it
+into all locales turns the translation gate red. Do both halves, every time.
 
 ## Prove the check CAN fail (HARD RULE, NO EXCEPTIONS)
 
@@ -153,14 +214,37 @@ at a FEATURE-PHONE display size, not only on your dev phone's native panel. Non-
   **HARD RULE - one surface fails, re-run ONLY that phase, NEVER the whole leg.** A full leg is
   ~13-14 min (~35 min for both geometries); iterating a fix by re-running the whole tour is
   unacceptable waste. `PHASES=<phase> bash tests/devices/full_coverage.sh <id>` runs just that group -
-  a light phase (map/place) in ~1-2 min; the `settings` phase is the slow one (~9 min measured at
-  240x320) because its three deep sub-sections each dump-per-swipe scroll, so that swipe overhead is
-  the real bottleneck to optimize next. Every phase re-establishes its own state (no `pm clear` outside `firstrun`, each does
+  a light phase (map/place) in ~1-2 min; the `settings` phase walks the hub-and-spoke pages (one
+  tap per spoke + an in-spoke anchor assertion - the old ~9 min dump-per-swipe crawl through the
+  single long page is gone with that page). Every phase re-establishes its own state (no `pm clear` outside `firstrun`, each does
   `goto_map`; `place`/`directions` re-run search if needed), so any single phase runs standalone as
   long as the app is past first-run. Iterate the fix with `PHASES=<failing-phase>` at the ONE affected
   geometry/flavor; only once it passes, run the full leg (no `PHASES`) ONCE for the verdict. Do NOT
   re-run legs that already passed when the change cannot regress them - reason about blast radius
   first (e.g. a swipe-helper tweak can't regress a leg that already reached the section).
+  **HARD RULE - VERIFY A FEATURE BY ITS PHASES, NOT AD-HOC SHOTS AND NOT THE WHOLE MATRIX (added
+  2026-07-22, learned the hard way).** To verify a new/ported feature or a fix on device: (1) ADD its
+  surface to the relevant existing `full_coverage.sh` phase (or a new phase) IN THE SAME PR - a
+  feature with no phase capture is unverified by definition; (2) run `PHASES="<only the phases whose
+  surfaces the change touches>" bash tests/devices/full_coverage.sh <id>` at the target geometry, and
+  (3) EYEBALL those frames. Manually poking the app and screenshotting by hand is NOT a substitute for
+  the phased gate - it is slower, unrepeatable, and skips the checklist; the moment you catch yourself
+  driving the app with `input tap`/`input keyevent` to "verify" a surface, STOP and add/run its phase
+  instead. Equally: do NOT propose or run phases or geometries the change cannot affect - a
+  review-collapse edit needs `PHASES=place`, not the whole tour, and not every density variant. Scope
+  the run to blast radius; the matrix's job is device onboarding, not per-feature verification.
+  **Soft-key mode is the DEFAULT for on-device verification, never an afterthought.** `full_coverage`,
+  `run_all.sh`, and the small-screen suites all force `vela_force_dpad=1` (the keypad/soft-key layout)
+  in their setup - so the phased gate IS the soft-key run. Do not "verify" a surface only in the touch
+  layout and call it done: the soft-key layout declutters the search bar/FABs (#76) and routes actions
+  through the Options/Search soft keys, so it is a genuinely different surface. If a reviewer has to
+  ask "where are the soft keys / did you run soft-key", the verification was incomplete.
+  **Reinstall the freshly-built APK before verifying, and confirm the foreground package is the build
+  under test.** A `./gradlew assemble` does not install; testing a stale APK "verifies" nothing.
+  Multiple flavors/builds install side by side (`app.vela.debug`, `app.vela.restricted.debug`,
+  `app.vela.staging`), and D-pad BACK can drift the foreground to a different one - assert
+  `package="app.vela.<flavor>.debug"` in the uiautomator dump before trusting a frame (see the
+  package-drift note in `tests/devices/tcl-flip-2/findings.md`).
   **The IN-PROCESS self-coverage suite (`app/src/androidTest` SelfTourTest + `tests/devices/
   self_coverage.sh <id>`)** is the fast tour: ~10x quicker than full_coverage.sh for the surfaces
   it covers (36s vs ~6min at 240x320) and STRICTER - real focus-state assertions per D-pad step
@@ -387,6 +471,26 @@ issue #131 and then iterated there):
   BELOW the ambient POIs and flipped `iconIgnorePlacement` to false, so cameras always draw but
   claim their collision box - street names dodge the badge, POIs (placed earlier) still win on top.
 
+Verdicts from the 2026-07-22 post-#89 sweep (everything newer than the ported `137beea9`) -
+**do not re-attempt these without new evidence**:
+
+- **`6281d00f` "Fix search overlay vanishing while the field stays focused": NOT PORTED, the fork
+  cannot reach the bug.** Upstream's stuck state needs an interaction that trips the
+  results/selected collapse effect while the field NEVER loses focus; their trigger is the
+  long-press context menu on a recent row - a feature this fork has never ported (our only
+  long-press is the parking FAB). The fork already defends the mechanism itself: every overlay
+  action that can trip the collapse - `onPickSuggestion` / `onPickSaved` / `onPickRecent` /
+  `onPickRecentPlace` / `onPickShortcut` / submit (`MapScreen.kt` pick handlers) - calls
+  `focusManager.clearFocus()` FIRST, so the next field tap is a real focus change that reopens the
+  overlay. Porting would tie `searchOpen` to live field focus right next to the armed-field settle
+  window (docs/dpad.md), where the field intentionally blurs as D-pad focus walks the rows - real
+  interaction risk for an unreachable bug. **If the recents long-press menu is ever ported, port
+  `6281d00f` with it as a pair.**
+- **`5fce272f` (list editor Save button) + `b4caaf15` (list icon "Color" label): N/A** - the fork
+  has no custom lists.
+- **`df7de641` (em-dash style in upstream docs) + `36b37f42` (upstream F-Droid CI): N/A** - their
+  docs, their infra.
+
 Satellite batch (2026-07-14 port of upstream 68570ba6..bb271d94, applied as the net final
 state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 
@@ -536,6 +640,22 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     a pass, which is how a walk over a completely unringed map came back clean. Needs no device, takes
     a second. **Run it after touching the colour match, and wire it into CI** - it is the one check
     that fails when the checker itself breaks.
+- **Translation gate (`tools/check-translations.py`, in CI).** Three checks against
+  `res/values/strings.xml`: every translatable key PRESENT in all 14 locales, PLACEHOLDERS matching
+  (a `%d` fed a String is a crash), and translations not STALE.
+  - Staleness exists because this gate was green for a real bug. Five strings were renamed in
+    English so the speech-to-text model stopped sharing the name "Vela Voice" with the text-to-speech
+    voice; all 14 locales kept the old wording, so the collision the rename existed to remove
+    survived for every non-English user - and presence and placeholders both passed. **Editing
+    English text had no gate at all.** `tools/translations.lock.json` records a hash of each English
+    value and of each locale's value; when English moves and a locale does not, that locale is named.
+  - **Workflow when you edit English copy:** update the locales, then
+    `python3 tools/check-translations.py --update` and commit the lock with the change. A translation
+    that is legitimately unchanged (a brand name) is flagged once - confirm it reads right, --update.
+  - `--selftest` is the frozen negative control, on synthetic data, wired into CI ahead of the check
+    itself: it asserts the rule FAILS on an English-only edit and passes on the four look-alike cases
+    (both sides edited, nothing edited, a brand-new key, a pure re-indent). Same role as
+    `ring_walk.sh --selftest` - the check that fails when the checker breaks.
 - **Dead-code gate (three engines, all in CI, `main`).** ACCURACY IS THE CONTRACT: none may flag
   anything actually needed (a false positive is a bug; a false negative is tolerated).
   - `./gradlew :core:detekt :app:detekt` - parser-level dead code detekt finds and grep CANNOT:
@@ -1131,11 +1251,28 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     `MapLibreMap.scrollBy` isn't a thing in 11.x).
   - The PHONE runs nav (MapViewModel feeds NavSession) and speaks; the car is a display. Car-side
     search/route-start is a follow-up; untested on a real head unit yet.
-- **Settings ORDER is deliberate:** Appearance → Map (traffic/transit/3D) →
-  **Place pages** (ShowReviews / read-all-reviews / LoadPhotos) → Navigation (keep-screen-on,
-  traffic lights, vibrate-on-turns as FilterChips one per mode, demo LAST) → Voice → Offline →
-  Saved places → Data & privacy → Diagnostics → About/Support/Version(+updater). Put a new setting
-  in the section it serves, not at the end; place-content settings go under Place pages, not Map.
+- **Settings is HUB-AND-SPOKE (2026-07-22), and the hub ORDER is deliberate:** a short category
+  list (`ui/settings/SettingsHub.kt`) where each row opens its own sub-screen
+  (`ui/settings/sections/*.kt`), in this order: Appearance (theme/map style/units/language) →
+  Map (traffic/transit/3D) → **Place pages** (ShowReviews / read-all-reviews / LoadPhotos; the hub
+  row is hidden in restricted) → Navigation (keep-screen-on, traffic lights, vibrate-on-turns as
+  FilterChips one per mode, demo LAST) → Voice (engines + Voice library + Advanced) → Search
+  (voice search + ASR engines) → Offline → Saved places → Data & privacy → Diagnostics →
+  About(/Support/Version+updater). Put a new setting in the SPOKE it serves, not at the end;
+  place-content settings go under Place pages, not Map. **Every Settings page renders through
+  `SettingsScaffold`** (one copy of the Back auto-focus settle window + the two focus bridges + the
+  horizontal swallow - docs/dpad.md, incl. the second cold-open focus WALL found here); its
+  `topRow` modifier MUST land on the page's first focusable control. **Rows come from
+  `SettingsComponents.kt`** - `SettingsGroup` (accent SubHead over a PLAIN column - deliberately
+  NOT a card; containers everywhere read as clutter, user feedback 2026-07-23), `ToggleRow`
+  (hint inside the row, ring on the VelaSwitch track), `SelectableRow`, `GroupDivider` (hairline
+  between rows), `PageIntro` (plain page caption) - reuse them so the spokes stay uniform. The
+  hub rows carry thin outline borders; the scaffold's TopAppBar separates via the neutral
+  `surfaceContainerHigh` (a teal bar in light was rejected). Settings pages run a 44dp
+  `LocalMinimumInteractiveComponentSize` (compact density; rings pin to real control sizes).
+  Hint STRINGS are one tight line each (33 were cut to size across all 15 locales - keep new
+  hints short). The
+  onboarding offline prompt deep-links straight into the Offline spoke (`openOffline`).
 - **Nav UI style:** ManeuverBanner + NavControls are RoundedCornerShape(24/28dp)
   Cards with elevation 6dp, 54dp turn glyph, headlineMedium-bold distance, titleMedium-medium road
   name, FilledTonalIconButton for mute/steps. On screens under 500dp tall the banner runs COMPACT (36dp glyph, titleLarge distance, tighter padding - issue #41; every text line is maxLines-capped so a long arrive card can never bury the map). Keep new nav chrome on this treatment (no flat
@@ -1324,7 +1461,11 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 - **Light/dark is `AppTheme` (`ui/theme/AppTheme.kt`), not the OS.** Read the
   in-app theme with the composable **`isAppInDarkTheme()`** - never call
   `isSystemInDarkTheme()` directly in app UI (it ignores the user's Light/Dark/
-  System choice in Settings → Appearance). `AppTheme.mode` is a process-wide
+  System choice in Settings → Appearance). FOUR modes since 2026-07-23: SYSTEM /
+  LIGHT / DARK / **Black** (the dark scheme on true-black surfaces - the AMOLED mode, `AmoledColors`
+  in `Theme.kt`; `isAppInDarkTheme()` is true for it, so the map and every dark
+  branch follow automatically). Light mode uses soft teal-cast off-whites, never
+  pure white (user feedback - harsh). `AppTheme.mode` is a process-wide
   reactive `mutableStateOf` (same shape as `ui/Units`), persisted to
   `vela_settings`, `init()`-ed in `VelaApp`; flipping it recomposes the theme and
   reloads the map style (`VelaMapView`'s styleKey carries `dark=`).
@@ -1543,22 +1684,40 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     verify-gated, re-runnable) - never re-downloads.
   - **Voice search (speak a query into the search bar), two tiers.** `ui/VoiceSearch` (process-wide
     reactive holder, `init` in `VelaApp`) resolves the mic mode. **tier-1 on-device** =
-    `voice/WhisperRecognizer` (Whisper tiny int8 + Silero VAD via the SAME bundled sherpa-onnx AAR as
-    Piper - `OfflineRecognizer`/`Vad`; the wholesale `com.k2fsa.sherpa.onnx.**` R8 keep already covers
-    it) recording through `AudioRecord`; the model is `voice/AsrModel` (~58 MB, files in
-    `filesDir/asr/whisper-tiny/`). **tier-2** = a `RECOGNIZE_SPEECH` intent hand-off to an installed
-    voice-input app. The mic lives in `ui/search/SearchBar` (`onMic`, shown only when the mode isn't
-    NONE); the listening sheet is `ui/VoiceCaptureDialog` (raw D-pad-focusable `Dialog`, Done
-    auto-focuses); wiring + the RECORD_AUDIO launcher + the download-offer are in `MapScreen`; the
-    Settings -> Search section (toggle, model download/remove, engine picker) is in `SettingsScreen`.
+    `voice/WhisperRecognizer` (despite the name, it now loads ANY engine via the SAME bundled
+    sherpa-onnx AAR as Piper - `OfflineRecognizer`/`Vad`; the wholesale `com.k2fsa.sherpa.onnx.**` R8
+    keep already covers it) recording through `AudioRecord`. **tier-2** = a `RECOGNIZE_SPEECH` intent
+    hand-off to an installed voice-input app. The mic lives in `ui/search/SearchBar` (`onMic`, shown
+    only when the mode isn't NONE); the listening sheet is `ui/VoiceCaptureDialog` (raw
+    D-pad-focusable `Dialog`, Done auto-focuses); wiring + the RECORD_AUDIO launcher + the
+    download-offer are in `MapScreen`; the Settings -> Search per-engine picker is in `SettingsScreen`.
     Needs `RECORD_AUDIO` (manifest; asked at the mic tap).
+    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 / 118e7e8c /
+      137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`), `SENSE_VOICE`
+      (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Each is an OPTIONAL download to
+      `filesDir/asr/<id>/`; `active()` is the picked engine (pref `asr_engine`), `forRecognition(lang)`
+      falls back to Whisper when the pick can't do the app language. **Whisper stays the default and
+      the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =
+      `downloadAsrEngine(DEFAULT)`) so a feature phone is never pushed a heavier model. `isInstalled()`
+      = any engine installed AND not quarantined.
+    - **The crash-sentinel quarantine (issue #81) is PER ENGINE and TWO-STRIKE.** `WhisperRecognizer`
+      bumps `asr_load_strikes_<id>` before the native load and zeroes it after; TWO stranded loads in
+      a row = the process died inside sherpa-onnx's C++ parse both times, so it latches
+      `asr_model_bad_<id>` and deletes **that engine's** dir only. ONE stranded load is forgiven -
+      a process killed DURING the seconds-long load (user swipe-away, memory reclaim, a harness
+      force-stop) strands the counter exactly like a crash, and a single kill must not delete a
+      healthy 154 MB download (device-measured: the old one-strike rule silently deleted both
+      installed engines during a routine coverage run). A truncated SenseVoice must never quarantine
+      or delete Whisper. A fresh download of an engine clears its own keys (`clearQuarantine(engine)`).
     - **Model hosting: the `asr-models` GitHub release on THIS repo** (fixed-tag prerelease, like
-      `routing-graphs`/`building-overlays`; `AsrModel.URL`). **The archive MUST be a `.tar.bz2` whose
-      single top-level folder holds the 4 files** (`tiny-encoder.int8.onnx`, `tiny-decoder.int8.onnx`,
-      `tiny-tokens.txt`, `silero_vad.onnx`) - `KokoroInstaller.download` (reused for the ASR download)
-      unpacks bzip2 and RENAMES that inner folder to `AsrModel.dir`, so a `.tar.gz` or a flat/no-folder
-      archive would fail to install. (The mirror was re-packed from upstream's `.tar.gz`; drop the macOS
-      `._*` resource forks when re-packing.)
+      `routing-graphs`/`building-overlays`; `AsrEngine.url`). **Each archive MUST be a `.tar.bz2` whose
+      single top-level folder holds that engine's `files` list** (e.g. Whisper's `tiny-*.onnx` +
+      `silero_vad.onnx`; SenseVoice's `model.int8.onnx` + `tokens.txt` + VAD; Moonshine's
+      preprocess/encode/decode set + tokens + VAD) - `KokoroInstaller.download` unpacks bzip2 and
+      RENAMES that inner folder to `AsrEngine.dir`, so a `.tar.gz` or a flat/no-folder archive fails to
+      install. **The `silero_vad.onnx` VAD ships INSIDE every engine's archive** so each is
+      self-contained. The three mirrors were re-packed from upstream's `.tar.gz` to `.tar.bz2` (drop
+      the macOS `._*` resource forks when re-packing).
   - **Any large download (voice model, routing graph, building overlay) MUST NOT use the shared OkHttp
     client** - its `callTimeout(12s)` (scrape-bounding) aborts the body read mid-stream, `runCatching`
     eats it, and the asset SILENTLY never installs (no crash, no log). `KokoroInstaller`,
@@ -1658,7 +1817,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     move zeroing bearing/tilt/padding in a single snap (an animated level-out got cancelled
     mid-flight by the next camera write and left the browse map partially rotated);
   - reroutes are single-flight + cooldown + latch-clear-on-failure (a failed fetch must NOT kill
-    rerouting - the event is edge-triggered);
+    rerouting - the event is edge-triggered); and since the ffad5a6f port (2026-07-23) every
+    reroute/replan FETCH runs under a HARD 20 s deadline (`REROUTE_FETCH_TIMEOUT_MS`,
+    `withTimeoutOrNull` at BOTH NavSession fetch sites - deviation reroute AND the add-stop
+    replan, which holds the same single-flight job; upstream fixed only the first): the stacked
+    retry ladders could hold the latch for a minute on a flaky cell link, silently dropping every
+    new RerouteNeeded, and a reroute computed from a minute-old position is stale anyway;
   - WRONG-WAY heading term (upstream 14157b79): a moving fix coursing >60 deg against the route's
     local bearing counts as an off-route hit even INSIDE the distance corridor (a wrong turn onto a
     nearby-parallel road never latched on distance alone), and it resets `onRouteStreak` so the
@@ -1676,8 +1840,9 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     standard. A `navStartJob` guard makes Start re-entrancy-safe (double-tap spoke twice);
   - approach prompts are ~35 s / ~10 s out (were 25/8; floors unchanged so city/walking behaviour is
     byte-identical - upstream real-drive A/B vs Google, 43f67fdd);
-  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, all
-    unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
+  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, plus the
+    ffad5a6f singular-minute fix - "saving about a minute", never "1 minutes", in all 12
+    plural-marking tables with an every-table test - all unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
     2nd/3rd prompts drop the sign-destination tail (`NavStrings.repeatShort`); a MERGE announces at
     most twice; the first prompt speaks only the primary sign destination (`NavStrings.spokenSign`,
     colon-anchored to " toward " so times/addresses are safe); "Take exit 186" speaks as "take the
@@ -1704,6 +1869,11 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     separately ("Take exit 15"…"Keep right"…"Merge"). `RouteGeometry.consolidateExits` folds a ramp's
     immediately-following, <500 m-gapped FORK/MERGE run into the ramp maneuver (sums distances so they
     still tile the polyline; stops at any real turn / far gap) → one prompt. Unit-tested.
+    - **Cousin `RouteGeometry.rampReclass` (ported upstream 1aaa5c0c):** a SIGNLESS, DEAD-STRAIGHT
+      "on ramp" is a divided-road rename transition, not a ramp (OSM tags the transition way
+      `*_link`, OSRM emits "on ramp") - reclassified to "new name" BEFORE typing/phrasing so it
+      rides the rename path (silent CONTINUE, foldable). Deliberately narrow: straight/null
+      modifier only, and any sign destinations keep the ramp. Unit-tested.
     - **Sibling `RouteGeometry.foldRenames`** folds a pure-rename CONTINUE (OSRM `continue`/`new name`
       going straight, no genuine fork - "Oak Ave becomes Cathcart Way") into the PRECEDING maneuver
       so it's not its own banner card / step at all (NavEngine already silences its voice). Applied on

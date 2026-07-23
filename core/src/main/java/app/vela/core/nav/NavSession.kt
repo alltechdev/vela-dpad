@@ -221,8 +221,14 @@ class NavSession @Inject constructor(
         val gen = sessionGen
         rerouteJob?.cancel()
         rerouteJob = scope.launch {
-            val r = runCatching { dataSource.directions(loc, dest, mode, newRemaining.map { it.location }) }
-                .getOrNull()?.firstOrNull()?.takeIf { it.reaches(dest) }
+            // Same HARD DEADLINE as the deviation reroute (fork extension of upstream ffad5a6f):
+            // this replan holds the same single-flight rerouteJob, so a hung fetch here jams
+            // deviation rerouting identically. The stop is already in the plan, so a timed-out
+            // fetch loses nothing - the next reroute/recheck routes through it.
+            val r = kotlinx.coroutines.withTimeoutOrNull(REROUTE_FETCH_TIMEOUT_MS) {
+                runCatching { dataSource.directions(loc, dest, mode, newRemaining.map { it.location }) }
+                    .getOrNull()?.firstOrNull()?.takeIf { it.reaches(dest) }
+            }
             if (gen != sessionGen) return@launch
             if (r == null) {
                 diag.record("nav", "add-stop reroute FAILED - stop kept, next reroute/recheck retries")
@@ -507,8 +513,18 @@ class NavSession @Inject constructor(
             // A reroute that doesn't actually reach the destination is a bad result - keep guiding on the
             // current route rather than swapping to a truncated/wrong one. (Guard unchanged: the route still
             // ends at the same final dest even with waypoints in between.)
-            val r = runCatching { dataSource.directions(loc, dest, mode, remainingStops.map { it.location }) }
-                .getOrNull()?.firstOrNull()?.takeIf { it.reaches(dest) }
+            // HARD DEADLINE on the fetch (upstream ffad5a6f, real-drive hang): directions() stacks
+            // retry ladders (OSRM 3x + Google 3x, each with its own timeout, plus the traffic
+            // snap), so a flaky cell link could hold this job for a minute or more - and the
+            // single-flight guard drops every new RerouteNeeded while it runs, which read as "the
+            // second reroute hung" (the driver had to kill nav). A reroute computed from a
+            // position that old is stale anyway; past the deadline, fail into the same
+            // retry-while-deviated path below so the next qualifying fix fires a FRESH request
+            // from where the car actually is.
+            val r = kotlinx.coroutines.withTimeoutOrNull(REROUTE_FETCH_TIMEOUT_MS) {
+                runCatching { dataSource.directions(loc, dest, mode, remainingStops.map { it.location }) }
+                    .getOrNull()?.firstOrNull()?.takeIf { it.reaches(dest) }
+            }
             if (gen != sessionGen) return@launch // session ended / restarted while fetching - drop it
             // BACK ON COURSE: while we were fetching (~1-3 s), did the driver return to the ORIGINAL route?
             // A U-turn (or any wobble) fires RerouteNeeded, but by the time the fetch lands the driver has
@@ -582,6 +598,10 @@ class NavSession @Inject constructor(
         const val MIN_RECHECK_DISTANCE_M = 1_500.0 // don't bother near the destination
         const val FASTER_THRESHOLD_S = 90.0        // only offer if it saves real time
         const val REROUTE_COOLDOWN_MS = 10_000L    // min gap between ADOPTED reroutes (no reroute storms)
+        // Deadline on one reroute/replan FETCH (upstream ffad5a6f): generous next to Google's
+        // 1-3 s but far under the retry ladders' worst case; past it the position the request was
+        // computed from is stale anyway.
+        const val REROUTE_FETCH_TIMEOUT_MS = 20_000L
         const val REROUTE_SPEAK_MIN_MS = 30_000L   // "Rerouting" spoken at most this often (retries are silent)
         const val BACK_ON_COURSE_HITS = 2          // consecutive on-corridor fixes before an in-flight reroute
                                                    // is abandoned as "back on course" - >1 so a single grazing

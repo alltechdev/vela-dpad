@@ -62,8 +62,9 @@ done
 echo "== a Settings confirmation dialog (delete-voice / consent) on the small screen =="
 goto_map; focus_search_bar; key "$K_RIGHT"; key "$K_OK" 1.5
 if on_screen "Appearance"; then
-  # Diagnostics export shows a consent VelaDialog with checkboxes (the tallest dialog) - reach it.
-  if focus_and_ok "Export debug logs" || focus_and_ok "Export logs" || focus_and_ok "Diagnostics"; then
+  # Settings is hub-and-spoke: enter the Diagnostics spoke via its hub row, then flip the share
+  # toggle - its consent VelaDialog (checkboxes) is the tallest Settings dialog.
+  if focus_and_ok "Diagnostics" && { sleep 1; focus_and_ok "Share diagnostics"; }; then
     sleep 1
     if on_screen_contains "iagnostic" || on_screen "Cancel"; then
       assert_focus_on_screen "diagnostics consent dialog"
