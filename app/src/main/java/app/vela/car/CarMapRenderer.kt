@@ -330,7 +330,15 @@ class CarMapRenderer(
             .let { if (styleJson != null) it.withStyleJson(styleJson) else it.withStyle(MapStyle.LIBERTY.uri) }
             .withPixelRatio(1.0f)
             .withLogo(false)
-        snapshotter = runCatching { MapSnapshotter(carContext, opts) }.getOrNull()
+        // Subclass with a no-op addOverlay (the protected hook that stamps the logo + the
+        // "(c) OpenFreeMap / OpenMapTiles / OpenStreetMap" text onto every snapshot): no on-map
+        // attribution on the car surface (user request). The ODbL credit stays in Settings ->
+        // About - the space-constrained placement OSM's attribution guidance allows.
+        snapshotter = runCatching {
+            object : MapSnapshotter(carContext, opts) {
+                override fun addOverlay(snapshot: org.maplibre.android.snapshotter.MapSnapshot) = Unit
+            }
+        }.getOrNull()
         snapWidth = width; snapHeight = height; snapNight = night; snapTraffic = traffic
         requestRender()
     }

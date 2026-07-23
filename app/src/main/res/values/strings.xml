@@ -35,6 +35,7 @@
     <string name="settings_appearance_hint">Light/Dark applies to Vela only. It won\'t touch your phone\'s system theme.</string>
     <string name="settings_map_style">Map style</string>
     <string name="settings_map_style_hint">OpenFreeMap (the default) is keyless and detailed.</string>
+    <string name="settings_map_attribution" translatable="false">Map data © OpenStreetMap contributors · tiles OpenFreeMap / OpenMapTiles</string>
     <string name="settings_units">Units</string>
     <string name="settings_units_imperial">Imperial (miles, feet)</string>
     <string name="settings_units_metric">Metric (kilometers, meters)</string>
