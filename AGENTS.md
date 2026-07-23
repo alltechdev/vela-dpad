@@ -27,6 +27,34 @@ messages, UI strings, or script output. Plain text only. Also no em-dashes; writ
 plain human voice (commit subjects are the user-facing changelog). Use words like `PASS`/
 `FAIL`, not pictographs.
 
+## The verification bar: a UI change is "verified" ONLY when every box below is checked
+
+Phases passing + host gates green is NOT the bar - twice in one session (2026-07-23) a change
+was declared verified with boxes missing, and the user caught both. Before writing "verified":
+
+1. **Coverage phases - ONLY the phases the change touches, never the full tour.** The full
+   multi-hour matrix for a scoped change is a waste of device time and delays the verdict;
+   `PHASES="..."` exists precisely so a settings change re-runs ~5 min/leg, not ~40. Same
+   scoping on the OTHER axes: both flavors only when the change can differ between them, the
+   `SOFTKEYS=off` touch leg only when the change touches a surface the soft-key declutter
+   diverges (search bar, FABs, place-sheet buttons, Options menus) - a spoke-only settings
+   change does not need it. Run the touched phases at all 4 geometries; skip axes the change
+   provably cannot vary across, and SAY which were skipped and why.
+2. **Dynamic focus walk** of any changed/added settings spoke
+   (`AUDIT_SECTIONS=<Spoke> tests/dpad/audit_dynamic.sh`): every row takes focus in ORDER with
+   the orange ring on each stop. Reusing an enforced component does not waive this.
+3. **Ring evidence** for new focusable controls - a walk frame or ring_walk assertion, not an
+   inference from the component used.
+4. **Enumerate EVERY surface the change touches** and verify each one. A theme touches every
+   screen; a palette role touches every consumer; a shared component touches every caller. If
+   no phase reaches a touched surface, ADD ONE (same PR) - that is the fix-the-harness rule.
+5. **Eyeball the frames yourself**, show them in chat, and put grids in the PR body.
+6. **A/B against main** whenever a check fails - regression and pre-existing look identical
+   until you run the same check on main's build.
+
+State the boxes explicitly when declaring verification; if one is genuinely unmet, name it and
+why instead of letting "verified" slide.
+
 ## Visual verification (HARD RULE, NO EXCEPTIONS)
 
 **Anything a user can see MUST be verified VISUALLY, by looking at an actual on-device
@@ -1052,7 +1080,7 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   in-app theme with the composable **`isAppInDarkTheme()`** - never call
   `isSystemInDarkTheme()` directly in app UI (it ignores the user's Light/Dark/
   System choice in Settings → Appearance). FOUR modes since 2026-07-23: SYSTEM /
-  LIGHT / DARK / **AMOLED** (the dark scheme on true-black surfaces, `AmoledColors`
+  LIGHT / DARK / **Black** (the dark scheme on true-black surfaces - the AMOLED mode, `AmoledColors`
   in `Theme.kt`; `isAppInDarkTheme()` is true for it, so the map and every dark
   branch follow automatically). Light mode uses soft teal-cast off-whites, never
   pure white (user feedback - harsh). `AppTheme.mode` is a process-wide

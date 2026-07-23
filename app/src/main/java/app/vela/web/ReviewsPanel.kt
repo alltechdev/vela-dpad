@@ -473,9 +473,11 @@ private fun buildPanelWebView(
  * Maintenance passes keep re-applying for a while (the SPA re-attaches chrome on interaction).
  */
 private fun carveScript(dark: Boolean, fullScreen: Boolean): String {
-    // Vela's own sheet colour (SheetPalette Dark/Light) - the panel matches it EXACTLY so there's
-    // no seam with the surrounding place sheet.
-    val bg = if (dark) "#1f1f1f" else "#ffffff"
+    // Vela's own sheet colour - the panel matches SheetPalette.bg() EXACTLY so there's no seam
+    // with the surrounding place sheet (incl. the AMOLED true-black variant).
+    val bg = if (dark) {
+        if (app.vela.ui.theme.AppTheme.mode.value == app.vela.ui.theme.ThemeMode.AMOLED) "#000000" else "#1f1f1f"
+    } else "#ffffff"
     // Dark = a scoped invert on the PANEL CONTENT ONLY (main), NOT its background. The Vela colour
     // lives on <body> (which the filter doesn't touch - it's on main), and main + every ancestor
     // are made transparent so that colour is the panel's backdrop; only Google's content inverts.

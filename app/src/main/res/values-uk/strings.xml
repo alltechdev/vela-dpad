@@ -16,7 +16,7 @@
     <string name="settings_follow_system">Як у системі</string>
     <string name="settings_theme_light">Світла</string>
     <string name="settings_theme_dark">Темна</string>
-    <string name="settings_theme_amoled">AMOLED-чорний</string>
+    <string name="settings_theme_amoled">Чорний</string>
     <string name="settings_appearance_hint">Світла/темна тема застосовується лише до Vela - системна тема телефона не змінюється.</string>
     <string name="settings_map_style">Стиль карти</string>
     <string name="settings_map_style_hint">OpenFreeMap (типово) детальна і не потребує ключа.</string>

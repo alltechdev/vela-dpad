@@ -295,6 +295,12 @@ dependencies {
     // stays UI-agnostic.
     implementation(libs.maplibre.android)
     implementation(libs.androidx.car.app) // Android Auto (projection): templates + car surface
+    // The PROJECTED HOST CONNECTOR - without it Android Auto never lists the app: the host
+    // discovers a car app through the CarAppMetadataHolderService this artifact merges into the
+    // manifest, not through our own service declaration alone (official car-app docs: app-projected
+    // is the Android Auto artifact). The first-cut port shipped only the base :app template
+    // library, which is why Vela has never appeared in an AA launcher (device report, OnePlus 12).
+    implementation(libs.androidx.car.app.projected)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

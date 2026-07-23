@@ -16,7 +16,7 @@
     <string name="settings_follow_system">Följ systemet</string>
     <string name="settings_theme_light">Ljust</string>
     <string name="settings_theme_dark">Mörkt</string>
-    <string name="settings_theme_amoled">AMOLED-svart</string>
+    <string name="settings_theme_amoled">Svart</string>
     <string name="settings_appearance_hint">Ljust/Mörkt gäller endast Vela, det påverkar inte telefonens systemtema.</string>
     <string name="settings_map_style">Kartstil</string>
     <string name="settings_map_style_hint">OpenFreeMap (standard) ar nyckellost och detaljerat.</string>

@@ -16,7 +16,7 @@
     <string name="settings_follow_system">Suivre le système</string>
     <string name="settings_theme_light">Clair</string>
     <string name="settings_theme_dark">Sombre</string>
-    <string name="settings_theme_amoled">Noir AMOLED</string>
+    <string name="settings_theme_amoled">Noir</string>
     <string name="settings_appearance_hint">Le mode clair/sombre s\'applique uniquement à Vela - il ne modifie pas le thème système de votre téléphone.</string>
     <string name="settings_map_style">Style de carte</string>
     <string name="settings_map_style_hint">OpenFreeMap (par defaut) est sans cle et detaille.</string>

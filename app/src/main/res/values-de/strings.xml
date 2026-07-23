@@ -16,7 +16,7 @@
     <string name="settings_follow_system">System folgen</string>
     <string name="settings_theme_light">Hell</string>
     <string name="settings_theme_dark">Dunkel</string>
-    <string name="settings_theme_amoled">AMOLED-Schwarz</string>
+    <string name="settings_theme_amoled">Schwarz</string>
     <string name="settings_appearance_hint">Hell/Dunkel gilt nur für Vela, das System-Design Ihres Telefons wird nicht verändert.</string>
     <string name="settings_map_style">Kartenstil</string>
     <string name="settings_map_style_hint">OpenFreeMap (Standard) ist schluessellos und detailliert.</string>

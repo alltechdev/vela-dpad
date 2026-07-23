@@ -16,7 +16,7 @@
     <string name="settings_follow_system">לפי הגדרת המערכת</string>
     <string name="settings_theme_light">בהיר</string>
     <string name="settings_theme_dark">כהה</string>
-    <string name="settings_theme_amoled">שחור AMOLED</string>
+    <string name="settings_theme_amoled">שחור</string>
     <string name="settings_appearance_hint">חל על Vela בלבד.</string>
     <string name="settings_map_style">סגנון מפה</string>
     <string name="settings_map_style_hint">OpenFreeMap (ברירת המחדל) מפורט ואינו דורש מפתח.</string>

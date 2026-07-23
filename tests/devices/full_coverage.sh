@@ -18,7 +18,7 @@
 #   SOFTKEYS=off bash ... sonim-x320   # the TOUCH layout (search bar/gear/Park FAB on screen) -> full-touch/
 #   DENS=225     bash ... sonim-x320   # the reported 480x854 @ 225 dpi variant -> full-dens225/
 # (Both write to their own dir so they never clobber the default soft-key/@320 committed goldens.)
-# Phases: firstrun map search place directions settings voice parking. A partial run reports
+# Phases: firstrun map search place directions settings voice parking blacktheme. A partial run reports
 # PARTIAL, not a verdict - only a full run (no PHASES) can call a device FULLY COVERED.
 # RULE: every NEW feature adds its surfaces as its OWN phase here (own numbered frames), so
 # verifying it on a device never needs the full tour.
@@ -53,7 +53,7 @@ cover_one() {
   # redoing the whole ~13 min tour (e.g. PHASES=settings to iterate just the deep Settings sub-sections).
   # Each phase pins its own screenshot NUMBER base, so a subset writes the SAME 01..16 filenames a full
   # run would - a partial run overwrites only its slice and leaves the rest in place. Default = all.
-  local ALLPHASES="firstrun map search place streetview directions settings voice parking softkey"
+  local ALLPHASES="firstrun map search place streetview directions settings voice parking softkey blacktheme"
   local phases="${PHASES:-$ALLPHASES}" full=0; [ "$phases" = "$ALLPHASES" ] && full=1
   phase() { case " $phases " in *" $1 "*) return 0;; *) return 1;; esac; }
   # Flavor-aware output: a run against the RESTRICTED flavor writes to its own directory so it can
@@ -281,7 +281,7 @@ cover_one() {
       return 0
     }
     if set_theme "Light"; then mark "settings-theme-light" 1; else mark "settings-theme-light" 0; fi
-    if set_theme "AMOLED black"; then mark "settings-theme-amoled" 1; else mark "settings-theme-amoled" 0; fi
+    if set_theme "Black"; then mark "settings-theme-amoled" 1; else mark "settings-theme-amoled" 0; fi
     set_theme "Follow system" || true
     key "$K_BACK" 1
   else
@@ -292,6 +292,56 @@ cover_one() {
     case "${VELA_PKG:-}" in *restricted*) na "settings-place-pages" "not in the restricted build" ;; *) mark "settings-place-pages" 0 ;; esac
   fi
   fi  # phase settings
+
+  # --- Black theme, app-wide surfaces ---------------------------------------------------------
+  # "App-wide AMOLED black" is a claim about MORE than Settings: the place sheet's backgrounds
+  # (SheetPalette Amoled/RowAmoled), the reviews carve, and the soft-key bar all flip to true
+  # black. The settings phase only proves the theme PICKER; this phase flips Black on, walks
+  # those surfaces, records them, and flips back. Frames 57+ (after the settings phase's 41-55).
+  if phase blacktheme; then i=56
+  pick_theme() {  # <label> - open Settings, enter Appearance, tap the theme, back out to the map
+    open_settings || return 1
+    { on_screen "Appearance" || swipe_up_to "Appearance" 4; } || { key "$K_BACK" 1; return 1; }
+    tap_center "Appearance" || { key "$K_BACK" 1; return 1; }; sleep 1
+    { on_screen "$1" || swipe_up_to "$1" 6; } || { key "$K_BACK" 1; key "$K_BACK" 1; return 1; }
+    tap_center "$1" || { key "$K_BACK" 1; key "$K_BACK" 1; return 1; }
+    sleep 1.5; key "$K_BACK" 1; sleep 0.5; key "$K_BACK" 1; sleep 1
+    return 0
+  }
+  if pick_theme "Black"; then
+    goto_map; softkeys_shown && key "$K_DOWN"
+    mark "black-bare-map" 1                                    # soft-key bar (black) in frame
+    if run_coffee; then
+      mark "black-search-results" 1
+      open_first_place; mark "black-place-sheet" 1             # SheetPalette.bg = #000000
+      key "$K_OK" 1; mark "black-place-sheet-expanded" 1       # rows on RowAmoled #141414
+      # The reviews CARVE (#000000) lives on the standard flavor's Read-all-reviews page; a place
+      # with no reviews button (or the restricted build, which drops reviews) is n/a, not a miss.
+      case "${VELA_PKG:-}" in
+        *restricted*) na "black-reviews" "reviews not in the restricted build" ;;
+        *)
+          # The button label embeds a live count ("All 128 reviews · sort & search") - contains-
+          # match on the stable tail. Swipe manually (swipe_up_to is exact-match only).
+          rv=0
+          for _ in $(seq 1 24); do
+            on_screen_contains "sort & search" && { rv=1; break; }
+            $ADB shell input swipe "$((SW / 2))" "$((SH * 6 / 10))" "$((SW / 2))" "$((SH * 4 / 10))" 700 >/dev/null 2>&1
+            sleep 0.6
+          done
+          if [ "$rv" = 1 ] && tap_contains "sort & search"; then
+            sleep 4; mark "black-reviews" 1; key "$K_BACK" 1.5
+          else na "black-reviews" "no reviews button on this place"; fi ;;
+      esac
+      key "$K_BACK" 1
+    else
+      mark "black-search-results" 0; mark "black-place-sheet" 0; mark "black-place-sheet-expanded" 0
+      mark "black-reviews" 0
+    fi
+    pick_theme "Follow system" || true
+  else
+    for s2 in bare-map search-results place-sheet place-sheet-expanded reviews; do mark "black-$s2" 0; done
+  fi
+  fi  # phase blacktheme
 
   # --- Voice search (mic + capture sheet) ------------------------------------------------------
   if phase voice; then i=22
