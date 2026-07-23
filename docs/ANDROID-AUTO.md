@@ -29,6 +29,8 @@ below.
 ## What works in the car
 
 - **Browse map** with the styled Vela basemap, puck, camera follow, pan/zoom.
+  At night (the car's own day/night signal) the map switches to the real dark
+  palette - the same one the phone's dark theme uses - not a darkened filter.
 - **Search** (keyboard on the head unit) with results biased to your location;
   tapping a result opens the route preview.
 - **Voice search** on head units with Car API level 5+: a mic action on both

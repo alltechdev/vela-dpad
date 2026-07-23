@@ -65,6 +65,11 @@ class CarMapRenderer(
     private var height = 0
 
     private var snapshotter: MapSnapshotter? = null
+    // True when the snapshotter carries the REAL dark style (CarNightStyle) - the tint-filter
+    // fallback only applies when this is false. snapNight = the day/night state the current
+    // snapshotter was built for, so a mid-session flip rebuilds it with the other palette.
+    private var nightStyled = false
+    private var snapNight = false
     private var snapWidth = 0
     private var snapHeight = 0
     private var lastSnapshot: MapSnapshot? = null
@@ -291,7 +296,8 @@ class CarMapRenderer(
         // snapshotter each time span up a fresh `vela-car-map` virtual display and reloaded the whole
         // style (the repeated CompositionEngine createDisplay churn = a visible map flash/reload).
         val s = snapshotter
-        if (s != null && snapWidth == width && snapHeight == height) {
+        val night = isNight()
+        if (s != null && snapWidth == width && snapHeight == height && snapNight == night) {
             requestRender()
             return
         }
@@ -305,12 +311,17 @@ class CarMapRenderer(
             runCatching { java.io.File(effectiveStyle.removePrefix("file://")).readText() }
                 .getOrNull()?.takeIf { it.isNotBlank() }
         } else null
+        // Night: the REAL dark palette (the phone's applyDark, as a JSON transform) when we hold
+        // the style JSON; a failed/unavailable transform falls back to the draw-time tint filter.
+        val darkJson = if (night) patchedJson?.let(CarNightStyle::darken) else null
+        nightStyled = darkJson != null
+        val styleJson = darkJson ?: patchedJson
         val opts = MapSnapshotter.Options(width, height)
-            .let { if (patchedJson != null) it.withStyleJson(patchedJson) else it.withStyle(MapStyle.LIBERTY.uri) }
+            .let { if (styleJson != null) it.withStyleJson(styleJson) else it.withStyle(MapStyle.LIBERTY.uri) }
             .withPixelRatio(1.0f)
             .withLogo(false)
         snapshotter = runCatching { MapSnapshotter(carContext, opts) }.getOrNull()
-        snapWidth = width; snapHeight = height
+        snapWidth = width; snapHeight = height; snapNight = night
         requestRender()
     }
 
@@ -399,7 +410,7 @@ class CarMapRenderer(
         val canvas: Canvas = try { s.lockCanvas(null) } catch (t: Throwable) { return }
         try {
             if (bmp != null) {
-                val paint = if (isNight()) nightBitmapPaint else dayBitmapPaint
+                val paint = if (isNight() && !nightStyled) nightBitmapPaint else dayBitmapPaint
                 canvas.drawBitmap(bmp, Rect(0, 0, bmp.width, bmp.height), Rect(0, 0, width, height), paint)
             } else {
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)

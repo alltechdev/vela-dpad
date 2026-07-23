@@ -2588,6 +2588,9 @@ internal fun applyLight(style: Style) {
 }
 
 /** Google-Maps-dark-ish palette applied over the OpenMapTiles layers. */
+// NB the Android Auto night map mirrors this exact palette as a style-JSON transform
+// (app/car/CarNightStyle.darken - the snapshotter has no live Style to mutate). A colour or
+// layer-list change here must be mirrored there, or the car's night map drifts from the phone's.
 internal fun applyDark(style: Style) {
     style.getLayer("background")?.setProperties(PropertyFactory.backgroundColor("#242f3e"))
     style.getLayer("water")?.setProperties(PropertyFactory.fillColor("#17263c"))
