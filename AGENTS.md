@@ -27,6 +27,34 @@ messages, UI strings, or script output. Plain text only. Also no em-dashes; writ
 plain human voice (commit subjects are the user-facing changelog). Use words like `PASS`/
 `FAIL`, not pictographs.
 
+## The verification bar: a UI change is "verified" ONLY when every box below is checked
+
+Phases passing + host gates green is NOT the bar - twice in one session (2026-07-23) a change
+was declared verified with boxes missing, and the user caught both. Before writing "verified":
+
+1. **Coverage phases - ONLY the phases the change touches, never the full tour.** The full
+   multi-hour matrix for a scoped change is a waste of device time and delays the verdict;
+   `PHASES="..."` exists precisely so a settings change re-runs ~5 min/leg, not ~40. Same
+   scoping on the OTHER axes: both flavors only when the change can differ between them, the
+   `SOFTKEYS=off` touch leg only when the change touches a surface the soft-key declutter
+   diverges (search bar, FABs, place-sheet buttons, Options menus) - a spoke-only settings
+   change does not need it. Run the touched phases at all 4 geometries; skip axes the change
+   provably cannot vary across, and SAY which were skipped and why.
+2. **Dynamic focus walk** of any changed/added settings spoke
+   (`AUDIT_SECTIONS=<Spoke> tests/dpad/audit_dynamic.sh`): every row takes focus in ORDER with
+   the orange ring on each stop. Reusing an enforced component does not waive this.
+3. **Ring evidence** for new focusable controls - a walk frame or ring_walk assertion, not an
+   inference from the component used.
+4. **Enumerate EVERY surface the change touches** and verify each one. A theme touches every
+   screen; a palette role touches every consumer; a shared component touches every caller. If
+   no phase reaches a touched surface, ADD ONE (same PR) - that is the fix-the-harness rule.
+5. **Eyeball the frames yourself**, show them in chat, and put grids in the PR body.
+6. **A/B against main** whenever a check fails - regression and pre-existing look identical
+   until you run the same check on main's build.
+
+State the boxes explicitly when declaring verification; if one is genuinely unmet, name it and
+why instead of letting "verified" slide.
+
 ## Visual verification (HARD RULE, NO EXCEPTIONS)
 
 **Anything a user can see MUST be verified VISUALLY, by looking at an actual on-device
@@ -1092,7 +1120,7 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   in-app theme with the composable **`isAppInDarkTheme()`** - never call
   `isSystemInDarkTheme()` directly in app UI (it ignores the user's Light/Dark/
   System choice in Settings → Appearance). FOUR modes since 2026-07-23: SYSTEM /
-  LIGHT / DARK / **AMOLED** (the dark scheme on true-black surfaces, `AmoledColors`
+  LIGHT / DARK / **Black** (the dark scheme on true-black surfaces - the AMOLED mode, `AmoledColors`
   in `Theme.kt`; `isAppInDarkTheme()` is true for it, so the map and every dark
   branch follow automatically). Light mode uses soft teal-cast off-whites, never
   pure white (user feedback - harsh). `AppTheme.mode` is a process-wide
@@ -1447,7 +1475,12 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     move zeroing bearing/tilt/padding in a single snap (an animated level-out got cancelled
     mid-flight by the next camera write and left the browse map partially rotated);
   - reroutes are single-flight + cooldown + latch-clear-on-failure (a failed fetch must NOT kill
-    rerouting - the event is edge-triggered);
+    rerouting - the event is edge-triggered); and since the ffad5a6f port (2026-07-23) every
+    reroute/replan FETCH runs under a HARD 20 s deadline (`REROUTE_FETCH_TIMEOUT_MS`,
+    `withTimeoutOrNull` at BOTH NavSession fetch sites - deviation reroute AND the add-stop
+    replan, which holds the same single-flight job; upstream fixed only the first): the stacked
+    retry ladders could hold the latch for a minute on a flaky cell link, silently dropping every
+    new RerouteNeeded, and a reroute computed from a minute-old position is stale anyway;
   - WRONG-WAY heading term (upstream 14157b79): a moving fix coursing >60 deg against the route's
     local bearing counts as an off-route hit even INSIDE the distance corridor (a wrong turn onto a
     nearby-parallel road never latched on distance alone), and it resets `onRouteStreak` so the
@@ -1465,8 +1498,9 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     standard. A `navStartJob` guard makes Start re-entrancy-safe (double-tap spoke twice);
   - approach prompts are ~35 s / ~10 s out (were 25/8; floors unchanged so city/walking behaviour is
     byte-identical - upstream real-drive A/B vs Google, 43f67fdd);
-  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, all
-    unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
+  - VOICE HONESTY (upstream a0a87996/570ffd6c/317e736e/603ebc9b/8d9abf1f voice slices, plus the
+    ffad5a6f singular-minute fix - "saving about a minute", never "1 minutes", in all 12
+    plural-marking tables with an every-table test - all unit-tested): sub-mile spoken distances use quarter-mile fractions ("In half a mile"); a step's
     2nd/3rd prompts drop the sign-destination tail (`NavStrings.repeatShort`); a MERGE announces at
     most twice; the first prompt speaks only the primary sign destination (`NavStrings.spokenSign`,
     colon-anchored to " toward " so times/addresses are safe); "Take exit 186" speaks as "take the
@@ -1493,6 +1527,11 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     separately ("Take exit 15"…"Keep right"…"Merge"). `RouteGeometry.consolidateExits` folds a ramp's
     immediately-following, <500 m-gapped FORK/MERGE run into the ramp maneuver (sums distances so they
     still tile the polyline; stops at any real turn / far gap) → one prompt. Unit-tested.
+    - **Cousin `RouteGeometry.rampReclass` (ported upstream 1aaa5c0c):** a SIGNLESS, DEAD-STRAIGHT
+      "on ramp" is a divided-road rename transition, not a ramp (OSM tags the transition way
+      `*_link`, OSRM emits "on ramp") - reclassified to "new name" BEFORE typing/phrasing so it
+      rides the rename path (silent CONTINUE, foldable). Deliberately narrow: straight/null
+      modifier only, and any sign destinations keep the ramp. Unit-tested.
     - **Sibling `RouteGeometry.foldRenames`** folds a pure-rename CONTINUE (OSRM `continue`/`new name`
       going straight, no genuine fork - "Oak Ave becomes Cathcart Way") into the PRECEDING maneuver
       so it's not its own banner card / step at all (NavEngine already silences its voice). Applied on

@@ -16,7 +16,7 @@
     <string name="settings_follow_system">Come il sistema</string>
     <string name="settings_theme_light">Chiaro</string>
     <string name="settings_theme_dark">Scuro</string>
-    <string name="settings_theme_amoled">Nero AMOLED</string>
+    <string name="settings_theme_amoled">Nero</string>
     <string name="settings_appearance_hint">Chiaro/Scuro si applica solo a Vela, non modifica il tema di sistema del telefono.</string>
     <string name="settings_map_style">Stile mappa</string>
     <string name="settings_map_style_hint">OpenFreeMap (predefinito) e senza chiave e dettagliato.</string>

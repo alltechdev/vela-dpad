@@ -342,6 +342,21 @@ object RouteGeometry {
      * distances). A CONTINUE that is a GENUINE fork (lanes show an off-lane that also goes straight, "use the
      * left 2 lanes to stay on I-80") is KEPT - it's a real decision and IS spoken. Never folds the first
      * maneuver, and STRAIGHT (a junction straight-through, a real intersection) is intentionally left alone. */
+    /** A SIGNLESS, DEAD-STRAIGHT "on ramp" is a divided-road transition, not a ramp (upstream
+     *  1aaa5c0c, real-drive report: "take the ramp" spoken while going straight on the same
+     *  physical road through a rename, median and all). Where a dual carriageway continues
+     *  straight and only changes name, the transition way is often tagged *_link in OSM and OSRM
+     *  dutifully emits "on ramp" - but with NO destinations (there is no sign) and a straight
+     *  modifier. A real freeway entrance virtually always carries sign destinations, and one you
+     *  must steer onto carries a left/right/slight modifier. Reclassify the signless straight case
+     *  as "new name" so it rides the rename path: CONTINUE on the banner, silent by voice,
+     *  foldable by [foldRenames] - what Google does there. Deliberately NARROW (straight/null
+     *  only): a signless SLIGHT ramp could still be a real unsigned entrance, and a wrongly
+     *  silenced real ramp is worse than a wrongly spoken phantom one. */
+    internal fun rampReclass(type: String, mod: String?, dest: String?): String =
+        if ((type == "on ramp" || type == "ramp") && dest == null && (mod == null || mod == "straight")) "new name"
+        else type
+
     internal fun foldRenames(list: List<Maneuver>): List<Maneuver> {
         val out = mutableListOf<Maneuver>()
         for (m in list) {
@@ -438,9 +453,10 @@ object RouteGeometry {
                     ?: return@mapNotNull null
                 Lane(inds, o["valid"]?.jsonPrimitive?.booleanOrNull ?: false)
             }.orEmpty()
+        val effType = rampReclass(type, mod, dest)
         return Maneuver(
-            type = osrmType(type, mod),
-            instruction = osrmPhrase(type, mod, road, dest, exits, man["exit"]?.jsonPrimitive?.intOrNull),
+            type = osrmType(effType, mod),
+            instruction = osrmPhrase(effType, mod, road, dest, exits, man["exit"]?.jsonPrimitive?.intOrNull),
             location = LatLng(lat, lng),
             distanceMeters = s["distance"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
             durationSeconds = s["duration"]?.jsonPrimitive?.doubleOrNull ?: 0.0,

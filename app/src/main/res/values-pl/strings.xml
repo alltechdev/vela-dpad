@@ -16,7 +16,7 @@
     <string name="settings_follow_system">Jak w systemie</string>
     <string name="settings_theme_light">Jasny</string>
     <string name="settings_theme_dark">Ciemny</string>
-    <string name="settings_theme_amoled">Czern AMOLED</string>
+    <string name="settings_theme_amoled">Czarny</string>
     <string name="settings_appearance_hint">Tryb jasny/ciemny dotyczy tylko Vela - nie zmienia motywu systemowego telefonu.</string>
     <string name="settings_map_style">Styl mapy</string>
     <string name="settings_map_style_hint">OpenFreeMap (domyslny) jest szczegolowy i nie wymaga klucza.</string>

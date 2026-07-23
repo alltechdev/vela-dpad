@@ -30,7 +30,7 @@
     <string name="settings_follow_system">システムに合わせる</string>
     <string name="settings_theme_light">ライト</string>
     <string name="settings_theme_dark">ダーク</string>
-    <string name="settings_theme_amoled">AMOLEDブラック</string>
+    <string name="settings_theme_amoled">ブラック</string>
     <string name="settings_appearance_hint">Vela にのみ適用されます。</string>
     <string name="settings_map_style">地図のスタイル</string>
     <string name="settings_map_style_hint">OpenFreeMap(デフォルト)はキー不要で詳細です。</string>

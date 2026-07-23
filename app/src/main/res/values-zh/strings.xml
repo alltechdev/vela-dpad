@@ -30,7 +30,7 @@
     <string name="settings_follow_system">跟随系统</string>
     <string name="settings_theme_light">浅色</string>
     <string name="settings_theme_dark">深色</string>
-    <string name="settings_theme_amoled">AMOLED纯黑</string>
+    <string name="settings_theme_amoled">纯黑</string>
     <string name="settings_appearance_hint">仅对 Vela 生效。</string>
     <string name="settings_map_style">地图样式</string>
     <string name="settings_map_style_hint">OpenFreeMap(默认)无需密钥且细节丰富。</string>

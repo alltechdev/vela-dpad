@@ -7999,22 +7999,22 @@
   }
  },
  "settings_theme_amoled": {
-  "en": "4f22ef352892159f",
+  "en": "c6cfe6e4f129a346",
   "loc": {
-   "de": "3acb2db87bb9941a",
-   "es": "638f8bea963546d7",
-   "fr": "3b4f073568e2d8d3",
-   "it": "e553398bc41ee449",
-   "iw": "7d718ee046727dc5",
-   "ja": "6b26ee9a9aff3b4a",
-   "nl": "7b336e74b2474b15",
-   "pl": "b6b19a315fb1ee5e",
-   "pt": "e77b6b053fc41212",
-   "ru": "ebf7257e66e057a6",
-   "sv": "237c9b73743b94a8",
-   "uk": "c290a44a50bfbd43",
-   "zh": "7e29592913d56e6c",
-   "zh-rTW": "765a9872dfe950d5"
+   "de": "25e5d3fea1eb6e4a",
+   "es": "6723390ac7c7cfce",
+   "fr": "363e04e91a4c97d8",
+   "it": "28478dc6a693227c",
+   "iw": "591c17670c022db7",
+   "ja": "2bd0ec0d9940a9f4",
+   "nl": "a14ca4f012c7d703",
+   "pl": "8f96af02278c7daf",
+   "pt": "4b652af43d8d0e7e",
+   "ru": "1ca9b6b05dfc4b3d",
+   "sv": "33d4b66c7ec9348a",
+   "uk": "8c9957e50005315a",
+   "zh": "089fb48d44197813",
+   "zh-rTW": "0891aba170240925"
   }
  },
  "settings_theme_dark": {

@@ -16,7 +16,7 @@
     <string name="settings_follow_system">Systeem volgen</string>
     <string name="settings_theme_light">Licht</string>
     <string name="settings_theme_dark">Donker</string>
-    <string name="settings_theme_amoled">AMOLED-zwart</string>
+    <string name="settings_theme_amoled">Zwart</string>
     <string name="settings_appearance_hint">Licht/donker geldt alleen voor Vela - het thema van uw telefoon wordt niet gewijzigd.</string>
     <string name="settings_map_style">Kaartstijl</string>
     <string name="settings_map_style_hint">OpenFreeMap (standaard) is sleutelloos en gedetailleerd.</string>
