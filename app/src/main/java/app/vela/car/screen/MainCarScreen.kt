@@ -112,11 +112,13 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
             .build()
         // Voice search straight from the landing screen - no need to open Search first. The
         // transcript opens SearchCarScreen with the query already searched.
+        // Mic LAST: when this host runs out of strip slots it keeps the TAIL of the list (head-unit
+        // evidence across three builds - the mic sat first and was the one dropped every time).
         val strip = ActionStrip.Builder()
+        strip.addAction(search)
         if (voice.available()) {
             strip.addAction(voice.micAction(this, ::invalidate, ::handleVoice))
         }
-        strip.addAction(search)
 
         return PlaceListNavigationTemplate.Builder()
             .setItemList(list.build())
