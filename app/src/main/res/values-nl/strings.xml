@@ -311,8 +311,7 @@
     <string name="mapscreen_permanently_closed">Permanent gesloten</string>
     <string name="mapscreen_section_saved">Opgeslagen</string>
     <string name="mapscreen_section_recent">Recent</string>
-    <string name="mapscreen_section_recent_searches">Recente zoekopdrachten</string>
-    <string name="mapscreen_clear_recent_searches">Recente zoekopdrachten wissen</string>
+    <string name="mapscreen_clear_recents">Recente items wissen</string>
     <string name="mapscreen_search_empty_hint">Zoek naar plaatsen, adressen en categorieën.</string>
     <string name="mapscreen_set_shortcut_address">%1$s-adres instellen</string>
     <string name="mapscreen_edit_shortcut">%1$s bewerken</string>
@@ -542,4 +541,14 @@
     <string name="voice_error_vad">Een deel van het spraakmodel ontbreekt. Download het opnieuw via Instellingen \u2192 Zoeken.</string>
     <string name="voice_error_audio">Deze telefoon opende de microfoon niet voor Vela. Sluit andere apps die audio opnemen en probeer opnieuw.</string>
     <string name="voice_error_recording">De opname stopte onverwacht. Probeer opnieuw.</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Zoeken</string>
+    <string name="car_no_destinations">Nog geen opgeslagen of recente bestemmingen</string>
+    <string name="car_search_hint">Typ om een bestemming te zoeken</string>
+    <string name="car_go">Ga</string>
+    <string name="car_end">Beëindigen</string>
+    <string name="car_mute">Dempen</string>
+    <string name="car_unmute">Geluid aan</string>
+    <string name="car_faster_route">Sneller −%1$d min</string>
+    <string name="car_no_route">Geen route, controleer je locatie</string>
 </resources>

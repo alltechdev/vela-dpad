@@ -356,8 +356,7 @@
     <string name="mapscreen_permanently_closed">Permanently closed</string>
     <string name="mapscreen_section_saved">Saved</string>
     <string name="mapscreen_section_recent">Recent</string>
-    <string name="mapscreen_section_recent_searches">Recent searches</string>
-    <string name="mapscreen_clear_recent_searches">Clear recent searches</string>
+    <string name="mapscreen_clear_recents">Clear recents</string>
     <string name="mapscreen_search_empty_hint">Search for places, addresses and categories.</string>
     <string name="mapscreen_set_shortcut_address">Set %1$s address</string> <!-- format -->
     <string name="mapscreen_edit_shortcut">Edit %1$s</string> <!-- format -->
@@ -590,4 +589,14 @@
     <string name="street_view_move">Move here</string>
     <string name="street_view_dates">See other dates</string>
     <string name="street_view_fullscreen">Toggle full screen</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Search</string>
+    <string name="car_no_destinations">No saved or recent destinations yet</string>
+    <string name="car_search_hint">Type to search for a destination</string>
+    <string name="car_go">Go</string>
+    <string name="car_end">End</string>
+    <string name="car_mute">Mute</string>
+    <string name="car_unmute">Unmute</string>
+    <string name="car_faster_route">Faster −%1$d min</string>
+    <string name="car_no_route">No route available — check your location</string>
 </resources>

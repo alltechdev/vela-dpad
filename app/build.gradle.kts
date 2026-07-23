@@ -44,6 +44,15 @@ android {
 
         // Restricted build flavor flag (see productFlavors below). false everywhere except
         // the `restricted` flavor, which overrides it to true.
+        // Self-hosted map-font glyphs (Roboto composited over Noto; ui/map/MapFonts). Defaults to
+        // UPSTREAM's GitHub Pages glyph host for now (the probe guard degrades safely to Noto if
+        // it is unreachable); mirroring the map-fonts release onto this repo's Pages is on ROADMAP.
+        // Same local-test override pattern as the manifests: -PmapFontsUrl=http://127.0.0.1:8099.
+        buildConfigField(
+            "String",
+            "MAP_FONTS_URL",
+            "\"${(project.findProperty("mapFontsUrl") as String?) ?: "https://pimpinpumpkin.github.io/Vela/fonts"}\"",
+        )
         buildConfigField("boolean", "RESTRICTED", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -301,6 +310,7 @@ dependencies {
     // is the Android Auto artifact). The first-cut port shipped only the base :app template
     // library, which is why Vela has never appeared in an AA launcher (device report, OnePlus 12).
     implementation(libs.androidx.car.app.projected)
+    testImplementation(libs.androidx.car.app.testing) // car-template unit tests
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

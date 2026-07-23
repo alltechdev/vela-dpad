@@ -313,8 +313,7 @@
     <string name="mapscreen_permanently_closed">Zamknięte na stałe</string>
     <string name="mapscreen_section_saved">Zapisane</string>
     <string name="mapscreen_section_recent">Ostatnie</string>
-    <string name="mapscreen_section_recent_searches">Ostatnie wyszukiwania</string>
-    <string name="mapscreen_clear_recent_searches">Wyczyść ostatnie wyszukiwania</string>
+    <string name="mapscreen_clear_recents">Wyczyść ostatnie</string>
     <string name="mapscreen_search_empty_hint">Szukaj miejsc, adresów i kategorii.</string>
     <string name="mapscreen_set_shortcut_address">Ustaw adres %1$s</string>
     <string name="mapscreen_edit_shortcut">Edytuj %1$s</string>
@@ -550,4 +549,14 @@
     <string name="voice_error_vad">Brakuje części modelu głosowego. Pobierz go ponownie w Ustawienia \u2192 Wyszukiwanie.</string>
     <string name="voice_error_audio">Ten telefon nie udostępnił mikrofonu Veli. Zamknij inne aplikacje nagrywające dźwięk i spróbuj ponownie.</string>
     <string name="voice_error_recording">Nagrywanie nieoczekiwanie się zatrzymało. Spróbuj ponownie.</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Szukaj</string>
+    <string name="car_no_destinations">Brak zapisanych lub ostatnich celów</string>
+    <string name="car_search_hint">Wpisz, aby wyszukać cel</string>
+    <string name="car_go">Jedź</string>
+    <string name="car_end">Zakończ</string>
+    <string name="car_mute">Wycisz</string>
+    <string name="car_unmute">Włącz dźwięk</string>
+    <string name="car_faster_route">Szybciej −%1$d min</string>
+    <string name="car_no_route">Brak trasy, sprawdź lokalizację</string>
 </resources>

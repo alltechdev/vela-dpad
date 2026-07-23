@@ -824,23 +824,41 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
 - The one seam is `core/data/MapDataSource`. `MockMapDataSource` is the default
   and keeps the entire app usable offline; `google/GoogleMapsDataSource` is the
   real scraper.
-- **Android Auto (`app/car/`).**
-  - `VelaCarAppService` is a NAVIGATION-category templated `CarAppService` (manifest service +
-    `xml/automotive_app_desc.xml` + the two `androidx.car.app.*` permissions + application-level
-    `minCarApiLevel=1`); a sideload appears in the car launcher only with AA developer "Unknown
-    sources" on, hence `HostValidator.ALLOW_ALL_HOSTS_VALIDATOR`.
-  - `CarMapScreen` is the whole car UI: NavigationTemplate (Re-center / + / − action strip;
-    RoutingInfo card with `NavSession.state.maneuverText` + distance while navigating) over a map
-    surface.
-  - **The MapLibre-on-car trick: SurfaceCallback surface → `DisplayManager.createVirtualDisplay` →
-    `Presentation` → plain `MapView`** (MapLibre can't draw to a raw surface). It reuses
-    `applyDark`/`applyLight` from VelaMapView (made `internal` for this) keyed to
-    `carContext.isDarkMode`, has its OWN AOSP LocationManager listener for the puck (works with the
-    phone UI closed), and draws the route from `NavSession.state.route.polyline`.
-  - Pan/zoom arrive as `onScroll`/`onScale` and move the camera by hand (projection math -
-    `MapLibreMap.scrollBy` isn't a thing in 11.x).
-  - The PHONE runs nav (MapViewModel feeds NavSession) and speaks; the car is a display. Car-side
-    search/route-start is a follow-up; untested on a real head unit yet.
+- **Android Auto (`app/car/`) - FULL car-side nav (ported upstream ac487f78 + c409ad21 +
+  679119d1 + a2510700 + 381cfd49, 2026-07-23).**
+  - `VelaCarAppService` is a Hilt `@AndroidEntryPoint` NAVIGATION-category `CarAppService`
+    injecting the same `:core` singletons the phone uses (NavSession, LocationProvider,
+    MapDataSource, the three place stores, VoiceGuide, RouteEngine), bundled into `CarDeps` for
+    the screens. `androidx.car.app:app` alone is NOT enough for the app to APPEAR in Android
+    Auto: **`app-projected` merges the `CarAppMetadataHolderService` the AA host discovers apps
+    through** - the first-cut port lacked it and Vela was invisible to every head unit
+    (device-found, OnePlus 12). `HostValidator.ALLOW_ALL_HOSTS_VALIDATOR` stays (sideload-only
+    distribution).
+  - Screens (`car/screen/`): `MainCarScreen` (Home/Work/recents/saved rows, capped at the
+    template's MAX_ROWS, de-duped by location) -> `SearchCarScreen` (car keyboard search via
+    MapDataSource) -> `RoutePreviewCarScreen` (alternates + live ETAs) -> `ActiveNavCarScreen`
+    (maneuver card + lanes + trip updates to the cluster via NavigationManager). The PHONE still
+    runs NavSession and speaks; `VelaCarSession.onNewIntent` handles assistant/`geo:` NAVIGATE
+    intents (opaque geo URIs must not go through getQueryParameter - upstream's c409ad21 crash).
+  - **`CarMapRenderer` draws the REAL styled map via MapLibre's `MapSnapshotter`** (off-screen ->
+    Bitmap -> Canvas onto the template surface; ONE shared renderer per session - a second
+    instance never receives onSurfaceAvailable, so screens switch its MODE instead). Nav mode is
+    heading-up with look-ahead camera, speed-tightened zoom, traffic-coloured route and a speed
+    badge; browse is north-up. A smoothing ticker glides puck/bearing between ~1 Hz fixes.
+    The old first-cut VirtualDisplay+Presentation+MapView path is GONE with it.
+  - **`MapFonts` (ported with it) patches Liberty's glyphs to Roboto app-wide** (phone map +
+    snapshotter): fetches the LIVE style JSON, rewrites `glyphs` to the self-hosted
+    Roboto-over-Noto set, caches as `file://`; probe-guarded so an unreachable font host degrades
+    to plain Noto, and stale caches evict so a pinned tile snapshot can't go blank. The glyph
+    host currently defaults to UPSTREAM's GitHub Pages (`MAP_FONTS_URL`, `-PmapFontsUrl=`
+    override) - mirroring the `map-fonts` release onto this repo's Pages is on ROADMAP.
+  - **Recents are ONE chronological timeline** (`RecentPlaceStore`/`RecentSearchStore` reshaped,
+    upstream 381cfd49): typed `RecentPlace`/`RecentQuery` entries mixed by time in the search
+    overlay (pin vs clock icon) and reused by `MainCarScreen`. The fork's D-pad rings on those
+    rows are kept through the merge.
+  - Verification: host gates + unit tests only - there is still NO device gate for AA (the flip
+    phone cannot project). Real-car testing via the user's head unit; a DHU-based harness phase
+    is the standing follow-up.
 - **Settings is HUB-AND-SPOKE (2026-07-22), and the hub ORDER is deliberate:** a short category
   list (`ui/settings/SettingsHub.kt`) where each row opens its own sub-screen
   (`ui/settings/sections/*.kt`), in this order: Appearance (theme/map style/units/language) →

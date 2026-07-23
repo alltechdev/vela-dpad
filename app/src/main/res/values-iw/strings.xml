@@ -504,8 +504,7 @@
     <string name="parking_history_delete">מחק</string>
     <string name="place_current_traffic">תנועה נוכחית</string>
     <string name="mapscreen_filter_top_rated">4.0★</string>
-    <string name="mapscreen_section_recent_searches">חיפושים אחרונים</string>
-    <string name="mapscreen_clear_recent_searches">ניקוי חיפושים אחרונים</string>
+    <string name="mapscreen_clear_recents">נקה אחרונים</string>
     <string name="root_diag_title">לעזור לשפר את Vela?</string>
     <string name="root_diag_body">שניהם נשארים בטלפון שלך. שום דבר לא נשלח אלא אם תייצא אותו. ניתן לשנות כל אחד בכל עת בהגדרות.</string>
     <string name="root_diag_share_title">שיתוף אבחון</string>
@@ -545,4 +544,14 @@
     <string name="voice_error_vad">חלק ממודל הקול חסר. הורד אותו שוב בהגדרות \u2192 חיפוש.</string>
     <string name="voice_error_audio">הטלפון לא פתח את המיקרופון עבור Vela. סגור אפליקציות אחרות שמקליטות ונסה שוב.</string>
     <string name="voice_error_recording">ההקלטה נעצרה באופן לא צפוי. נסה שוב.</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">חיפוש</string>
+    <string name="car_no_destinations">אין עדיין יעדים שמורים או אחרונים</string>
+    <string name="car_search_hint">הקלידו כדי לחפש יעד</string>
+    <string name="car_go">צא</string>
+    <string name="car_end">סיום</string>
+    <string name="car_mute">השתק</string>
+    <string name="car_unmute">בטל השתקה</string>
+    <string name="car_faster_route">מהיר יותר −%1$d דק׳</string>
+    <string name="car_no_route">אין מסלול זמין — בדקו את המיקום</string>
 </resources>

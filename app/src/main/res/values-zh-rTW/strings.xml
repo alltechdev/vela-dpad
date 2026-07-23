@@ -524,8 +524,7 @@
     <string name="parking_history_delete">刪除</string>
     <string name="place_current_traffic">目前路況</string>
     <string name="mapscreen_filter_top_rated">4.0★</string>
-    <string name="mapscreen_section_recent_searches">最近搜尋</string>
-    <string name="mapscreen_clear_recent_searches">清除最近搜尋</string>
+    <string name="mapscreen_clear_recents">清除最近記錄</string>
     <string name="root_diag_title">協助改進 Vela？</string>
     <string name="root_diag_body">兩者都保留在您的手機上。除非您匯出，否則不會傳送任何內容。可隨時在設定中變更。</string>
     <string name="root_diag_share_title">分享診斷資訊</string>
@@ -562,4 +561,14 @@
     <string name="voice_error_vad">語音模型缺少部分檔案。請在設定 \u2192 搜尋 中重新下載。</string>
     <string name="voice_error_audio">這部手機未為 Vela 開啟麥克風。請關閉其他正在錄音的應用程式後重試。</string>
     <string name="voice_error_recording">錄音意外中斷。請重試。</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">搜尋</string>
+    <string name="car_no_destinations">還沒有已儲存或最近的目的地</string>
+    <string name="car_search_hint">輸入以搜尋目的地</string>
+    <string name="car_go">出發</string>
+    <string name="car_end">結束</string>
+    <string name="car_mute">靜音</string>
+    <string name="car_unmute">取消靜音</string>
+    <string name="car_faster_route">更快 −%1$d 分鐘</string>
+    <string name="car_no_route">沒有可用路線 — 請檢查位置</string>
 </resources>

@@ -82,7 +82,8 @@ class VelaApp : Application(), coil.ImageLoaderFactory {
             app.vela.data.FlockCameras.refresh(this@VelaApp, app.vela.BuildConfig.FLOCK_MANIFEST_URL)
         }
         app.vela.ui.SimLocation.init(this)
-        app.vela.ui.VoiceSearch.init(this) // voice-search toggle + engine/provider prefs (mic in the search bar)
+        app.vela.ui.VoiceSearch.init(this)
+        app.vela.ui.map.MapFonts.init(this) // Roboto basemap glyphs (cached patched style + async refresh) // voice-search toggle + engine/provider prefs (mic in the search bar)
         app.vela.ui.LiveReviews.init(this)
         app.vela.ui.ShowReviews.init(this)
         app.vela.ui.LoadPhotos.init(this)
