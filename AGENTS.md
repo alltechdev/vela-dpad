@@ -835,9 +835,23 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   - **The ASR model is the single largest reclaimable allocation: ~267 MB PSS** (~101 MB of weights
     in `scudo:secondary` plus ~146 MB of onnxruntime arena in `scudo:primary`). It releases on a
     severe trim, is NOT warmed at startup on a low-RAM device, and - on EVERY device - is dropped
-    after `REAP_IDLE_MS` (120 s) unused and rebuilt on next use. `WhisperRecognizer.release()`
-    declines while a listen is in flight - freeing the native recognizer under a running decode is a
-    use-after-free that takes the process down rather than throwing.
+    after `REAP_IDLE_MS` unused and rebuilt on next use. The window is RAM-SCALED (120 s low-RAM,
+    600 s roomy): a reload is ~1 s of dead mic on the next tap, and on a roomy phone that latency
+    regression buys nothing - pre-reaper those devices held the model all session and were fine.
+    `WhisperRecognizer.release()` declines while a listen is in flight - freeing the native
+    recognizer under a running decode is a use-after-free that takes the process down rather than
+    throwing.
+  - **A model's file size says NOTHING about its resident cost - measure before adopting.** NeMo
+    Conformer CTC small is a 46 MB int8 file that ballooned to ~760 MB-1.2 GB PSS through
+    onnxruntime on the M5 (rejected); Moonshine's small weights still cost ~212 MB across its four
+    ORT sessions - no lighter resident than Whisper tiny's ~214 MB (both same-protocol launch
+    deltas, 32-bit M5). Zipformer small (26 MB encoder, one tiny decoder/joiner pair) is the
+    structural low-memory candidate; its isolated reap-delta number is tracked in PR #86 and MUST
+    be written here before any low-RAM default is switched to it. "Encoder-only means small" and
+    "fewer MB means less RAM" were both device-refuted in one afternoon. The clean way to isolate
+    one model's resident cost: let the IDLE REAP fire (it releases ONLY the recognizer) and diff
+    `Native Heap` pre/post inside one settled process - launch-to-launch totals swing +-150 MB with
+    map content and prove nothing at engine granularity.
   - **Do not reach for a device gate when an IDLE gate will do.** The warm-at-startup behaviour was
     first made low-RAM-conditional, which protected the instant-first-mic-tap UX on roomier phones
     but left them holding 267 MB all session. Reaping on idle keeps that UX AND reclaims the memory
@@ -1013,17 +1027,48 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     `onTrimMemory` on the main thread, and `loadLock` is held across the ~1 s native model load, so
     a blocking acquire stalls the UI thread for that whole load just to reclaim memory the idle
     reaper would reclaim anyway. Skipping is safe; the next trim or the reaper retries. `Remove
-    model` passes `wait = true` because there the user asked for it. Device-verified that this
-    window is REAL and not theoretical: hammering `am send-trim-memory <pid> RUNNING_CRITICAL`
-    across startup logged `release skipped, model load in progress` 5 times in one run.
+    model` passes `wait = true` because there the user asked for it - and `deleteAsrEngine` runs
+    that whole sequence (wait + native free + the up-to-154 MB recursive delete) on `Dispatchers.IO`,
+    never the UI thread. Device-verified that this window is REAL and not theoretical: hammering
+    `am send-trim-memory <pid> RUNNING_CRITICAL` across startup logged `release skipped, model load
+    in progress` 5 times in one run.
     - `RUNNING_CRITICAL` is the level to use for this - it is `isSevere` AND the OS accepts it on a
       FOREGROUND process, so it exercises the load window without needing HOME first.
-  - **A quarantined ASR model makes `warmUp()` a silent no-op.** `WhisperRecognizer.isInstalled()`
-    is `AsrModel.isInstalled() && !asr_model_bad`, and the corrupt-model quarantine (`asr_model_bad`
-    in `vela_settings`) is only ever lifted by the installer's `clearQuarantine()`. Side-loading the
-    model files by hand leaves the flag set, so the model never loads, `scudo:secondary` sits at
-    ~11 MB instead of ~111 MB, and a memory benchmark silently measures the model-absent case. Check
-    `secondary` is actually ~111 MB before believing any ASR memory number.
+  - **The lease protects EVERY path that frees the recognizer, including the engine-switch rebuild.**
+    `ensureRecognizerLocked`'s key-mismatch branch must not `release()` the superseded model while
+    `leases > 0` - a listen can still be decoding inside it (mic tap, then Settings "Use" on another
+    engine). It parks the old recognizer in `retired` instead, drained under `loadLock` once the
+    lease count returns to zero. Holding two models briefly is the price of not freeing one under a
+    running decode.
+  - **Taking a lease across a suspension point must be CANCELLATION-SAFE.** `withContext { acquire() }`
+    runs the block to completion and then throws `CancellationException` INSTEAD of returning the
+    value when the caller was cancelled mid-load - so a `finally` keyed off the returned reference
+    leaks the lease forever (every release path then declines for the rest of the process, and the
+    267 MB becomes unreclaimable). `listen()` sets a `leased` flag INSIDE the block via `.also {}`
+    and keys the `finally` off the flag, not the reference.
+  - **A trim-triggered WebView reap DECLINES while a fetch is in flight, except at CRITICAL.** All
+    five fetchers' `reapNow(force)` skip teardown when `pending` is non-empty and the trim is merely
+    severe - destroying the view kills the injected scraper and turns a live gallery/reviews/
+    directions fetch into an empty panel, and the fetch's own `finally` re-arms the reap moments
+    later anyway. A CRITICAL trim forces the teardown and then DRAINS `pending` (complete-empty), so
+    the stranded fetch fails fast instead of parking in `deferred.await()` for the full timeout
+    while holding the serializing mutex. All reap bookkeeping is main-thread-confined via `onMain`
+    in every fetcher - `reap` scheduling is a read-modify-write and @Volatile does not fix one.
+  - **The sherpa-onnx AAR is pinned at >= 1.13.4 because of 32-bit ARM.** Its bundled onnxruntime
+    (1.27.0) fixes an unaligned-read SIGBUS (`BUS_ADRALN`) that crashed every MODEL LOAD on
+    armeabi-v7a - TTS and ASR both, uncatchably, at startup (issue #95). Device-verified both ways
+    on an M5 forced to `--abi armeabi-v7a`: 1.13.3/ORT 1.24.3 SIGBUSes in `libonnxruntime.so` on
+    the loading thread; 1.13.4/ORT 1.27.0 loads and releases clean. The feature phones this fork
+    exists for have NO system speech engine - the downloaded models are their only voice - so "gate
+    voice off on 32-bit" is not an acceptable fallback and the runtime must keep working there.
+    Test any AAR bump on a 32-bit install before shipping it.
+  - **A quarantined model makes `warmUp()` a silent no-op.** The corrupt-model quarantine keys
+    (`asr_model_bad_<engineId>`, `piper_model_bad_<voiceId>` in `vela_settings`) are only ever
+    lifted by the installer paths' `clearQuarantine()`. Side-loading model files by hand leaves a
+    latched flag set, so the model never loads, `scudo:secondary` sits at ~11 MB instead of
+    ~111 MB, and a memory benchmark silently measures the model-absent case. Check `secondary` is
+    actually model-sized before believing any ASR/TTS memory number - and clear BOTH the bad flag
+    and the strike counter when resetting a device by hand.
 
 ## Performance: what has been measured
 
@@ -1679,7 +1724,13 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     11 languages; URL = `…/tts-models/vits-piper-<id>.tar.bz2`). `PiperSynth.ensureLoaded` reloads when
     the selected voice changes; `PiperSynth.reloadVoice()` is the SINGLE switch trigger - it bumps the
     generation counter (aborting any in-flight utterance) then tears down + rebuilds on the same serial
-    worker, so `tts` is never freed mid-`generate()`. `MapViewModel.migrateFlatLayoutIfNeeded` (first
+    worker, so `tts` is never freed mid-`generate()`. The MEMORY-PRESSURE release deliberately does
+    NOT bump the generation (`release(interrupt = false)`): a trim must reclaim the model, not cut
+    off the nav prompt being spoken mid-word - the serial worker orders the free after the current
+    utterance either way. `ensureLoaded` carries the same TWO-STRIKE per-voice crash sentinel as the
+    ASR loads (`piper_load_strikes_<voiceId>`/`piper_model_bad_<voiceId>`): a voice whose native load
+    dies (SIGBUS/segfault - uncatchable) crash-looped the app at EVERY launch (issue #95, TCL Flip 2)
+    because `warmUp()` runs at startup and `catch (Throwable)` never saw the abort. `MapViewModel.migrateFlatLayoutIfNeeded` (first
     thing in `init`) relocates the old flat single-voice install in place (rename, copy-fallback,
     verify-gated, re-runnable) - never re-downloads.
   - **Voice search (speak a query into the search bar), two tiers.** `ui/VoiceSearch` (process-wide
@@ -1692,9 +1743,14 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     D-pad-focusable `Dialog`, Done auto-focuses); wiring + the RECORD_AUDIO launcher + the
     download-offer are in `MapScreen`; the Settings -> Search per-engine picker is in `SettingsScreen`.
     Needs `RECORD_AUDIO` (manifest; asked at the mic tap).
-    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 / 118e7e8c /
-      137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`), `SENSE_VOICE`
-      (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Each is an OPTIONAL download to
+    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; first three ported upstream
+      5d2a6636 / 118e7e8c / 137beea9).** Four: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`),
+      `SENSE_VOICE` (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB),
+      `ZIPFORMER_SMALL` (English-only, ~28 MB, this fork's low-memory pick - and it emits ALL-CAPS
+      spoken-form text, so `SpeechText.cleanSearchTranscript` lowercases and runs
+      `spokenNumbersToDigits`, the unit-tested inverse text normalization that turns "ONE TWENTY
+      THREE MAIN STREET" into "123 main street"; Whisper writes digits itself and passes through
+      unchanged). Each is an OPTIONAL download to
       `filesDir/asr/<id>/`; `active()` is the picked engine (pref `asr_engine`), `forRecognition(lang)`
       falls back to Whisper when the pick can't do the app language. **Whisper stays the default and
       the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =

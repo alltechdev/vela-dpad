@@ -17,15 +17,26 @@ private const val VAD_FILE = "silero_vad.onnx"
  * no account or third-party voice app is needed. Each engine is an OPTIONAL one-time download hosted
  * on this repo's `asr-models` GitHub release, extracted to `filesDir/asr/<id>/`.
  *
- * Three engines, because they trade off differently and the user picks (ported from upstream
- * PimpinPumpkin/Vela 5d2a6636 + 118e7e8c sizes + 137beea9 language fallback):
+ * Four engines, because they trade off differently and the user picks (the first three ported from
+ * upstream PimpinPumpkin/Vela 5d2a6636 + 118e7e8c sizes + 137beea9 language fallback):
  *  - [WHISPER_TINY] - the multilingual default. 99-language Whisper tiny (int8); covers every
- *    language Vela's UI supports (incl. Hebrew, Russian, Spanish). The safe all-rounder, and the
- *    smallest - so it stays the default and the ONLY thing the one-tap onboarding/map offer installs,
- *    which matters on the RAM/storage-constrained feature phones this fork targets.
+ *    language Vela's UI supports (incl. Hebrew, Russian, Spanish). The safe all-rounder and the
+ *    smallest download - so it stays the default and the ONLY thing the one-tap onboarding/map
+ *    offer installs. NOT the smallest loaded: ~214 MB PSS resident (measured, 32-bit M5).
  *  - [SENSE_VOICE] - FunAudioLLM SenseVoice. More accurate + faster than Whisper tiny, but only for
  *    English, Chinese, Cantonese, Japanese, Korean. Bigger (opt-in).
- *  - [MOONSHINE] - Useful Sensors Moonshine tiny. Lowest latency, ENGLISH ONLY. Bigger (opt-in).
+ *  - [MOONSHINE] - Useful Sensors Moonshine tiny. Lowest latency, ENGLISH ONLY. Bigger (opt-in),
+ *    and despite the small weights its four ORT sessions cost ~212 MB PSS loaded - no lighter
+ *    resident than Whisper (measured, 32-bit M5).
+ *  - [ZIPFORMER_SMALL] - k2 Zipformer small transducer, ENGLISH ONLY. The low-memory candidate for
+ *    the RAM-constrained feature phones this fork exists for (this fork's addition): 26 MB int8
+ *    encoder + kilobyte-scale decoder/joiner, no 30 s fixed context and no KV cache. Transducer
+ *    over CTC deliberately - sherpa-onnx hotword/contextual biasing (street/place names) works on
+ *    transducers, and the zoo has no offline English CTC small anyway. NeMo Conformer CTC small
+ *    was tried first for this slot and REJECTED on measurement: its int8 graph ballooned to
+ *    ~760 MB-1.2 GB PSS through onnxruntime on the M5, worse than Whisper - "encoder-only means
+ *    small" did not survive a device number, so do not trust this entry's resident cost until the
+ *    isolated reap-delta measurement in PR #86 is written back here.
  *
  * Whisper stays the default so no language silently regresses; the other two are opt-in via the
  * voice-search engine picker in Settings. This holds only metadata + a cheap install check + the
@@ -71,6 +82,14 @@ enum class AsrEngine(
             "cached_decode.int8.onnx", "tokens.txt", VAD_FILE,
         ),
     ),
+    ZIPFORMER_SMALL(
+        id = "zipformer-small-en",
+        displayName = "Zipformer small",
+        modelType = "transducer",
+        sizeMb = 28,
+        url = "$ASR_BASE/vela-asr-zipformer-small-en.tar.bz2",
+        files = listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt", VAD_FILE),
+    ),
     ;
 
     /** `filesDir/asr/<id>/` - the extracted archive's single top-level folder. */
@@ -90,6 +109,7 @@ enum class AsrEngine(
         WHISPER_TINY -> true
         SENSE_VOICE -> lang in SENSE_VOICE_LANGS
         MOONSHINE -> lang == "en"
+        ZIPFORMER_SMALL -> lang == "en"
     }
 
     companion object {

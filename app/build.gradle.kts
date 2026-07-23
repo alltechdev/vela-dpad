@@ -276,11 +276,13 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":yapchik")) // vendored softkey engine (LGPL-3.0) - keypad/D-pad softkeys
 
-    // sherpa-onnx: in-process neural TTS runtime (runs the downloaded Kokoro model). Vendored AAR
-    // (no official Maven artifact; the JitPack coordinate doesn't resolve). Lives in :app because a
-    // library module can't consume a local .aar - KokoroSynth sits in :app and bridges into :core's
-    // VoiceGuide via an interface. Native .so are arm64-only in the package (see packaging{}).
-    implementation(files("libs/sherpa-onnx-1.13.3.aar"))
+    // sherpa-onnx: in-process neural TTS + ASR runtime. Vendored AAR (no official Maven artifact;
+    // the JitPack coordinate doesn't resolve). Lives in :app because a library module can't consume
+    // a local .aar. 1.13.4 is a LOAD-BEARING upgrade, not routine: its bundled onnxruntime (1.27.0,
+    // up from 1.24.3) fixes the armv7 unaligned-read SIGBUS that crashed every model LOAD on 32-bit
+    // ARM phones (issue #95; device-verified both broken-before and fixed-after on an M5 forced to
+    // `--abi armeabi-v7a`). Do not downgrade past it while the fork ships v7a.
+    implementation(files("libs/sherpa-onnx-1.13.4.aar"))
     // Extracts the Kokoro model's .tar.bz2 at download time (Android has no built-in bzip2/tar).
     implementation("org.apache.commons:commons-compress:1.27.1")
 

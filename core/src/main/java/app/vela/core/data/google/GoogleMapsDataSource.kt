@@ -6,7 +6,6 @@ import app.vela.core.config.JsTransforms
 import app.vela.core.diag.DiagLog
 import app.vela.core.data.CalibrationNeededException
 import app.vela.core.data.CategoryFilter
-import app.vela.core.data.LowRamMode
 import app.vela.core.data.MapDataSource
 import app.vela.core.data.RouteEngine
 import app.vela.core.data.RouteGeometry
@@ -188,8 +187,9 @@ class GoogleMapsDataSource @Inject constructor(
         // buffer - the response String, the stripped copy, the JsonElement DOM - is allocated INSIDE
         // `withPermit`. At most 4 of those exist at once no matter how many terms are queued behind
         // them, so going 15 -> 8 changes how many WAVES the fan-out takes, not how much is resident
-        // at the peak. The levers that do move the peak are the permit count and the response size,
-        // and the `!7i` pool halving below is the one being used.
+        // at the peak. The levers that do move the peak are the permit count and the response size;
+        // neither is currently reduced on low-RAM (the `!7i` pool halving was reverted - it cost
+        // ranked pins, see fetchTerm below).
         //
         // And its stated justification was false. It kept "school" and "park" on the grounds that
         // only they lack a second source once the ambient layer is active. In fact NOTHING has a
@@ -206,10 +206,16 @@ class GoogleMapsDataSource @Inject constructor(
                 val pb = SearchPb.build(term, center, cal.searchPb)
                     .replaceFirst(Regex("!1d[0-9.]+"), "!1d${spanMeters.toInt()}")
                     .replaceFirst(Regex("!4f[0-9.]+"), "!4f${String.format(java.util.Locale.US, "%.1f", zoom)}")
-                    // Deep pool per term, so zooming in can go down the rank. Halved on low-RAM: the
-                    // pool size drives the RESPONSE BODY size, and the body is what gets buffered
-                    // and DOM-parsed per term (issue #83).
-                    .replaceFirst(Regex("!7i\\d+"), if (LowRamMode.enabled) "!7i30" else "!7i60")
+                    // Deep pool per term, so zooming in can go down the rank - the SAME depth on
+                    // every device. This was briefly halved to !7i30 on low-RAM (issue #83, "the
+                    // body is what gets buffered per term"), which broke the project's no-regression
+                    // rule the quiet way: ranks 31-60 of every term simply never rendered on the
+                    // constrained phones, and with the basemap poi_r* layers disabled wholesale
+                    // while ambient POIs exist, those places had no second source - an absent gym or
+                    // pharmacy, not a smaller buffer. The transient-parse peak is governed by the
+                    // Semaphore(4) fan-out bound, not the per-term pool, so the halving saved little
+                    // and cost pins; if parse buffers ever need shrinking, drop the PERMITS.
+                    .replaceFirst(Regex("!7i\\d+"), "!7i60")
                 val url = "${cal.searchEndpoint}&q=${term.enc()}&pb=${pb.enc()}".localized()
                 SearchParser.parse(term, GoogleResponse.parse(get(url)), center, cal.paths).places
             }.getOrDefault(emptyList())

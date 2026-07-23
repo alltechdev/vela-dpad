@@ -14,6 +14,7 @@ import timber.log.Timber
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
@@ -67,6 +68,14 @@ class WhisperRecognizer @Inject constructor(
      * `release()` between its check and the free for that whole time.
      */
     private val leases = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Recognizers superseded by an engine/language switch WHILE a lease was outstanding. The
+     *  switch path must not free the old engine then - the lease-holding decode is still inside
+     *  it, and `OfflineRecognizer.release()` frees C++ memory (the same use-after-free [leases]
+     *  exists to stop). Parked here instead, freed by [drainRetiredLocked] once every lease is
+     *  back. Guarded by [loadLock]. Briefly costs two resident models; a switch mid-listen is
+     *  rare enough that correctness wins. */
+    private val retired = ArrayList<OfflineRecognizer>()
 
     /** Idle-reap timer, same idea as the web fetchers' `REAP_IDLE_MS` (issue #182). One daemon
      *  thread, shared, created lazily so a device that never loads the model never starts it. */
@@ -127,6 +136,7 @@ class WhisperRecognizer @Inject constructor(
                 Timber.tag(TAG).i("release skipped, listen in flight")
                 return
             }
+            drainRetiredLocked()
             val r = recognizer ?: return
             recognizer = null
             loadedKey = null
@@ -158,13 +168,33 @@ class WhisperRecognizer @Inject constructor(
     }
 
     /**
-     * Give back a lease taken by [acquireRecognizer]. Deliberately does NOT take [loadLock]: the
+     * Give back a lease taken by [acquireRecognizer]. Deliberately does NOT block on [loadLock]: the
      * decrement happens only once the decode is finished with the pointer, so the worst a racing
      * [release] can do is read the pre-decrement value and conservatively decline. Taking the lock
-     * here would instead park the end of every utterance behind an unrelated model load.
+     * here would instead park the end of every utterance behind an unrelated model load - so the
+     * retired-model drain runs only when the lock is free, and every other lock-holder (acquire,
+     * release, the next load) drains as well, so a skipped drain is picked up at the next one.
      */
     private fun releaseLease() {
-        leases.decrementAndGet()
+        if (leases.decrementAndGet() == 0 && loadLock.tryLock()) {
+            try {
+                drainRetiredLocked()
+            } finally {
+                loadLock.unlock()
+            }
+        }
+    }
+
+    /** Free every recognizer parked by an engine switch, once no lease can still be inside one.
+     *  **Caller must hold [loadLock].** */
+    private fun drainRetiredLocked() {
+        if (leases.get() > 0 || retired.isEmpty()) return
+        for (r in retired) {
+            runCatching { r.release() }
+                .onFailure { Timber.tag(TAG).w(it, "retired recognizer release failed") }
+        }
+        retired.clear()
+        Timber.tag(TAG).i("retired recognizer(s) released")
     }
 
     private val audioManager by lazy { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
@@ -209,10 +239,13 @@ class WhisperRecognizer @Inject constructor(
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
         const val MAX_SECONDS = 15            // hard cap on one utterance
-        // Drop the loaded model after this quiet period (issue #83). Matches the web
-        // fetchers' REAP_IDLE_MS: long enough that a dictation session never reaps between
-        // utterances, short enough that a session-long 267 MB hold cannot happen.
-        const val REAP_IDLE_MS = 120_000L
+        // Drop the loaded model after this quiet period (issue #83): long enough that a dictation
+        // session never reaps between utterances, short enough that a session-long 267 MB hold
+        // cannot happen. RAM-SCALED, not flat: a reload costs ~1 s of dead mic on the next tap,
+        // and on a roomy phone that latency regression buys nothing the phone needed - pre-#83
+        // those devices held the model all session and were fine. 2 min where the 267 MB actually
+        // hurts, 10 min where it is merely tidy.
+        val REAP_IDLE_MS: Long get() = if (app.vela.ui.MemoryPressure.lowRam) 120_000L else 600_000L
     }
 
     private fun prefs() = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
@@ -252,6 +285,7 @@ class WhisperRecognizer @Inject constructor(
             AsrEngine.WHISPER_TINY -> l.takeIf { it in app.vela.ui.AppLocale.SUPPORTED } ?: ""
             AsrEngine.SENSE_VOICE -> l.takeIf { it in AsrEngine.SENSE_VOICE_LANGS } ?: "auto"
             AsrEngine.MOONSHINE -> ""
+            AsrEngine.ZIPFORMER_SMALL -> "" // English-only transducer, takes no language
         }
     }
 
@@ -296,10 +330,17 @@ class WhisperRecognizer @Inject constructor(
      * utterance, and it is what makes the lease in [acquireRecognizer] atomic.
      */
     private fun ensureRecognizerLocked(): OfflineRecognizer? {
+        drainRetiredLocked()
         val engine = engineForNow()
         val lang = pinnedLang(engine)
         val key = "${engine.id}|$lang"
-        recognizer?.let { if (loadedKey == key) return it else runCatching { it.release() } }
+        recognizer?.let {
+            if (loadedKey == key) return it
+            // Engine/language switch. Free the superseded model only if no listen can still be
+            // decoding inside it; otherwise park it in [retired] - releasing native memory under
+            // an outstanding lease is the use-after-free the lease exists to prevent.
+            if (leases.get() > 0) retired.add(it) else runCatching { it.release() }
+        }
         recognizer = null
         if (!engine.isInstalled(context)) return null
 
@@ -367,6 +408,16 @@ class WhisperRecognizer @Inject constructor(
                 numThreads = 2,
                 modelType = engine.modelType,
             )
+            AsrEngine.ZIPFORMER_SMALL -> OfflineModelConfig(
+                transducer = OfflineTransducerModelConfig(
+                    encoder = p("encoder.int8.onnx"),
+                    decoder = p("decoder.int8.onnx"),
+                    joiner = p("joiner.int8.onnx"),
+                ),
+                tokens = p("tokens.txt"),
+                numThreads = 2,
+                modelType = engine.modelType,
+            )
         }
         val r = runCatching {
             OfflineRecognizer(
@@ -416,17 +467,23 @@ class WhisperRecognizer @Inject constructor(
         // listen() from a UI coroutine. The lease is taken here rather than inside listenInner so
         // that the many early returns in there cannot leak it - the finally below always gives it
         // back, and it covers recording as well as decoding.
+        //
+        // `leased` is set INSIDE the withContext block, not inferred from `rec`: a coroutine
+        // cancelled during the ~1 s load makes withContext run the block to completion (taking the
+        // lease) and then throw CancellationException INSTEAD of returning the value - `rec` would
+        // never be assigned, and a rec-based finally would leak the lease forever, permanently
+        // disabling every release path (reaper, trims, Remove model).
         reapTask?.cancel(false) // never reap mid-utterance
-        val rec = withContext(Dispatchers.Default) { acquireRecognizer() }
-            ?: run {
-                Timber.tag(TAG).e("listen failed: MODEL (model absent or native load failed)")
-                armIdleReap()
-                return VoiceResult.Failed(VoiceResult.Reason.MODEL, "model absent or native load failed")
-            }
+        var leased = false
         try {
+            val rec = withContext(Dispatchers.Default) { acquireRecognizer()?.also { leased = true } }
+                ?: run {
+                    Timber.tag(TAG).e("listen failed: MODEL (model absent or native load failed)")
+                    return VoiceResult.Failed(VoiceResult.Reason.MODEL, "model absent or native load failed")
+                }
             return listenInner(rec, onLevel, onListening, cancelled)
         } finally {
-            releaseLease()
+            if (leased) releaseLease()
             armIdleReap() // restart the quiet period from the END of this utterance
         }
     }

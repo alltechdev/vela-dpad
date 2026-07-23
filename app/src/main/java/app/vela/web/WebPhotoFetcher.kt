@@ -59,8 +59,12 @@ class WebPhotoFetcher @Inject constructor(
 
     init {
         // A trim is the OS asking for memory NOW, far sooner than any idle timer (issue #83).
+        // Only a CRITICAL trim tears down mid-scrape; a merely-severe one declines while a fetch
+        // is in flight (see reapNow) so a moderate-pressure moment doesn't cost a whole gallery.
         app.vela.ui.MemoryPressure.register { level ->
-            if (app.vela.ui.MemoryPressure.isSevere(level)) main.post { cancelReap(); reapNow() }
+            if (app.vela.ui.MemoryPressure.isSevere(level)) {
+                main.post { cancelReap(); reapNow(force = app.vela.ui.MemoryPressure.isCritical(level)) }
+            }
         }
     }
 
@@ -105,12 +109,19 @@ class WebPhotoFetcher @Inject constructor(
     /** Destroy the WebView immediately. Main thread only (WebView requirement). The next
      *  [warm]/fetch rebuilds it via `ensureWebView`, exactly as after a renderer death.
      *
-     *  Drains [pending] for the same reason [rendererGone] does: the injected scraper dies with the
-     *  view, so nothing will ever complete those deferreds. Without this a reap landing mid-fetch
-     *  leaves the fetch parked in `deferred.await()` for the full [TOTAL_TIMEOUT_MS] while it HOLDS
-     *  [mutex], stalling every queued gallery behind it. An empty result is the documented
-     *  best-effort failure mode; a 40 s hang is not. */
-    private fun reapNow() {
+     *  A NON-FORCED reap declines while a scrape is in flight ([pending] non-empty): destroying the
+     *  view mid-scrape turns a live gallery into 0 photos, and the fetch's finally re-arms the reap
+     *  moments later anyway. A forced reap (critical trim) proceeds and drains [pending] for the
+     *  same reason [rendererGone] does: the injected scraper dies with the view, so nothing will
+     *  ever complete those deferreds. Without the drain a teardown mid-fetch leaves the fetch
+     *  parked in `deferred.await()` for the full [TOTAL_TIMEOUT_MS] while it HOLDS [mutex],
+     *  stalling every queued gallery behind it. An empty result is the documented best-effort
+     *  failure mode; a 40 s hang is not. */
+    private fun reapNow(force: Boolean = false) {
+        if (!force && pending.isNotEmpty()) {
+            android.util.Log.i("WebPhotoFetcher", "reap declined, fetch in flight")
+            return
+        }
         val wv = webView ?: return
         webView = null
         warmed = false

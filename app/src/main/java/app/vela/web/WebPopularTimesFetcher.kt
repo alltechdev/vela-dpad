@@ -74,19 +74,33 @@ class WebPopularTimesFetcher @Inject constructor(
         main.postDelayed(r, delayMs)
     }
 
-    /** Destroy the WebView immediately. Must run on the main thread (WebView requirement). */
-    private fun reapNow() {
+    /** Destroy the WebView. Main thread only (WebView requirement). In-flight aware, both ways:
+     *  with a fetch in flight ([pending] non-empty) a non-forced reap DECLINES - destroying the
+     *  view kills the injected scraper and turns a live fetch into an empty result, and the fetch's
+     *  own finally re-arms the reap moments later anyway. A FORCED reap (critical trim - the OS is
+     *  about to start killing) destroys regardless, then drains [pending] so the stranded fetch
+     *  fails fast as empty instead of parking in `deferred.await()` for the full
+     *  [TOTAL_TIMEOUT_MS]. */
+    private fun reapNow(force: Boolean = false) {
+        if (!force && pending.isNotEmpty()) {
+            android.util.Log.i("WebPopularTimesFetcher", "reap declined, fetch in flight")
+            return
+        }
         webView?.let { runCatching { it.loadUrl("about:blank"); it.destroy() } }
         webView = null
         warm = null // ensureWarm re-runs the warm sequence on the next fetch
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
     }
 
     init {
         // Under real memory pressure the 120 s idle timer is far too slow - the OS is asking for
         // memory NOW and a Chromium renderer is one of the largest things we hold (issue #83).
-        // Reap on the main thread, since WebView.destroy() requires it.
+        // Reap on the main thread, since WebView.destroy() requires it. Only a CRITICAL trim tears
+        // down mid-fetch; a merely-severe one declines while a fetch is in flight (see reapNow).
         app.vela.ui.MemoryPressure.register { level ->
-            if (app.vela.ui.MemoryPressure.isSevere(level)) main.post { cancelReap(); reapNow() }
+            if (app.vela.ui.MemoryPressure.isSevere(level)) {
+                main.post { cancelReap(); reapNow(force = app.vela.ui.MemoryPressure.isCritical(level)) }
+            }
         }
     }
 
