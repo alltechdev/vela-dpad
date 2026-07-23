@@ -128,11 +128,13 @@ jobs:
           echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch TTS runtime AAR
-        # sherpa-onnx neural-TTS + ASR runtime (Kokoro voice, Whisper voice search). It's a 57 MB
+        # sherpa-onnx neural-TTS + ASR runtime (Kokoro voice, Whisper voice search). It's a ~47 MB
         # prebuilt AAR (no Maven artifact) hosted on the fixed-tag `tts-runtime` release, gitignored
         # out of the repo - fetch it into app/libs/ so :app can package the arm64 AND armeabi-v7a
         # .so. Verify the size so a truncated download fails loud instead of producing a
-        # runtime-crashing APK.
+        # runtime-crashing APK. (The threshold is sized for 1.13.4's 48,847,529 bytes; the 1.13.3
+        # AAR was 57 MB, and the old >50 MB check failed the UPGRADED artifact - resize this when
+        # the AAR is bumped, it is a truncation guard, not a version pin.)
         run: |
           mkdir -p app/libs
           # Hosted on this repo's fixed-tag `tts-runtime` release (a one-time manual upload).
@@ -140,7 +142,7 @@ jobs:
           # armv7 unaligned-read SIGBUS that crashed every model load on 32-bit phones (issue #95).
           curl -fSL -o app/libs/sherpa-onnx-1.13.4.aar \
             "https://github.com/${{ github.repository }}/releases/download/tts-runtime/sherpa-onnx-1.13.4.aar"
-          test "$(stat -c%s app/libs/sherpa-onnx-1.13.4.aar)" -gt 50000000
+          test "$(stat -c%s app/libs/sherpa-onnx-1.13.4.aar)" -gt 40000000
           # The hosted AAR must actually CARRY 32-bit ARM, not just be big enough. If it is ever
           # replaced with an arm64-only build, the v7a strip fix (#81) silently reverts: the APK
           # still builds, still installs on a TCL Flip 2, and voice search + Vela voice are dead
