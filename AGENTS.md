@@ -1052,7 +1052,7 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   in-app theme with the composable **`isAppInDarkTheme()`** - never call
   `isSystemInDarkTheme()` directly in app UI (it ignores the user's Light/Dark/
   System choice in Settings → Appearance). FOUR modes since 2026-07-23: SYSTEM /
-  LIGHT / DARK / **AMOLED** (the dark scheme on true-black surfaces, `AmoledColors`
+  LIGHT / DARK / **Black** (the dark scheme on true-black surfaces - the AMOLED mode, `AmoledColors`
   in `Theme.kt`; `isAppInDarkTheme()` is true for it, so the map and every dark
   branch follow automatically). Light mode uses soft teal-cast off-whites, never
   pure white (user feedback - harsh). `AppTheme.mode` is a process-wide

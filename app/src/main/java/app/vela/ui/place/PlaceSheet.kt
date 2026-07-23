@@ -200,8 +200,9 @@ import java.util.Locale
 // like Google Maps, instead of a washed-out dynamic tone.
 // The sheet palette is shared app-wide (see ui/SheetPalette) so the place sheet,
 // directions panel, route chooser and steps list all match.
-private val SheetDark = SheetPalette.Dark
-private val SheetLight = SheetPalette.Light
+// Resolved through SheetPalette.bg() at every use site (NOT captured as constants): bg() is
+// AMOLED-aware - a captured val froze the grey and the place sheet stayed #1F1F1F on the
+// true-black theme while every other sheet went black (code-audit find, 2026-07-23).
 private val InkDark = SheetPalette.InkDark
 private val InkLight = SheetPalette.InkLight
 private val DimDark = SheetPalette.DimDark
@@ -380,7 +381,7 @@ fun PlaceSheet(
     Card(
         modifier.fillMaxWidth().heightIn(max = maxSheetHeight),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        colors = CardDefaults.cardColors(containerColor = if (dark) SheetDark else SheetLight),
+        colors = CardDefaults.cardColors(containerColor = SheetPalette.bg(dark)),
     ) {
         // Card background fills to the screen bottom; pad the content up off the nav bar.
         Column(Modifier.navigationBarsPadding()) {
@@ -1083,7 +1084,7 @@ fun DirectionsPanel(
     Card(
         modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        colors = CardDefaults.cardColors(containerColor = if (dark) SheetDark else SheetLight),
+        colors = CardDefaults.cardColors(containerColor = SheetPalette.bg(dark)),
     ) {
         Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 16.dp)) {
             // Drag handle - swipe down to minimise the chooser (peek the route on the
@@ -1531,7 +1532,7 @@ fun TransitNavSheet(
     val dim = if (dark) DimDark else DimLight
     val itin = nav.itinerary
     val step = itin.steps.getOrNull(nav.stepIndex)
-    Surface(Modifier.fillMaxSize(), color = if (dark) SheetDark else SheetLight) {
+    Surface(Modifier.fillMaxSize(), color = SheetPalette.bg(dark)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -2042,7 +2043,7 @@ fun RouteDetailSheet(
             step?.alightStop?.let { a -> if (mid.none { it.name == a.name } && step.boardStop?.name != a.name) add(a) }
         }
     }
-    Surface(Modifier.fillMaxSize(), color = if (dark) SheetDark else SheetLight) {
+    Surface(Modifier.fillMaxSize(), color = SheetPalette.bg(dark)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
@@ -2597,7 +2598,7 @@ private fun FullScreenReviews(featureId: String, place: Place, ink: Color, dim: 
     // to the WebView cleanly once the page loads. No-op under touch.
     val reviewsBackFocus = rememberDpadAutoFocus()
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = if (dark) SheetDark else SheetLight, contentColor = ink) {
+        Surface(Modifier.fillMaxSize(), color = SheetPalette.bg(dark), contentColor = ink) {
             Column(Modifier.fillMaxSize().statusBarsPadding()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

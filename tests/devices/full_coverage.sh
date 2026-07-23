@@ -281,7 +281,7 @@ cover_one() {
       return 0
     }
     if set_theme "Light"; then mark "settings-theme-light" 1; else mark "settings-theme-light" 0; fi
-    if set_theme "AMOLED black"; then mark "settings-theme-amoled" 1; else mark "settings-theme-amoled" 0; fi
+    if set_theme "Black"; then mark "settings-theme-amoled" 1; else mark "settings-theme-amoled" 0; fi
     set_theme "Follow system" || true
     key "$K_BACK" 1
   else
