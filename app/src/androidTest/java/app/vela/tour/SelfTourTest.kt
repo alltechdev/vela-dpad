@@ -58,13 +58,27 @@ class SelfTourTest {
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)   // ambient -> search bar (the documented first stop)
         shot("04-map-first-focus")
 
-        // The mic: present in BOTH flavors (voice search is not a restriction).
-        assertNotNull("voice-search mic missing from the search bar", byDesc("Voice search"))
+        // The mic: present in BOTH flavors (voice search is not a restriction). Under the
+        // soft-key declutter (#76) the bare map has NO search bar - the mic lives in the search
+        // overlay instead - so this asserts on the bar only when the bar itself exists (its
+        // Settings gear is the marker; suite runs force the decluttered keypad layout).
+        if (byDesc("Settings") != null) {
+            assertNotNull("voice-search mic missing from the search bar", byDesc("Voice search"))
+        }
 
         // ---- Settings hub: open, clip-check the top rows, flavor assertions ------------------
-        // Settings is hub-and-spoke: the gear opens a short category list (the hub); each row
-        // opens its own sub-screen (spoke) on the shared SettingsScaffold.
-        byDesc("Settings")!!.click()
+        // Settings is hub-and-spoke: each hub row opens its own sub-screen (spoke) on the shared
+        // SettingsScaffold. ENTRY IS LAYOUT-DEPENDENT (#76): the touch layout has the search-bar
+        // gear; the decluttered soft-key layout (how this suite runs) reaches Settings through the
+        // LEFT-soft-key Options menu instead.
+        val gear = byDesc("Settings")
+        if (gear != null) {
+            gear.click()
+        } else {
+            device.pressKeyCode(1)   // KEYCODE_SOFT_LEFT - the Options menu
+            Thread.sleep(900)
+            byText("Settings")!!.click()
+        }
         val appearance = byText("Appearance")
         assertNotNull("Settings hub did not open", appearance)
         assertOnScreen("Appearance", appearance!!)
@@ -114,15 +128,17 @@ class SelfTourTest {
         // to 3 presses, bounded. Each press is followed by a WAITING check (2.5s), never a 0-wait
         // findObject: a blind instant re-check raced the close animation, fired an extra BACK on
         // the bare map, and exited the app (the 46s X320 flake - this suite's own bug, not Vela's).
+        // The bare-map marker must be layout-neutral: the gear only exists in the touch layout,
+        // but the category chips are on the map in BOTH layouts (they ride up under declutter).
         var backTries = 0
         while (
-            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc("Settings")), 2_500L) == null &&
+            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Restaurants")), 2_500L) == null &&
             backTries < 3
         ) {
             device.pressBack(); backTries++
         }
         shot("09-back-on-map")
-        assertNotNull("BACK did not return to the map within 3 presses", byDesc("Settings"))
+        assertNotNull("BACK did not return to the map within 3 presses", byText("Restaurants"))
 
         // ---- Search -> results -> place sheet (live network; mock GPS set by the wrapper) ------
     }

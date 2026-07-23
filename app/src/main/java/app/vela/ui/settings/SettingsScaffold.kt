@@ -92,7 +92,12 @@ internal fun SettingsScaffold(
     val dpadFirst = app.vela.ui.rememberDpadFirstDevice()
     if (autoFocusBack && dpadFirst) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
-            repeat(40) {
+            // No fixed horizon: a 2s window LOST the race when the soft-key bar teardown's focus
+            // steal landed late under load (audit_dynamic: "opened unfocused" on some runs, ring
+            // present on others - same flow). Re-request WHILE nothing is focused anywhere and the
+            // user has not pressed a key: it can never fight the user (it only acts on empty focus)
+            // and stops the instant focus exists or input arrives. Bounded only by the page's life.
+            while (true) {
                 if (userDrove) return@LaunchedEffect
                 if (!backFocused && !contentHasFocus) runCatching { backFocus.requestFocus() }
                 kotlinx.coroutines.delay(50)

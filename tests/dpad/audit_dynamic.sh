@@ -15,6 +15,10 @@ set -uo pipefail
 D="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; source "$D/lib.sh"; source "$D/nav.sh"
 
 FAILS=0
+# AUDIT_SECTIONS="map search settings spokes place gallery directions choosemap firstrun" - run a
+# subset (default all), so iterating one section's fix never costs the whole ~35 min tour.
+SECTIONS="${AUDIT_SECTIONS:-map search settings spokes place gallery directions choosemap firstrun}"
+sec() { case " $SECTIONS " in *" $1 "*) return 0;; *) return 1;; esac; }
 ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; FAILS=$((FAILS + 1)); }
 
@@ -45,6 +49,7 @@ warm_up   # clear cold-start so the first surface isn't racing a freshly-install
 # decluttered: no search bar, no Layers button, no Park FAB, no locate FAB, no "Search this area" -
 # every one of those lives on a soft key or in the bare-map Options menu instead, and the category
 # chips ride up into the search bar's slot. So the first arrow lands on a CHIP there, not the bar.
+if sec map; then
 if softkeys_shown; then
   echo "== bare map (soft-keys: decluttered, ambient on open, first arrow -> category chips) =="
 else
@@ -91,6 +96,9 @@ if softkeys_shown; then
   else bad "Options menu is MISSING:$miss - those actions are now unreachable"; fi
 fi
 
+fi  # sec map
+
+if sec search; then
 echo "== search overlay (opens on armed field; BACK exits) =="
 goto_map; open_search
 [ -n "$(focused)" ] && ok "opens focused" || bad "search overlay opened unfocused"
@@ -101,19 +109,39 @@ sback=0
 for _ in 1 2 3 4; do key "$K_BACK" 1; if on_screen "Restaurants"; then sback=1; break; fi; done
 if [ "$sback" -eq 1 ]; then ok "BACK exits to map"; else bad "BACK did not exit the search overlay"; fi
 
+fi  # sec search
+
+if sec settings; then
 echo "== Settings (opens on back button; deep traversal; BACK exits) =="
 # Settings needs NO network, so it must ALWAYS open. open_settings retries the nav robustly (RIGHT
 # twice to reach the gear from either start, confirm "Appearance", back out of the search overlay and
 # retry) - fixing the flaky "could not open Settings" false-fail. A real failure-to-reach stays a FAIL.
-if open_settings; then
-  # opens-focused: confirm-with-settle (auto-focus lands a frame or two late on a slow layout).
-  { [ -n "$(focused)" ] || focused_stable; } && ok "opens focused (back button)" || bad "Settings opened unfocused (auto-focus never landed - not D-pad operable)"
+# KEY-DRIVEN entry (soft keys): a TAP-open deliberately does not auto-focus (touch UX stays
+# byte-identical; Compose touch-mode focusability), so the opens-focused contract only holds for
+# the key path a real keypad user takes - the same entry test 02 asserts. Tap entry is the
+# fallback where soft keys are off (there the check is skipped, not failed).
+keyed_settings_entry() {
+  softkeys_shown || return 1
+  goto_map; key "$K_DOWN"     # establish session focus first (the cold-open wall, docs/dpad.md)
+  key "$K_SOFT_LEFT" 1
+  focus_and_ok "Settings" || { key "$K_BACK" 1; return 1; }
+  on_screen "Appearance"
+}
+if keyed_settings_entry || open_settings; then
+  if softkeys_shown; then
+    { [ -n "$(focused)" ] || focused_stable; } && ok "opens focused (back button)" || bad "Settings opened unfocused (auto-focus never landed - not D-pad operable)"
+  else
+    echo "  note: tap-layout entry - opens-focused is a key-path contract, asserted by test 02"
+  fi
   integrity "Settings traversal" 24
   for _ in $(seq 1 26); do key "$K_UP"; done
   key "$K_OK" 1
   if on_screen "Restaurants" || on_screen "Search"; then ok "back-button exits Settings"; else key "$K_BACK" 1; ok "exited Settings"; fi
 else bad "could not open Settings (search bar -> gear -> OK did not reach it)"; fi
 
+fi  # sec settings
+
+if sec spokes; then
 echo "== Settings spokes (EVERY hub row -> its sub-screen) =="
 # Settings is hub-and-spoke: each hub row opens its own sub-screen, which must itself open focused
 # (on its Back button, via the shared SettingsScaffold) and stay traversable - ALL ELEVEN spokes,
@@ -135,6 +163,9 @@ for sub in "Appearance" "Map" "Place pages" "Navigation" "Voice" "Search" "Offli
 done
 key "$K_BACK" 1
 
+fi  # sec spokes
+
+if sec place; then
 echo "== place sheet + its overflow MENU (VelaMenu) =="
 goto_map
 if run_coffee; then
@@ -152,6 +183,9 @@ if run_coffee; then
   key "$K_BACK" 1
 else echo "  SKIP place sheet / menu - no results (network)"; fi
 
+fi  # sec place
+
+if sec gallery; then
 echo "== photo gallery (place sheet -> a photo -> OK) =="
 goto_map
 if run_coffee; then
@@ -169,6 +203,9 @@ if run_coffee; then
   key "$K_BACK" 1
 else echo "  SKIP gallery - no results (network)"; fi
 
+fi  # sec gallery
+
+if sec directions; then
 echo "== directions panel + route STEPS =="
 goto_map
 if reach_directions; then
@@ -190,6 +227,9 @@ if reach_directions; then
   key "$K_BACK" 1
 else echo "  SKIP directions/steps - no results (network)"; fi
 
+fi  # sec directions
+
+if sec choosemap; then
 echo "== choose-on-map (opens engaged; arrows pan, not traverse; BACK cancels) =="
 goto_map
 if open_choose_on_map; then
@@ -200,6 +240,9 @@ if open_choose_on_map; then
   on_screen_contains "Move the map" && bad "BACK did not cancel pick" || ok "BACK cancels pick"
 else echo "  SKIP choose-on-map - couldn't reach (network/deep-nav)"; fi
 
+fi  # sec choosemap
+
+if sec firstrun; then
 echo "== first-run Welcome + onboarding dialogs =="
 $ADB shell pm clear "$PKG" >/dev/null 2>&1
 $ADB shell pm grant "$PKG" android.permission.ACCESS_FINE_LOCATION   >/dev/null 2>&1
@@ -213,6 +256,8 @@ if on_screen "Get started"; then
     key "$K_DOWN"; [ -n "$(focused)" ] && ok "dialog confirm reachable by arrow" || bad "dialog lost focus on arrow"
   fi
 else bad "Welcome did not show on a fresh install"; fi
+
+fi  # sec firstrun
 
 echo "==========================================="
 if [ "$FAILS" -eq 0 ]; then echo "DYNAMIC AUDIT: PASS (no focus-integrity failures)"; else echo "DYNAMIC AUDIT: $FAILS FAILURE(S)"; fi
