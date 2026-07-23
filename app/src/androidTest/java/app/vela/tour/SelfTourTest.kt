@@ -58,52 +58,87 @@ class SelfTourTest {
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)   // ambient -> search bar (the documented first stop)
         shot("04-map-first-focus")
 
-        // The mic: present in BOTH flavors (voice search is not a restriction).
-        assertNotNull("voice-search mic missing from the search bar", byDesc("Voice search"))
+        // The mic: present in BOTH flavors (voice search is not a restriction). Under the
+        // soft-key declutter (#76) the bare map has NO search bar - the mic lives in the search
+        // overlay instead - so this asserts on the bar only when the bar itself exists (its
+        // Settings gear is the marker; suite runs force the decluttered keypad layout).
+        if (byDesc("Settings") != null) {
+            assertNotNull("voice-search mic missing from the search bar", byDesc("Voice search"))
+        }
 
-        // ---- Settings: open, clip-check the top rows, flavor assertions ----------------------
-        byDesc("Settings")!!.click()
+        // ---- Settings hub: open, clip-check the top rows, flavor assertions ------------------
+        // Settings is hub-and-spoke: each hub row opens its own sub-screen (spoke) on the shared
+        // SettingsScaffold. ENTRY IS LAYOUT-DEPENDENT (#76): the touch layout has the search-bar
+        // gear; the decluttered soft-key layout (how this suite runs) reaches Settings through the
+        // LEFT-soft-key Options menu instead.
+        val gear = byDesc("Settings")
+        if (gear != null) {
+            gear.click()
+        } else {
+            device.pressKeyCode(1)   // KEYCODE_SOFT_LEFT - the Options menu
+            Thread.sleep(900)
+            byText("Settings")!!.click()
+        }
         val appearance = byText("Appearance")
-        assertNotNull("Settings did not open", appearance)
+        assertNotNull("Settings hub did not open", appearance)
         assertOnScreen("Appearance", appearance!!)
-        byText("Follow system")?.let { assertOnScreen("Follow system", it) }
-        shot("05-settings-top")
+        byText("Map")?.let { assertOnScreen("Map", it) }
+        shot("05-settings-hub")
 
         // D-pad walk: DOWN must land focus in the content (the DOWN-from-Back bridge), and the
         // focused row is READ from the tree - the old harness could only infer this from pixels.
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)
         val focused = device.findObject(androidx.test.uiautomator.By.focused(true))
-        assertNotNull("D-pad walk lost focus in Settings", focused)
+        assertNotNull("D-pad walk lost focus in the Settings hub", focused)
         shot("06-settings-dpad-walk")
 
-        // FLAVOR ASSERTIONS - a restriction leaking back into restricted Settings MUST fail here.
+        // FLAVOR ASSERTION - a restriction leaking back into restricted Settings MUST fail here.
+        // The Place pages CATEGORY row is the whole flavor surface now: restricted hides it from
+        // the hub, so its toggles (Show reviews / Hide adult categories / ...) are unreachable
+        // (and hard-locked in their holders regardless).
         if (SelfTour.restricted) {
-            assertTrue("Place pages section must be ABSENT on restricted", gone("Place pages"))
-            assertTrue("Show reviews row must be ABSENT on restricted", gone("Show reviews"))
-            assertTrue("Hide adult categories row must be ABSENT on restricted", gone("Hide adult categories"))
+            assertTrue("Place pages category must be ABSENT on restricted", gone("Place pages"))
         }
 
-        device.pressBack()
+        // ---- One spoke end-to-end: Appearance (opens focused, rows on-screen, BACK -> hub) ----
+        byText("Appearance")!!.click()
+        val followSystem = byText("Follow system")
+        assertNotNull("Appearance spoke did not open", followSystem)
+        assertOnScreen("Follow system", followSystem!!)
+        shot("07-settings-spoke-appearance")
+        dpad(KeyEvent.KEYCODE_DPAD_DOWN)
+        dpad(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertNotNull(
+            "D-pad walk lost focus in the Appearance spoke",
+            device.findObject(androidx.test.uiautomator.By.focused(true)),
+        )
+        device.pressBack()   // spoke -> hub
+        Thread.sleep(800)
+        assertNotNull("BACK from a spoke did not return to the hub", byText("Appearance"))
+
+        device.pressBack()   // hub -> map
         Thread.sleep(800)
 
         // ---- Search overlay: opens on OK, BACK leaves it (the no-focus-trap rule) -------------
         dpad(KeyEvent.KEYCODE_DPAD_DOWN)
         dpad(KeyEvent.KEYCODE_DPAD_CENTER, settleMs = 900)
-        shot("07-search-overlay")
+        shot("08-search-overlay")
         // BACK unwinds the overlay's layered state (armed field -> entry page -> map); allow up
         // to 3 presses, bounded. Each press is followed by a WAITING check (2.5s), never a 0-wait
         // findObject: a blind instant re-check raced the close animation, fired an extra BACK on
         // the bare map, and exited the app (the 46s X320 flake - this suite's own bug, not Vela's).
+        // The bare-map marker must be layout-neutral: the gear only exists in the touch layout,
+        // but the category chips are on the map in BOTH layouts (they ride up under declutter).
         var backTries = 0
         while (
-            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc("Settings")), 2_500L) == null &&
+            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Restaurants")), 2_500L) == null &&
             backTries < 3
         ) {
             device.pressBack(); backTries++
         }
-        shot("08-back-on-map")
-        assertNotNull("BACK did not return to the map within 3 presses", byDesc("Settings"))
+        shot("09-back-on-map")
+        assertNotNull("BACK did not return to the map within 3 presses", byText("Restaurants"))
 
         // ---- Search -> results -> place sheet (live network; mock GPS set by the wrapper) ------
     }
@@ -138,7 +173,7 @@ class SelfTourTest {
                 20_000L,
             )
             if (results != null) {
-                shot("09-search-results")
+                shot("10-search-results")
                 // Open the first result. Live content shifts what a FIXED D-pad walk lands on
                 // (the 48s flake), so walk-then-VERIFY with one bounded retry: after CENTER, a
                 // place sheet must show its Directions pill; if not, one more DOWN and retry.
@@ -150,7 +185,7 @@ class SelfTourTest {
                     dpad(KeyEvent.KEYCODE_DPAD_DOWN)
                     dpad(KeyEvent.KEYCODE_DPAD_CENTER, settleMs = 2500)
                 }
-                shot("10-place-sheet")
+                shot("11-place-sheet")
                 // The Directions pill must exist in BOTH flavors; Website must be ABSENT on restricted.
                 assertNotNull("Directions pill missing on place sheet", byText("Directions"))
                 if (SelfTour.restricted) {
@@ -169,13 +204,13 @@ class SelfTourTest {
         val pSave = byDesc("Save parking spot")
         if (pSave != null) {
             pSave.click(); Thread.sleep(1200)
-            shot("11-parking-saved")
+            shot("12-parking-saved")
             byDesc("Parked car")?.click(); Thread.sleep(1000)
             assertNotNull("parking hub menu did not open", byText("Find my car"))
-            shot("12-parking-menu")
+            shot("13-parking-menu")
             byText("Find my car")!!.click(); Thread.sleep(1500)
             assertNotNull("Parked car sheet did not open", byText("Parked car"))
-            shot("13-parking-car-sheet")
+            shot("14-parking-car-sheet")
             device.pressBack(); Thread.sleep(600)
             // clear the spot so the device is left clean
             byDesc("Parked car")?.click(); Thread.sleep(1000)

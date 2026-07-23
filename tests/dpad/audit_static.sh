@@ -132,7 +132,12 @@ BUTTON_RING_EXEMPT = {"VelaDialog.kt", "VelaMenu.kt", "VoiceCaptureDialog.kt", "
 # the fix cannot regress; everywhere else it is surfaced as a CHECK until that file is swept too.
 # Move a filename in here the moment its sweep lands - the set is meant to grow until it is all of them.
 BUTTON_RING_SWEPT = {"SettingsScreen.kt", "StopsEditor.kt", "NavOverlays.kt", "StepsSheet.kt", "SearchBar.kt", "PlaceSheet.kt",
-                     "MapScreen.kt"}
+                     "MapScreen.kt",
+                     # The hub-and-spoke Settings split (each file swept as it was created):
+                     "SettingsHub.kt", "SettingsScaffold.kt", "SettingsComponents.kt",
+                     "AppearanceSettings.kt", "MapSettings.kt", "PlacePagesSettings.kt", "NavigationSettings.kt",
+                     "VoiceSettings.kt", "VoiceLibrary.kt", "SearchSettings.kt", "OfflineSettings.kt",
+                     "SavedPlacesSettings.kt", "DataPrivacySettings.kt", "DiagnosticsSettings.kt", "AboutSettings.kt"}
 scanned = 0
 
 for path in walk():

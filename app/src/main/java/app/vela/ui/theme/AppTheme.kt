@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 
 /** How Vela picks light vs dark - independent of the OS theme, so you can run the
  * app dark without flipping the whole phone (and vice-versa). */
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeMode { SYSTEM, LIGHT, DARK, AMOLED }
 
 /**
  * App-wide appearance preference. A process-wide reactive holder (like [app.vela.ui.Units]):
@@ -38,6 +38,6 @@ object AppTheme {
 @Composable
 fun isAppInDarkTheme(): Boolean = when (AppTheme.mode.value) {
     ThemeMode.LIGHT -> false
-    ThemeMode.DARK -> true
+    ThemeMode.DARK, ThemeMode.AMOLED -> true
     ThemeMode.SYSTEM -> isSystemInDarkTheme()
 }
