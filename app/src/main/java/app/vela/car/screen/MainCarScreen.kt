@@ -66,8 +66,20 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
             deps.shortcuts.get(ShortcutKind.WORK)?.let { add(it.name to it.location) }
             deps.recentPlaces.recent().forEach { add(it.place.name to it.place.location) }
             deps.savedPlaces.saved().forEach { add(it.name to it.location) }
-        }.distinctBy { it.second.lat to it.second.lng }.take(if (parked != null) MAX_ROWS - 1 else MAX_ROWS)
+        }.distinctBy { it.second.lat to it.second.lng }
+            .take(MAX_ROWS - 1 - (if (parked != null) 1 else 0)) // categories row + optional parked row
 
+        // Categories lives IN the list (Google Maps-style row with a colored tile): the landing
+        // template's strip renders only two actions on real hosts, and a third silently pushed the
+        // MIC off (head-unit report) - the strip stays mic + Search.
+        list.addItem(
+            Row.Builder()
+                .setTitle(carContext.getString(app.vela.R.string.car_categories))
+                .setImage(icon(app.vela.R.drawable.ic_car_categories_tile), Row.IMAGE_TYPE_SMALL)
+                .setBrowsable(true)
+                .setOnClickListener { screenManager.push(CategoriesCarScreen(carContext, deps)) }
+                .build(),
+        )
         rows.forEach { (name, loc) -> list.addItem(destRow(name, loc)) }
         // Parked car: when a spot is saved (phone Park or the car's arrival card), one row routes
         // back to it. After the destination rows so Home/Work keep their muscle-memory slots.
@@ -75,6 +87,7 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
             list.addItem(
                 Row.Builder()
                     .setTitle(carContext.getString(app.vela.R.string.map_parking_find))
+                    .setImage(icon(app.vela.R.drawable.ic_car_parking), Row.IMAGE_TYPE_SMALL)
                     .setBrowsable(true)
                     .setOnClickListener {
                         screenManager.push(
@@ -103,12 +116,6 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
         if (voice.available()) {
             strip.addAction(voice.micAction(this, ::invalidate, ::handleVoice))
         }
-        strip.addAction(
-            Action.Builder()
-                .setIcon(icon(app.vela.R.drawable.ic_car_categories))
-                .setOnClickListener { screenManager.push(CategoriesCarScreen(carContext, deps)) }
-                .build(),
-        )
         strip.addAction(search)
 
         return PlaceListNavigationTemplate.Builder()

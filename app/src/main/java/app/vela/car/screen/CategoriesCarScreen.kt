@@ -34,12 +34,15 @@ class CategoriesCarScreen(
             list.addItem(
                 GridItem.Builder()
                     .setTitle(carContext.getString(labelRes))
+                    // IMAGE_TYPE_LARGE: ICON lets the host TINT the image monochrome - the colored
+                    // circle tiles rendered as grey blobs (head-unit report). LARGE keeps our colors.
                     .setImage(
                         CarIcon.Builder(IconCompat.createWithResource(carContext, iconRes)).build(),
-                        GridItem.IMAGE_TYPE_ICON,
+                        GridItem.IMAGE_TYPE_LARGE,
                     )
+                    // Straight to RESULTS - not a search box with the query typed in (user feedback).
                     .setOnClickListener {
-                        screenManager.push(SearchCarScreen(carContext, deps, query, alongRoute))
+                        screenManager.push(CategoryResultsCarScreen(carContext, deps, labelRes, query, alongRoute))
                     }
                     .build(),
             )
