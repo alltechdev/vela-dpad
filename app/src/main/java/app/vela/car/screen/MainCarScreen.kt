@@ -116,9 +116,16 @@ class MainCarScreen(carContext: CarContext, private val deps: CarDeps) :
         // evidence across three builds - the mic sat first and was the one dropped every time).
         val strip = ActionStrip.Builder()
         strip.addAction(search)
-        if (voice.available()) {
-            strip.addAction(voice.micAction(this, ::invalidate, ::handleVoice))
-        }
+        // ONE shared mic: this opens the search surface whose inline host mic is the mic that
+        // works everywhere (user report: our separate capture flow was dead on their unit and a
+        // second mic on the search screen was a duplicate). Voice commands still work - the
+        // search screen parses submitted text through CarCommands.
+        strip.addAction(
+            Action.Builder()
+                .setIcon(icon(app.vela.R.drawable.ic_car_mic2))
+                .setOnClickListener { screenManager.push(SearchCarScreen(carContext, deps)) }
+                .build(),
+        )
 
         return PlaceListNavigationTemplate.Builder()
             .setItemList(list.build())
