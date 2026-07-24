@@ -3,6 +3,7 @@ package app.vela.ui.settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +32,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.vela.R
+import kotlinx.coroutines.launch
 import app.vela.ui.dpadHighlight // D-pad-only operation (docs/dpad.md)
 import app.vela.ui.dpadContainVertical
 import app.vela.ui.dpadSwallowHorizontal
@@ -134,6 +136,10 @@ internal fun SettingsScaffold(
             )
         },
     ) { padding ->
+        val scroll = rememberScrollState()
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+        val density = androidx.compose.ui.platform.LocalDensity.current
         Column(
             Modifier
                 .padding(padding)
@@ -147,10 +153,30 @@ internal fun SettingsScaffold(
                     if (ev.key == Key.DirectionUp && atTopItem) {
                         if (ev.type == KeyEventType.KeyDown) runCatching { backFocus.requestFocus() }
                         true
+                    } else if (ev.key == Key.DirectionDown) {
+                        // DOWN drives focus as usual - but when the move is REFUSED (last focusable,
+                        // dpadContainVertical's exit trap), scroll the remainder into view instead of
+                        // dying. verticalScroll only ever follows the FOCUSED item, so on a keypad
+                        // phone (no touch - TCL Flip 2 report, v0.0.321) any non-focusable text after
+                        // the last control (page hints, the About attribution) was UNREACHABLE: the
+                        // page looked cut off and "wouldn't scroll". Consumed on both key actions so
+                        // the pair never leaks past the containment.
+                        if (ev.type == KeyEventType.KeyDown &&
+                            !focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) &&
+                            scroll.value < scroll.maxValue
+                        ) {
+                            scope.launch {
+                                scroll.animateScrollBy(with(density) { 56.dp.toPx() })
+                            }
+                        }
+                        true
                     } else false
                 }
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .verticalScroll(scroll)
+                .padding(horizontal = 16.dp)
+                // Breathing room so the page's last line never sits flush on (or half past) the
+                // panel edge - the other half of the same report.
+                .padding(bottom = 16.dp),
         ) {
             // 44dp minimum interactive size for every Material control on Settings pages: the
             // default 48dp box is most of the "weird empty space" around radios, buttons and
