@@ -12,15 +12,25 @@ name: CI
 on:
   push:
     branches: [ main ]
-    paths-ignore: &docs-only
+    # Docs AND the device-test harness: neither changes the APK, and a push-to-main build cuts a
+    # RELEASE - a harness-only fix must not ship users a new version (2026-07-24, the #78 fix
+    # needed a manual run-cancel to avoid one). tests/** is push-only: PRs that touch the harness
+    # still get CI (unit tests + translation check are cheap safety there).
+    paths-ignore:
       - '**/*.md'
       - 'docs/**'
       - 'LICENSE'
       - '.gitignore'
       - '.gitattributes'
+      - 'tests/**'
   pull_request:
     branches: [ main ]
-    paths-ignore: *docs-only
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
 
 # Coalesce back-to-back pushes: when several merges land in a row (a PR batch), each push
 # used to run a full build and cut its own release. The concurrency group cancels the
