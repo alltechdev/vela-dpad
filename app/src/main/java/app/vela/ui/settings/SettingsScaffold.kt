@@ -151,7 +151,14 @@ internal fun SettingsScaffold(
                 .onKeyEvent { ev ->
                     if (ev.type == KeyEventType.KeyDown) userDrove = true
                     if (ev.key == Key.DirectionUp && atTopItem) {
-                        if (ev.type == KeyEventType.KeyDown) runCatching { backFocus.requestFocus() }
+                        if (ev.type == KeyEventType.KeyDown) {
+                            runCatching { backFocus.requestFocus() }
+                            // The mirror of the DOWN edge below: non-focusable text ABOVE the first
+                            // control (About's intro line) stays scrolled away when focus jumps to
+                            // the app-bar Back button, with no key able to reveal it. Landing on
+                            // Back means "top of page" to the user - make the scroll agree.
+                            scope.launch { scroll.animateScrollTo(0) }
+                        }
                         true
                     } else if (ev.key == Key.DirectionDown) {
                         // DOWN drives focus as usual - but when the move is REFUSED (last focusable,
