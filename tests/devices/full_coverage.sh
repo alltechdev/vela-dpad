@@ -102,14 +102,23 @@ cover_one() {
   $ADB shell pm clear "$PKG" >/dev/null 2>&1
   for p in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION POST_NOTIFICATIONS; do $ADB shell pm grant "$PKG" "android.permission.$p" >/dev/null 2>&1; done
   launch_fresh 6
+  # adv <text>: advance the first-run chain one step. Under D-pad, OK activates the auto-focused
+  # default; in TOUCH nothing is focused (auto-focus is dpadFirst-gated) so OK is a no-op and the
+  # whole chain used to stall, missing every dialog after Welcome (issue #78) - tap the named
+  # button by text instead.
+  adv() { if softkeys_shown; then key "$K_OK" 2; else tap_center "$1"; sleep 1; fi }
+  # Touch also keeps "Get started" BELOW the fold (the reveal pre-scroll is D-pad-gated): drag it
+  # into view before scoring - the surface exists either way, it just is not pre-scrolled.
+  softkeys_shown || swipe_up_to "Get started" 8
   on_screen "Get started" && mark "welcome" 1 || mark "welcome" 0
+  adv "Get started"
   # The first-run voice offer's dismiss is "Use system voice" (the honest two-way offer, upstream
   # 605ade01), not "Not now" - accept either so this dialog is captured, not skipped.
-  key "$K_OK" 2; { on_screen "Not now" || on_screen "Use system voice"; } && mark "voice-dialog" 1 || mark "voice-dialog" 0
-  key "$K_OK" 2; on_screen "Not now" && mark "offline-dialog" 1 || mark "offline-dialog" 0
-  key "$K_OK" 2
+  { on_screen "Not now" || on_screen "Use system voice"; } && mark "voice-dialog" 1 || mark "voice-dialog" 0
+  adv "Not now"; on_screen "Not now" && mark "offline-dialog" 1 || mark "offline-dialog" 0
+  adv "Not now"
   launch_fresh 6
-  on_screen_contains "Help improve Vela" && { mark "consent-dialog" 1; key "$K_OK" 2; } || mark "consent-dialog" 0
+  on_screen_contains "Help improve Vela" && { mark "consent-dialog" 1; adv "Not now"; } || mark "consent-dialog" 0
   fi
 
   # --- bare map -------------------------------------------------------------------------------
@@ -157,7 +166,9 @@ cover_one() {
     # the BUILD, so mark the frames n/a (not MISSED) when the toggle genuinely is not on this sheet.
     if swipe_up_to "More" 24; then
       mark "place-review-collapsed" 1
-      if focus_and_ok "More" && on_screen "Less"; then mark "place-review-expanded" 1
+      # Touch: TAP the toggle - focus_and_ok's D-pad walk stalls with nothing focused (issue #78).
+      if { if softkeys_shown; then focus_and_ok "More"; else tap_center "More"; sleep 0.8; fi; } \
+        && on_screen "Less"; then mark "place-review-expanded" 1
       else mark "place-review-expanded" 0; fi
     else
       na "place-review-collapsed" "no long review on the first result - toggle absent"
@@ -207,7 +218,10 @@ cover_one() {
     # on the bar) - focus_and_ok can never land on a Yapchik bar label, so the old walk stalled on the
     # Search-along-route chips and route-steps read MISSED while the feature worked (device-seen
     # @240x320; same lesson as reach_directions' RIGHT-soft-key press). On touch it stays a panel row.
-    if softkeys_shown; then key "$K_SOFT_LEFT" 2; else focus_and_ok "Steps"; fi
+    # Touch: TAP the Steps row (focus_and_ok's D-pad walk stalls with nothing focused, issue #78);
+    # the panel scrolls it into reach if a small screen folds it under.
+    if softkeys_shown; then key "$K_SOFT_LEFT" 2
+    else tap_center "Steps" || { swipe_up_to "Steps" 4 && tap_center "Steps"; }; sleep 1; fi
     if on_screen_contains "Head " || on_screen_contains "Turn " || on_screen "Close"; then
       mark "route-steps" 1; key "$K_BACK" 1
     else mark "route-steps" 0; fi

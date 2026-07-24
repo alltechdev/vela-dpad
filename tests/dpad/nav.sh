@@ -16,17 +16,28 @@ dismiss_onboarding() {
     # dismiss with "Not now" - OK activates the safe/decline choice on whichever is up. (The voice
     # prompt's dismiss used to be "Use system voice"; it is "Not now" since the two-checkbox
     # redesign.) Keep clearing until two settled misses.
-    if on_screen "Not now"; then key "$K_OK" 1.2; misses=0
+    if on_screen "Not now"; then
+      # OK activates the focused decline under D-pad; in touch NOTHING is focused (auto-focus is
+      # dpadFirst-gated) so OK is a no-op - tap the button by its text instead (issue #78).
+      if softkeys_shown; then key "$K_OK" 1.2; else tap_center "Not now"; sleep 0.4; fi
+      misses=0
     else misses=$((misses + 1)); [ "$misses" -ge 2 ] && break; sleep 0.6; fi
   done
 }
 
 # goto_map - cold launch to the bare map (onboarding dismissed). Leaves nothing focused (by design).
 # Robust to first-run: if the Welcome screen shows (e.g. a prior test cleared data), its auto-focused
-# Get-started advances past it, then the onboarding dialogs are dismissed.
+# Get-started advances past it, then the onboarding dialogs are dismissed. In the touch layout the
+# button is BELOW the fold (the reveal pre-scroll is D-pad-gated) and nothing is focused, so the
+# Welcome screen is detected by its always-visible tagline, dragged to reveal the button, and the
+# button tapped by text (issue #78).
 goto_map() {
   launch_fresh 3.5
-  if on_screen "Get started"; then key "$K_OK" 2; fi
+  if softkeys_shown; then
+    if on_screen "Get started"; then key "$K_OK" 2; fi
+  elif on_screen "Get started" || { on_screen_contains "degoogled" && swipe_up_to "Get started" 8; }; then
+    tap_center "Get started"; sleep 2
+  fi
   dismiss_onboarding
 }
 
@@ -144,10 +155,59 @@ run_coffee() {
   results_present
 }
 
+# tap_first_result - TOUCH: tap the first search-result row by its parsed NAME. The rows carry no
+# stable text (the name is whatever place matched), so it is read from the dump: the first non-empty
+# text node BELOW the "N results" header and the filter-chip row (Open now / rating / Price / Sort).
+# D-pad legs never need this - DOWN walks the focus order.
+tap_first_result() {
+  ui_dump
+  local name
+  name="$($ADB shell cat /sdcard/ui.xml 2>/dev/null | python3 -c '
+import sys, re, html
+d = sys.stdin.read()
+nodes = []
+for m in re.finditer(r"<node [^>]*>", d):
+    s = m.group(0)
+    t = re.search(r"text=\"([^\"]*)\"", s); b = re.search(r"bounds=\"\[(\d+),(\d+)\]", s)
+    if not (t and b): continue
+    nodes.append((int(b.group(2)), html.unescape(t.group(1))))
+cut = None
+for y, t in nodes:
+    if re.fullmatch(r"\d+ results?", t): cut = y
+    if t in ("Sort", "Price", "Open now") or t.endswith("★"):
+        cut = max(cut or 0, y)
+if cut is not None:
+    for y, t in nodes:
+        if y > cut and t.strip():
+            print(t); break
+')"
+  [ -n "$name" ] || return 1
+  tap_center "$name"
+}
+
 # open_first_place - from the results list, open the first result's place sheet (handle focused).
+# In TOUCH the D-pad walk is wrong twice over: nothing is focused so the first DOWN lands on the
+# on-screen search bar and auto-EXPANDS the overlay (issue #78 - the phase then "covered" the
+# overlay, not a place sheet), so tap the first row by its parsed name instead.
 open_first_place() {
-  keys "$K_DOWN" "$K_DOWN" "$K_DOWN"   # search field -> filter chips -> first result row
-  key "$K_OK" 2.5                       # open place sheet
+  if softkeys_shown; then
+    keys "$K_DOWN" "$K_DOWN" "$K_DOWN"   # search field -> filter chips -> first result row
+    key "$K_OK" 2.5                       # open place sheet
+  else
+    tap_first_result; sleep 2.5
+  fi
+}
+
+# sheet_drag_up - TOUCH: pull a collapsed bottom sheet open by dragging from inside it (bottom of
+# the screen) upward. swipe_up_to can't do this - its drag starts mid-screen, which on the place
+# sheet layout is the MAP, so it pans the map and the sheet never moves (issue #78 @240x320).
+sheet_drag_up() {
+  local sz w h gx
+  sz="$($ADB shell wm size 2>/dev/null | grep -oE '[0-9]+x[0-9]+' | tail -1)"
+  w="${sz%x*}"; h="${sz#*x}"; : "${w:=480}"; : "${h:=800}"
+  gx=$((w*13/100)); [ "$gx" -lt 24 ] && gx=24   # left gutter: label text only, never eats the drag
+  $ADB shell input swipe "$gx" $((h*88/100)) "$gx" $((h*30/100)) 500 >/dev/null 2>&1
+  sleep 1
 }
 
 # reach_directions - from a bare map, open the first Coffee result and its Directions panel (Drive
@@ -155,21 +215,26 @@ open_first_place() {
 reach_directions() {
   run_coffee || return 1
   open_first_place
-  key "$K_OK" 1                          # expand the sheet so the action pills are on screen
-  # Under soft-keys the place sheet's whole button row is DROPPED and Directions IS the RIGHT soft key
-  # - press it. (tap_center would land on the soft-key BAR's "Directions" label, which happened to work
-  # at 480x854 but missed at 240x320 - the kyocera directions/route-steps regression.)
-  # On touch, reach the Directions pill by its TEXT, not a fixed DOWN count: the sheet's row layout
-  # varies by flavor (the restricted build has no photo strip and no Website pill, so a blind 3-DOWN
-  # overshot the pills row - the flavor-cascade bug). tap_center is flavor/layout-proof.
+  # Under soft-keys: OK (on the focused sheet) expands it, and the place sheet's whole button row is
+  # DROPPED - Directions IS the RIGHT soft key, press it. (tap_center would land on the soft-key
+  # BAR's "Directions" label, which happened to work at 480x854 but missed at 240x320 - the kyocera
+  # directions/route-steps regression.)
+  # On touch, OK is a NO-OP (nothing focused, issue #78): reach the Directions pill by its TEXT -
+  # visible already on roomy screens, dragged into view on small ones where the collapsed sheet
+  # keeps it below the fold. Text, not a fixed DOWN count: the sheet's row layout varies by flavor
+  # (the restricted build has no photo strip and no Website pill, so a blind 3-DOWN overshot the
+  # pills row - the flavor-cascade bug). tap_center is flavor/layout-proof.
   if softkeys_shown; then
+    key "$K_OK" 1                        # expand the sheet so the action pills are on screen
     key "$K_SOFT_RIGHT" 4
   elif tap_center "Directions"; then
     sleep 4
   else
-    keys "$K_DOWN" "$K_DOWN" "$K_DOWN"   # fallback: the old walk (dump raced / text off-screen)
-    key "$K_LEFT"
-    key "$K_OK" 5
+    # Collapsed sheet at small geometry keeps the pills below the fold, and the generic swipe_up_to
+    # starts mid-screen - which is MAP here, so it pans instead of expanding. Drag from INSIDE the
+    # sheet (bottom ~15% of the screen) to pull it open, then tap the pill.
+    sheet_drag_up
+    tap_center "Directions" && sleep 4
   fi
   # Directions-panel proof. "Add stop" is the row we used, but at 240x320 it sits BELOW the fold, so a
   # working panel read as a failure (the kyocera directions/route-steps miss). Accept any of the
