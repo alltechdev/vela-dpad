@@ -34,14 +34,56 @@ object FlockCameras {
     private const val BUNDLED_VER = "flock_cameras_version.txt"
     private const val CELL = 0.1 // grid cell size in degrees (~11 km) for the bucket index
 
-    @Volatile private var loaded = false
-    private var lat = DoubleArray(0)
-    private var lng = DoubleArray(0)
-    private var op = arrayOf<String>()
-    private val grid = HashMap<Long, MutableList<Int>>()
+    /**
+     * One GENERATION of the dataset: coordinates, operators, and the 0.1 deg bucket index as a flat
+     * CSR (compressed sparse row) triple rather than a `HashMap<Long, MutableList<Int>>`.
+     *
+     * [cellKeys] is sorted and unique; the rows in cell `k` are
+     * `cellRows[cellStart[k] until cellStart[k + 1]]`. Lookup is a binary search on [cellKeys].
+     *
+     * Why CSR: the map version cost roughly 166,000 objects to build - one boxed `Integer` per camera
+     * (124,406 of them), plus an `ArrayList` + its `Object[]` + a boxed `Long` key + a `HashMap.Node`
+     * per occupied cell (13,965 of those) - and every one of them was garbage the moment the parse
+     * finished. This is five arrays. Startup on this app is GC-bound, not compilation-bound (forcing
+     * full AOT made cold start WORSE, 828 ms against 775 ms), so allocation count at startup is the
+     * thing worth cutting. Lookups are unchanged in behaviour and no slower in practice: the viewport
+     * scan touches on the order of 100 cells, and a binary search over ~14,000 keys is ~14 compares.
+     *
+     * Why one class and not six fields on the object: the six arrays are one INVARIANT - a lookup's
+     * key array and offset array must come from the same parse. `refresh()`'s hot-swap runs on
+     * Dispatchers.IO while a viewport scan may be walking the index, and separately-published fields
+     * can tear (new, larger `cellKeys` against old `cellStart` = `cellStart[k + 1]` past the end -
+     * an ArrayIndexOutOfBoundsException out of `inBox`, which nothing catches). A single @Volatile
+     * reference snapshotted once per query cannot: a reader sees the whole old generation or the
+     * whole new one.
+     */
+    private class Data(
+        val lat: DoubleArray,
+        val lng: DoubleArray,
+        val op: Array<String>,
+        val cellKeys: LongArray,
+        val cellStart: IntArray,
+        val cellRows: IntArray,
+    ) {
+        /**
+         * Run [body] for every camera row in the cell at ([row], [col]). No-op when the cell is
+         * empty. Replaces `grid[key(r, c)]?.let { ... }`, and allocates nothing - notably no
+         * iterator, which the old `for (i in bucket)` over a `MutableList<Int>` created (and
+         * unboxed on every step).
+         */
+        inline fun forEachInCell(row: Long, col: Long, body: (Int) -> Unit) {
+            val k = cellKeys.binarySearch(key(row, col))
+            if (k < 0) return
+            var p = cellStart[k]
+            val end = cellStart[k + 1]
+            while (p < end) { body(cellRows[p]); p++ }
+        }
+    }
 
-    val isLoaded: Boolean get() = loaded
-    val size: Int get() = lat.size
+    @Volatile private var data: Data? = null
+
+    val isLoaded: Boolean get() = data != null
+    val size: Int get() = data?.lat?.size ?: 0
 
     private fun key(row: Long, col: Long): Long = (row shl 32) xor (col and 0xffffffffL)
     private fun rowOf(v: Double): Long = Math.floor(v / CELL).toLong()
@@ -60,9 +102,9 @@ object FlockCameras {
 
     /** Parse the newest available file once, off the main thread. Safe to call repeatedly (a loaded call no-ops). */
     suspend fun ensureLoaded(context: Context) {
-        if (loaded) return
+        if (data != null) return
         withContext(Dispatchers.IO) {
-            if (loaded) return@withContext
+            if (data != null) return@withContext
             val dl = downloadedBin(context)
             val stream = if (dl.exists()) runCatching { dl.inputStream() }.getOrNull()
                 else runCatching { context.assets.open(BUNDLED) }.getOrNull()
@@ -72,9 +114,13 @@ object FlockCameras {
 
     /** Build the arrays + index from a gzipped-TSV stream and publish them (never leaves `loaded` false once set). */
     private fun loadFrom(raw: InputStream) {
-        val las = ArrayList<Double>(130_000)
-        val los = ArrayList<Double>(130_000)
-        val ops = ArrayList<String>(130_000)
+        // Primitive growable arrays, not ArrayList<Double>: the list version boxed a java.lang.Double
+        // per coordinate, 248,812 of them for the bundled 124,406-row dataset, all garbage the moment
+        // toDoubleArray() copied them out.
+        var las = DoubleArray(130_000)
+        var los = DoubleArray(130_000)
+        var ops = arrayOfNulls<String>(130_000)
+        var n = 0
         val intern = HashMap<String, String>() // operator column is highly repetitive - intern it
         raw.use { r ->
             GZIPInputStream(r).bufferedReader().useLines { lines ->
@@ -84,17 +130,48 @@ object FlockCameras {
                     val la = line.substring(0, t1).toDoubleOrNull() ?: continue
                     val lo = line.substring(t1 + 1, t2).toDoubleOrNull() ?: continue
                     val o = line.substring(t2 + 1)
-                    las.add(la); los.add(lo); ops.add(intern.getOrPut(o) { o })
+                    if (n == las.size) { // dataset outgrew the guess - double, same as ArrayList did
+                        las = las.copyOf(n * 2); los = los.copyOf(n * 2); ops = ops.copyOf(n * 2)
+                    }
+                    las[n] = la; los[n] = lo; ops[n] = intern.getOrPut(o) { o }
+                    n++
                 }
             }
         }
-        val g = HashMap<Long, MutableList<Int>>()
-        for (i in las.indices) g.getOrPut(key(rowOf(las[i]), rowOf(los[i]))) { ArrayList() }.add(i)
-        // Publish (a bad/partial parse threw before here, so we never swap in a half-built set).
-        lat = las.toDoubleArray(); lng = los.toDoubleArray(); op = ops.toTypedArray()
-        grid.clear(); grid.putAll(g)
-        loaded = true
+
+        // CSR index, built with sorts and counting rather than a map of lists. Three passes over
+        // primitives and no per-row object at all; see [cellKeys].
+        val keys = LongArray(n) { key(rowOf(las[it]), rowOf(los[it])) }
+        val sorted = keys.copyOf()
+        sorted.sort()
+        var uniq = 0
+        for (i in 0 until n) if (i == 0 || sorted[i] != sorted[i - 1]) uniq++
+        val ck = LongArray(uniq)
+        var u = 0
+        for (i in 0 until n) if (i == 0 || sorted[i] != sorted[i - 1]) { ck[u] = sorted[i]; u++ }
+        // Count per cell, then prefix-sum into start offsets.
+        val start = IntArray(uniq + 1)
+        for (i in 0 until n) start[ck.binarySearch(keys[i]) + 1]++
+        for (k in 1..uniq) start[k] += start[k - 1]
+        // Scatter row indices into their cell's slot. `fill` walks a copy of the offsets so
+        // `start` stays the published boundary array.
+        val fill = start.copyOf()
+        val rows = IntArray(n)
+        for (i in 0 until n) { val k = ck.binarySearch(keys[i]); rows[fill[k]] = i; fill[k]++ }
+
+        // Publish the whole generation in ONE volatile write (a bad/partial parse threw before
+        // here, so we never swap in a half-built set - and a concurrent reader holding the old
+        // generation's snapshot keeps using it, consistently, until its query ends).
+        @Suppress("UNCHECKED_CAST")
+        data = Data(las.copyOf(n), los.copyOf(n), ops.copyOf(n) as Array<String>, ck, start, rows)
     }
+
+    /** Test seam: build a generation from an in-memory stream (unit tests have no Context/assets). */
+    @androidx.annotation.VisibleForTesting
+    internal fun loadFromForTest(raw: InputStream) = loadFrom(raw)
+
+    @androidx.annotation.VisibleForTesting
+    internal fun resetForTest() { data = null }
 
     private val downloadHttp: OkHttpClient by lazy {
         OkHttpClient.Builder().callTimeout(0, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
@@ -132,7 +209,7 @@ object FlockCameras {
 
     /** Cameras inside the bbox, for DRAWING. Empty if not loaded yet (caller falls back to Overpass). */
     fun inBox(south: Double, west: Double, north: Double, east: Double): List<AlprCamera> {
-        if (!loaded) return emptyList()
+        val d = data ?: return emptyList() // ONE snapshot per query - see [Data]
         val out = ArrayList<AlprCamera>()
         val r0 = rowOf(south); val r1 = rowOf(north)
         val c0 = rowOf(west); val c1 = rowOf(east)
@@ -140,9 +217,9 @@ object FlockCameras {
         while (r <= r1) {
             var c = c0
             while (c <= c1) {
-                grid[key(r, c)]?.let { bucket ->
-                    for (i in bucket) {
-                        if (lat[i] in south..north && lng[i] in west..east) out.add(AlprCamera(LatLng(lat[i], lng[i]), op[i]))
+                d.forEachInCell(r, c) { i ->
+                    if (d.lat[i] in south..north && d.lng[i] in west..east) {
+                        out.add(AlprCamera(LatLng(d.lat[i], d.lng[i]), d.op[i]))
                     }
                 }
                 c++
@@ -154,7 +231,8 @@ object FlockCameras {
 
     /** Cameras within [meters] of any SEGMENT of [polyline], for the route count. Empty if not loaded. */
     fun along(polyline: List<LatLng>, meters: Double = 120.0): List<AlprCamera> {
-        if (!loaded || polyline.size < 2) return emptyList()
+        val d = data ?: return emptyList() // ONE snapshot per query - see [Data]
+        if (polyline.size < 2) return emptyList()
         val pad = 0.01
         val r0 = rowOf(polyline.minOf { it.lat } - pad); val r1 = rowOf(polyline.maxOf { it.lat } + pad)
         val c0 = rowOf(polyline.minOf { it.lng } - pad); val c1 = rowOf(polyline.maxOf { it.lng } + pad)
@@ -163,11 +241,9 @@ object FlockCameras {
         while (r <= r1) {
             var c = c0
             while (c <= c1) {
-                grid[key(r, c)]?.let { bucket ->
-                    for (i in bucket) {
-                        val p = LatLng(lat[i], lng[i])
-                        if (nearPolyline(p, polyline, meters)) out.add(AlprCamera(p, op[i]))
-                    }
+                d.forEachInCell(r, c) { i ->
+                    val p = LatLng(d.lat[i], d.lng[i])
+                    if (nearPolyline(p, polyline, meters)) out.add(AlprCamera(p, d.op[i]))
                 }
                 c++
             }

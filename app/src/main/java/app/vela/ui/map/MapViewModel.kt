@@ -1233,8 +1233,14 @@ class MapViewModel @Inject constructor(
         // popular times AND the photo gallery land faster when the user taps a result
         // (both idempotent; the photo warm primes the renderer + HTTP/2 sockets + cache
         // so the first place page skips the cold start).
-        viewModelScope.launch { runCatching { webPopularTimes.prewarm() } }
-        runCatching { webPhotos.warm() }
+        // Skipped on low-RAM devices: each warm spins up a Chromium renderer SPECULATIVELY, on the
+        // guess that a search predicts a place tap. When memory is the scarce resource that trade is
+        // backwards - the user pays two renderers on every search whether or not they open anything
+        // (issue #83). Those phones build the WebView on first real use instead.
+        if (!app.vela.ui.MemoryPressure.lowRam) {
+            viewModelScope.launch { runCatching { webPopularTimes.prewarm() } }
+            runCatching { webPhotos.warm() }
+        }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             // A fresh typed search leaves any along-route browse: picks open places normally again.
@@ -3466,6 +3472,7 @@ class MapViewModel @Inject constructor(
                 )
             }
             if (ok && VelaPiper.isVoiceReady(appContext, id)) {
+                piperSynth.clearQuarantine(id) // a fresh download replaces whatever was quarantined
                 if (firstEver) selectVoice(id) else flashStatus(appContext.getString(R.string.mapvm_voice_downloaded, v.displayName))
             } else {
                 showStatus(appContext.getString(R.string.mapvm_voice_download_failed, v.displayName))
@@ -4468,8 +4475,20 @@ class MapViewModel @Inject constructor(
     /** Remove one engine's model (Settings "Remove"); the active pick degrades to another installed
      *  engine automatically (AsrEngine.active). */
     fun deleteAsrEngine(engine: app.vela.voice.AsrEngine) {
-        engine.dir(appContext).deleteRecursively()
-        refreshAsr()
+        // Drop it from the UI immediately (optimistic, same idiom as deleteVoice); the real work is
+        // OFF the main thread: release(wait = true) can park behind a multi-second in-flight native
+        // load on loadLock, then frees ~267 MB of native memory, and the recursive delete unlinks up
+        // to 154 MB of files - all three are ANR material on a slow keypad phone's UI thread.
+        _state.update { it.copy(asrInstalledIds = it.asrInstalledIds - engine.id) }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Free the loaded model BEFORE removing its files. Deleting the directory alone left the
+            // native recognizer resident for the rest of the process (~267 MB measured, issue #83),
+            // so "Remove" reclaimed disk but no memory at all. Released unconditionally: the loaded
+            // engine may not be [engine], but the worst case is a ~1 s reload on the next listen.
+            whisperRecognizer.release(wait = true) // deliberate user action: worth waiting out a load
+            engine.dir(appContext).deleteRecursively()
+            refreshAsr()
+        }
     }
 
     /** Onboarding offers BOTH on-device speech models on one screen, so a user can pick both at once.

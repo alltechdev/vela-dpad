@@ -180,12 +180,42 @@ class GoogleMapsDataSource @Inject constructor(
             // their prominence low, so they surface in quiet/residential views without crowding businesses.
             "school", "park",
         )
+        // LOW-RAM devices fetch the SAME terms as everyone else. An earlier attempt cut this to an
+        // 8-term subset, and that was wrong twice over (issue #83 follow-up).
+        //
+        // It did not save peak memory. Peak is set by [ambientFanout], a Semaphore(4), and every
+        // buffer - the response String, the stripped copy, the JsonElement DOM - is allocated INSIDE
+        // `withPermit`. At most 4 of those exist at once no matter how many terms are queued behind
+        // them, so going 15 -> 8 changes how many WAVES the fan-out takes, not how much is resident
+        // at the peak. The levers that do move the peak are the permit count and the response size;
+        // neither is currently reduced on low-RAM (the `!7i` pool halving was reverted - it cost
+        // ranked pins, see fetchTerm below).
+        //
+        // And its stated justification was false. It kept "school" and "park" on the grounds that
+        // only they lack a second source once the ambient layer is active. In fact NOTHING has a
+        // second source then: VelaMapView sets poi_r1/poi_r7/poi_r20 to NONE wholesale whenever any
+        // ambient POI exists (`if (navMode || ambientPois.isNotEmpty())`), not per category. So the
+        // dropped terms - shopping, services, beauty salon, fast food, gym, bar, pharmacy - lost
+        // their basemap fallback exactly as school and park would have. Parks at least keep their
+        // landuse polygon, so the green area survives without the pin; a gym, a bar or a pharmacy
+        // exists ONLY as a POI pin, which makes them the worse thing to drop, not the safer one.
+        // The A/B screenshot that caught vanishing parks was real; the explanation drawn from it did
+        // not generalise, and the subset it produced was built on that explanation.
         suspend fun fetchTerm(term: String): List<Place> = ambientFanout.withPermit {
             runCatching {
                 val pb = SearchPb.build(term, center, cal.searchPb)
                     .replaceFirst(Regex("!1d[0-9.]+"), "!1d${spanMeters.toInt()}")
                     .replaceFirst(Regex("!4f[0-9.]+"), "!4f${String.format(java.util.Locale.US, "%.1f", zoom)}")
-                    .replaceFirst(Regex("!7i\\d+"), "!7i60") // deep pool per term, so zooming in can go down the rank
+                    // Deep pool per term, so zooming in can go down the rank - the SAME depth on
+                    // every device. This was briefly halved to !7i30 on low-RAM (issue #83, "the
+                    // body is what gets buffered per term"), which broke the project's no-regression
+                    // rule the quiet way: ranks 31-60 of every term simply never rendered on the
+                    // constrained phones, and with the basemap poi_r* layers disabled wholesale
+                    // while ambient POIs exist, those places had no second source - an absent gym or
+                    // pharmacy, not a smaller buffer. The transient-parse peak is governed by the
+                    // Semaphore(4) fan-out bound, not the per-term pool, so the halving saved little
+                    // and cost pins; if parse buffers ever need shrinking, drop the PERMITS.
+                    .replaceFirst(Regex("!7i\\d+"), "!7i60")
                 val url = "${cal.searchEndpoint}&q=${term.enc()}&pb=${pb.enc()}".localized()
                 SearchParser.parse(term, GoogleResponse.parse(get(url)), center, cal.paths).places
             }.getOrDefault(emptyList())

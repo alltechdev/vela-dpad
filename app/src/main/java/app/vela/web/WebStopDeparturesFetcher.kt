@@ -48,21 +48,55 @@ class WebStopDeparturesFetcher @Inject constructor(
     @Volatile private var webView: WebView? = null
     private var reap: Runnable? = null
 
+    /** Run [block] on the main thread, inline when already there. All reap bookkeeping goes through
+     *  here: [reap] is touched by the trim listener (main) and by the fetch path (the caller's
+     *  dispatcher), and scheduling is a read-modify-write - main-confinement removes the race by
+     *  construction (WebPhotoFetcher's fix, issue #83 follow-up). */
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+    }
+
     /** Free the WebView after a quiet period. A warm fetcher otherwise pins a full
      *  maps.google.com page (DOM + renderer) for the rest of the session, and several warm
      *  fetchers at once is real memory pressure (issue #182). The next fetch after a reap
      *  just re-creates it - a one-off warm-up, only after minutes of not using the feature. */
-    private fun scheduleReap() {
+    private fun scheduleReap() = onMain {
         reap?.let(main::removeCallbacks)
-        val r = Runnable {
-            webView?.let { runCatching { it.loadUrl("about:blank"); it.destroy() } }
-            webView = null
-        }
+        val r = Runnable { reap = null; reapNow() }
         reap = r
         main.postDelayed(r, REAP_IDLE_MS)
     }
 
-    private fun cancelReap() {
+    /** Destroy the WebView. Main thread only (WebView requirement). In-flight aware, both ways:
+     *  with a fetch in flight ([pending] non-empty) a non-forced reap DECLINES - destroying the
+     *  view kills the injected scraper and turns a live fetch into an empty board, and the fetch's
+     *  own finally re-arms the reap moments later anyway. A FORCED reap (critical trim - the OS is
+     *  about to start killing) destroys regardless, then drains [pending] so the stranded fetch
+     *  fails fast as empty instead of parking in `deferred.await()` for the full [TOTAL_TIMEOUT_MS]
+     *  while holding [mutex]. */
+    private fun reapNow(force: Boolean = false) {
+        if (!force && pending.isNotEmpty()) {
+            android.util.Log.i("WebStopDeparturesFetcher", "reap declined, fetch in flight")
+            return
+        }
+        webView?.let { runCatching { it.loadUrl("about:blank"); it.destroy() } }
+        webView = null
+        pending.keys.toList().forEach { id -> pending.remove(id)?.complete("") }
+    }
+
+    init {
+        // Under real memory pressure the 120 s idle timer is far too slow - the OS is asking for
+        // memory NOW and a Chromium renderer is one of the largest things we hold (issue #83).
+        // Reap on the main thread, since WebView.destroy() requires it. Only a CRITICAL trim tears
+        // down mid-fetch; a merely-severe one declines while a fetch is in flight (see reapNow).
+        app.vela.ui.MemoryPressure.register { level ->
+            if (app.vela.ui.MemoryPressure.isSevere(level)) {
+                main.post { cancelReap(); reapNow(force = app.vela.ui.MemoryPressure.isCritical(level)) }
+            }
+        }
+    }
+
+    private fun cancelReap() = onMain {
         reap?.let(main::removeCallbacks)
         reap = null
     }

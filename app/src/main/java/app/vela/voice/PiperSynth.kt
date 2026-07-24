@@ -38,6 +38,23 @@ class PiperSynth @Inject constructor(
     @Volatile private var loadFailed = false
     @Volatile private var generation = 0
 
+    init {
+        // The Piper VITS model is the app's second-largest native holding after the ASR model.
+        // CRITICAL only, deliberately narrower than the recognizer's severe trigger: dropping the
+        // synth costs a reload on the next prompt, and a prompt arriving late during navigation is
+        // a missed turn. TRIM_MEMORY_COMPLETE only reaches background processes, and
+        // RUNNING_CRITICAL means the device is about to start killing things regardless.
+        // The teardown posts to the piper-tts worker, so it is already serialized against an
+        // in-flight synthesis and cannot free the model out from under one (issue #83).
+        // interrupt = false: a trim must reclaim memory, not SILENCE the prompt being spoken -
+        // release()'s default generation bump aborts an in-flight utterance within ~200 ms, which
+        // during navigation is a missed turn (the very regression scoping to CRITICAL was meant to
+        // avoid). Un-bumped, the serial worker frees the model right AFTER the current utterance.
+        app.vela.ui.MemoryPressure.register { level ->
+            if (app.vela.ui.MemoryPressure.isCritical(level)) release(interrupt = false)
+        }
+    }
+
     /** Which voice id `tts` currently holds - lets [ensureLoaded] detect a voice switch and rebuild. */
     @Volatile private var loadedVoiceId: String? = null
 
@@ -79,6 +96,16 @@ class PiperSynth @Inject constructor(
         worker.execute { ensureLoaded() }
     }
 
+    private fun prefs() = context.getSharedPreferences("vela_settings", Context.MODE_PRIVATE)
+
+    /** Lift a voice's crash quarantine after a fresh download - the bad files are gone, so the next
+     *  load may try again. Called by the installer path, never automatically. */
+    fun clearQuarantine(voiceId: String) {
+        prefs().edit()
+            .putBoolean(KEY_MODEL_BAD + voiceId, false)
+            .putInt(KEY_LOAD_STRIKES + voiceId, 0).apply()
+    }
+
     private fun ensureLoaded(): OfflineTts? {
         val r = VelaPiper.resolved(context) ?: return null // nothing usable installed
         val cur = tts
@@ -88,10 +115,32 @@ class PiperSynth @Inject constructor(
         // use-after-free). loadFailed resets so a previously-bad voice doesn't block a new one.
         runCatching { cur?.release() }
         tts = null; loadedVoiceId = null; numSpeakers = 0; loadFailed = false
+        // CRASH SENTINEL around the native load, PER VOICE - the same two-strike idiom as
+        // WhisperRecognizer's ASR loads, closing the same hole for TTS (issue #95: a voice whose
+        // load dies natively - SIGBUS/segfault, which no `catch (Throwable)` can see - crash-looped
+        // the app at EVERY launch, because warmUp() runs at startup and nothing remembered the
+        // previous attempt never returned). Bump a strike before the load, zero it once it returns;
+        // two stranded loads in a row quarantine THAT voice only and delete its dir, so the app
+        // boots (system TTS takes over) and a fresh download starts clean. Two, not one: a process
+        // killed mid-load (swipe-away, memory reclaim) strands a strike exactly like a crash, and
+        // must not delete a healthy 80 MB voice.
+        val prefs = prefs()
+        val strikesKey = KEY_LOAD_STRIKES + r.voiceId
+        val badKey = KEY_MODEL_BAD + r.voiceId
+        val strikes = prefs.getInt(strikesKey, 0)
+        if (strikes >= 2) {
+            Timber.tag(TAG).e("two voice loads never returned (native crash) - quarantining ${r.voiceId}")
+            prefs.edit().putInt(strikesKey, 0).putBoolean(badKey, true).apply()
+            runCatching { VelaPiper.modelDirFor(context, r.voiceId).deleteRecursively() }
+            loadFailed = true
+            return null
+        }
+        if (prefs.getBoolean(badKey, false)) { loadFailed = true; return null }
         // Two attempts: a voice loaded the instant its download/extract finishes can lose the race with
         // the filesystem flush on some devices - the first OfflineTts load throws, and (without a retry)
         // loadFailed sticks so the voice stays SILENT until an app restart. A brief retry heals it.
         repeat(2) { attempt ->
+            prefs.edit().putInt(strikesKey, prefs.getInt(strikesKey, 0) + 1).apply()
             try {
                 // Lower the VITS noise scales below the library defaults (noiseScale 0.667, noiseScaleW 0.8).
                 // Those defaults make synthesis STOCHASTIC - the same phrase varies run to run, which is why
@@ -110,11 +159,15 @@ class PiperSynth @Inject constructor(
                 val engine = OfflineTts(assetManager = null, config = cfg)
                 numSpeakers = engine.numSpeakers()
                 runCatching { engine.generate(text = " ", sid = 0, speed = SPEED) }
+                // The load (and warm synth) RETURNED - the process survived it, so zero the strikes.
+                // Only a native abort mid-load leaves one standing.
+                prefs.edit().putInt(strikesKey, 0).apply()
                 tts = engine
                 loadedVoiceId = r.voiceId
                 Timber.tag(TAG).i("loaded ${r.voiceId}: sampleRate=${engine.sampleRate()} speakers=$numSpeakers")
                 return engine
             } catch (t: Throwable) {
+                prefs.edit().putInt(strikesKey, 0).apply() // a CATCHABLE failure is not a native crash
                 Timber.tag(TAG).e(t, "model load failed (attempt ${attempt + 1}): ${t.message}")
                 if (attempt == 0) runCatching { Thread.sleep(200) } // let a just-written model settle, then retry
             }
@@ -283,8 +336,13 @@ class PiperSynth @Inject constructor(
         worker.execute { runCatching { track?.pause(); track?.flush() } }
     }
 
-    override fun release() {
-        generation++
+    override fun release() = release(interrupt = true)
+
+    /** Free the engine + track. [interrupt] aborts any in-flight utterance first (the right thing
+     *  when the voice is being switched off or replaced); the memory-pressure path passes false so
+     *  the current prompt finishes - the serial worker orders the free after it either way. */
+    fun release(interrupt: Boolean) {
+        if (interrupt) generation++
         worker.execute {
             runCatching { track?.release() }; track = null
             runCatching { tts?.release() }; tts = null
@@ -294,6 +352,10 @@ class PiperSynth @Inject constructor(
     private companion object {
         const val TAG = "PiperSynth"
         const val SPEED = 1.0f
+        // Crash-sentinel keys, PER VOICE (suffixed with the voice id) - same idiom and reasoning as
+        // WhisperRecognizer's KEY_LOAD_STRIKES/KEY_MODEL_BAD, see the sentinel in [ensureLoaded].
+        const val KEY_LOAD_STRIKES = "piper_load_strikes_"
+        const val KEY_MODEL_BAD = "piper_model_bad_"
         // Silence spliced between sentences (seconds) - a natural period beat for nav prompts.
         const val PAUSE_SEC = 0.32f
         // Shorter beat spliced at commas/semicolons so clauses don't run together ("In a quarter mile, …").

@@ -39,14 +39,33 @@ class VelaApp : Application(), coil.ImageLoaderFactory {
      *  ~128 MB of decoded gallery bitmaps by design, which is most of the "rapid place churn
      *  runs into the ceiling" OOM (issue #182; measured: 3 gallery-bearing places grew the live
      *  Dalvik heap 14 -> 94 MB). 48 MB still holds a couple of screens of thumbnails + a hero
-     *  or two; everything else re-decodes from Coil's disk cache, which is untouched. */
+     *  or two; everything else re-decodes from Coil's disk cache, which is untouched.
+     *
+     *  The cap is now a function of the device instead of one constant: a 48 MB bitmap cache is
+     *  reasonable on a 2-3 GB phone and absurd on a keypad phone whose whole heap class is 96 MB
+     *  (issue #83). Low-RAM devices get 16 MB, which still covers a screen of result thumbnails.
+     *  [MemoryPressure.init] must run before this, and does - onCreate inits it first. */
     override fun newImageLoader(): coil.ImageLoader = coil.ImageLoader.Builder(this)
         .memoryCache {
             coil.memory.MemoryCache.Builder(this)
-                .maxSizeBytes(48 * 1024 * 1024)
+                .maxSizeBytes(if (app.vela.ui.MemoryPressure.lowRam) 16 * 1024 * 1024 else 48 * 1024 * 1024)
                 .build()
         }
         .build()
+
+    /**
+     * Hand OS memory pressure to every holder that owns a large or native allocation (issue #83).
+     * Before this existed nothing in the app implemented ComponentCallbacks2, so a
+     * TRIM_MEMORY_COMPLETE released nothing at all and the OS had no option but to kill us.
+     * Coil's own cache is trimmed here; everything else releases through [MemoryPressure].
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        app.vela.ui.MemoryPressure.dispatch(level)
+        if (app.vela.ui.MemoryPressure.isSevere(level)) {
+            runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+        }
+    }
 
     /** Apply the persisted in-app language to the Application context too (no-op when following the
      * system), so `getString` from the ViewModel/nav-notification also localizes - resolved at launch
@@ -64,6 +83,11 @@ class VelaApp : Application(), coil.ImageLoaderFactory {
         Timber.plant(DiagTree(diag))
         if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
 
+        // Device memory class first: the Coil cap and the eager-warm decisions below both read it.
+        app.vela.ui.MemoryPressure.init(this)
+        // Push the device class down to :core, which cannot read an :app holder (same seam as
+        // CategoryFilter.enabled). Gates the ambient POI fan-out in GoogleMapsDataSource.
+        app.vela.core.data.LowRamMode.enabled = app.vela.ui.MemoryPressure.lowRam
         Units.init(this)
         AppTheme.init(this)
         AppLocale.init(this) // resolve the app language (system default) → drives the nav-text locale

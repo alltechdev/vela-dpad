@@ -747,9 +747,438 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
   (raises the ceiling ~2x); don't remove it. (2) **Any Overpass / large-HTTP-body reader MUST
   stream-parse** - `Json.decodeFromStream(body.byteStream())` into a tiny `@Serializable` DTO, NEVER
   `resp.body.string()` + `parseToJsonElement` (that held ~5-10x the wire size in transient heap and
-  OOM'd mid-read - the Flock `out body` fetch per pan did this; fixed in `OverpassAlprCameras`,
-  `OverpassTrafficSignals`/`OverpassPois` are the same pattern + a pending follow-up). And NEVER lower a
+  OOM'd mid-read - the Flock `out body` fetch per pan did this). And NEVER lower a
   per-viewport Overpass fetch's min-zoom without shrinking the box.
+  **The Overpass follow-up is DONE (audited 2026-07-20):** `OverpassAlprCameras`, `OverpassTrafficSignals`
+  AND `OverpassPois` all `decodeFromStream` today. This line previously said the latter two were pending,
+  which sent a low-RAM investigation chasing already-fixed code. The remaining fully-buffered hot reader
+  is the GOOGLE ambient path, not Overpass: `GoogleMapsDataSource.get()` ends in `.string()`, and
+  `GoogleResponse.parse` then makes a `substring` copy plus a full `JsonElement` DOM - times a 15-term
+  fan-out per pan. That, not Overpass, is the ~180 MB/12 s. It cannot simply `decodeFromStream`: the
+  payload is a positional nameless array walked by `at(0,1,3)` paths, so there is no DTO to decode into.
+  The levers that DO move it are the term count and the `!7i` pool size.
+
+- **Low-RAM devices are a FIRST-CLASS target, and the app now adapts to them (issue #83, 2026-07-20).**
+  D-pad-first means feature-phone-first, and those phones are memory-poor as well as small.
+  - **`app/ui/MemoryPressure.kt` is the one seam.** `init()` from `VelaApp` classifies the device
+    (`ActivityManager.isLowRamDevice` OR heap class <= 127 MB) and `VelaApp.onTrimMemory` fans every
+    `TRIM_MEMORY_*` out to registered holders. **Anything that allocates something large or NATIVE
+    must register a release callback.** Registration, never a Hilt entry point: reaching a singleton
+    from a trim would CONSTRUCT it, so the trim would allocate the very thing it is freeing.
+  - `LowRamMode.enabled` (`:core`) is the `:core`-visible mirror, pushed in by `VelaApp` - same seam
+    as `CategoryFilter.enabled`, because `:core` must never read an `:app` holder.
+  - **The low-RAM predicate lives in `:core` as `LowRamMode.classify`, and it has TESTS.** It has
+    shipped wrong twice, both times in ways no dev device could reveal: `heapClassMb in 1..127`
+    excluded 128, the one heap class 1 GB phones and low-end 2 GB phones actually use - so the
+    device issue #83 was filed from could plausibly have received none of the work - and a 0 from a
+    failed probe fell out of that range and selected the memory-HUNGRY path for a device we knew
+    nothing about. It now takes three signals (`isLowRamDevice`, total RAM <= 2048 MB, heap class
+    <= 128 MB), **treats an unreadable probe as constrained**, and lives in `:core` purely so
+    `core/src/test/.../LowRamModeTest.kt` can pin the boundaries. Failing toward low-RAM costs a
+    roomy phone about a second on its first mic tap; failing the other way can OOM a phone with no
+    headroom.
+    - Total RAM is the signal that actually describes the device; heap class is a Dalvik knob an OEM
+      can set to anything. `MemoryInfo.totalMem` reports what the OS can hand out, so a nominal 2 GB
+      phone reads ~1900 MB and a 3 GB phone ~2800 MB. The M5 reads 2878 MB and stays on the normal
+      path, which is what keeps every measurement in this file comparable - there is a test asserting
+      exactly that, so if it ever flips you will be told.
+  - **`resetprop` exercises REAL low-RAM detection, and is the ONLY way to do it on a release
+    build.** `debug.vela.lowram` is `BuildConfig.DEBUG`-gated, so it is inert on `staging`/`release`
+    - the low-RAM branches had therefore never run on a minified build at all.
+
+        adb shell su -c "resetprop dalvik.vm.heapgrowthlimit 96m"   # then relaunch
+        adb shell su -c "resetprop dalvik.vm.heapgrowthlimit 256m"  # restore
+
+    `ActivityManager.staticGetMemoryClass()` reads that property per call, so the app sees the new
+    heap class immediately and `LowRamMode.classify` runs for real (`forced=no`). Magisk's
+    `resetprop` is what makes a `ro.`-style property writable. RESTORE IT - it changes the heap
+    growth limit for every app started afterwards.
+    - **Verify by BEHAVIOUR, not by log, on staging.** `Timber.plant(DebugTree)` is DEBUG-gated, so
+      `MemoryPressure init` never reaches logcat on a production build. Use the renderer count
+      instead: low-RAM skips the speculative WebView warm, so
+      `adb shell ps -A | grep -c sandboxed_process` is 0 after a search on the low-RAM path and 1 on
+      the normal one. That signal was 0/0/0 versus 1/1/1 across three pairs - perfectly separated,
+      unlike PSS.
+    - Measured this way on `staging`, the low-RAM path is worth about **148 MB**: 166/169/173 MB
+      against 287/372/295 MB. It also proves R8 did not break those branches (0 crashes).
+  - **Simulating memory pressure: the pages must stay HOT or you measure nothing.** A hog that
+    allocates once is simply compressed into this device's 1.6 GB of zram, and `MemAvailable` goes
+    UP - the first attempt at this "applied" 1500 MB and freed 148 MB. Re-touch every page in a loop
+    to deny them to the swapper. Then it bites: `MemAvailable` fell to ~130 MB and lmkd began
+    killing on "direct reclaim and thrashing".
+    - **What that revealed, and it matters for the whole design: trims are not a reliable defence.**
+      Under real pressure `staging` received **zero** `onTrimMemory` callbacks and was killed 20 s
+      in (`oom_score_adj 0`, reason "device is not responding"); the debug build at a gentler 1.6 GB
+      got **exactly one** `level=15`, released and purged in 1 ms, and was killed 8 s later. lmkd
+      kills on thrash-driven unresponsiveness before AMS gets round to asking anyone to release.
+      **Proactive reclaim - the idle reapers, not warming what will not be used, not holding a
+      document after a scrape - is what actually protects a constrained phone.** A release that only
+      happens on trim mostly does not happen.
+    - Do not push past ~1.6 GB on this device. At 1.9 GB the launcher enters a kill loop and the app
+      dies before `MemoryPressure.init` even runs, so the test stops discriminating between good and
+      bad memory behaviour and only says "the device is broken". A continuously-rewritten 1.9 GB is
+      a pathological workload, not a small phone.
+  - **Verify the low-RAM path or it ships unverified.** Every dev phone we own reports
+    `lowRam=false heapClassMb=256`, so those branches are dead code locally. Debug builds honour
+    `adb shell setprop debug.vela.lowram true` (then relaunch). NB `false` FORCES the normal path,
+    it does NOT clear the override - clearing needs an unparseable value, so use
+    `setprop debug.vela.lowram none`. The two only look equivalent because every dev phone we own
+    detects as normal anyway. `setprop <name> ""` is a shell syntax error, not a reset.
+  - **Measuring: `am send-trim-memory` REFUSES background levels on a foreground process**
+    ("Unable to set a background trim level on a foreground process"). Press HOME first. A harness
+    that discards that stderr measures NOTHING and reports a clean baseline - this happened here and
+    produced a whole benchmark of void numbers before the error was noticed. Always check it.
+  - Measured on an M5 (2.9 GB, Android 13, standardDebug, median of 5 cold starts) main vs the fix,
+    low-RAM path: peak PSS 831 MB -> 581 MB (-30%), post-trim 397 MB -> 246 MB (-38%), native heap
+    223 MB -> 95 MB (-57%), cold start 4811 ms -> 4333 ms. Idle PSS run-to-run variance is +-60 MB,
+    so single idle readings prove nothing; compare post-trim, which is paired within a run.
+  - **The ASR model is the single largest reclaimable allocation: ~267 MB PSS** (~101 MB of weights
+    in `scudo:secondary` plus ~146 MB of onnxruntime arena in `scudo:primary`). It releases on a
+    severe trim, is NOT warmed at startup on a low-RAM device, and - on EVERY device - is dropped
+    after `REAP_IDLE_MS` unused and rebuilt on next use. The window is RAM-SCALED (120 s low-RAM,
+    600 s roomy): a reload is ~1 s of dead mic on the next tap, and on a roomy phone that latency
+    regression buys nothing - pre-reaper those devices held the model all session and were fine.
+    `WhisperRecognizer.release()` declines while a listen is in flight - freeing the native
+    recognizer under a running decode is a use-after-free that takes the process down rather than
+    throwing.
+  - **A model's file size says NOTHING about its resident cost - measure before adopting.** NeMo
+    Conformer CTC small is a 46 MB int8 file that ballooned to ~760 MB-1.2 GB PSS through
+    onnxruntime on the M5 (rejected); Moonshine's small weights still cost ~212 MB across its four
+    ORT sessions - no lighter resident than Whisper tiny's ~214 MB (both same-protocol launch
+    deltas, 32-bit M5). k2 Zipformer small (26 MB encoder) was built, wired and then REMOVED
+    before merge: resident size is not the only bar - it is a 2023 librispeech (audiobook-domain)
+    model, and a maps app lives on the proper nouns that domain mishears; no post-processing fixes
+    that. The 267 MB Whisper hold is TRANSIENT now (idle reap), which is what actually makes it
+    viable on small phones. "Encoder-only means small" and "fewer MB means less RAM" were both
+    device-refuted in one afternoon. The clean way to isolate one model's resident cost: let the
+    IDLE REAP fire (it releases ONLY the recognizer) and diff `Native Heap` pre/post inside one
+    settled process - launch-to-launch totals swing +-150 MB with map content and prove nothing at
+    engine granularity.
+  - **Do not reach for a device gate when an IDLE gate will do.** The warm-at-startup behaviour was
+    first made low-RAM-conditional, which protected the instant-first-mic-tap UX on roomier phones
+    but left them holding 267 MB all session. Reaping on idle keeps that UX AND reclaims the memory
+    everywhere: device-verified on the 2.9 GB M5, `scudo:secondary` 111 MB -> 9 MB at the 120 s mark
+    with the model rebuilding on next use. Idle PSS 421 MB -> 299 MB (-29%) on a NON-low-RAM device.
+    Ask "can this be released when unused?" before "which devices should get less?".
+  - **`MapView.onLowMemory()` must be called.** MapLibre's tile/glyph/sprite caches are native and
+    that is the only way to shrink them; nothing called it before.
+  - **Cutting the ambient TERM COUNT does not cut peak memory, and it silently deletes POIs.** The
+    low-RAM path briefly fetched 8 of the 15 category terms. Both halves of that were wrong.
+    - Peak is set by `ambientFanout`, a `Semaphore(4)`, and every buffer (response String, stripped
+      copy, `JsonElement` DOM) is allocated INSIDE `withPermit`. At most 4 exist at once however many
+      terms are queued behind them, so 15 -> 8 changes the number of WAVES, not the peak. The
+      semaphore's own KDoc already said this: "Bounding to 4 caps the peak transient heap with the
+      same final pool." The levers that DO move the peak are the permit count and the response size
+      (`!7i`), and only the latter is used.
+    - Its justification was false. It kept `school` and `park` on the grounds that only they lack a
+      second source while the ambient layer is up. NOTHING has one then: `VelaMapView` sets
+      `poi_r1/poi_r7/poi_r20` to `NONE` **wholesale** on `if (navMode || ambientPois.isNotEmpty())`,
+      not per category. The dropped terms lost their fallback identically. Parks at least keep a
+      landuse polygon so the green area survives without the pin; a gym, bar or pharmacy exists ONLY
+      as a pin, making those the worse things to drop, not the safer ones.
+    - The observation behind it was real (a 6-term subset did lose every park and school pin, caught
+      by an A/B screenshot). The GENERALISATION drawn from one observation was not. When a screenshot
+      shows category X vanishing, that is evidence about the fan-out, not about X being special.
+  - **A Kotlin `release()` does NOT give memory back to the KERNEL, only to scudo.** Freeing a model
+    or a WebView returns its pages to the allocator's free lists, where RSS/PSS still count them and
+    lmkd still sees a fat process. `mallopt()` is the only way to hand them on and it is reachable
+    only from C, which is why `app/src/main/cpp/velamem.cpp` exists - the app's ONLY native module,
+    ~4 KB per ABI, built for `arm64-v8a` + `armeabi-v7a` only. `MemoryPressure.dispatch` schedules
+    it 750 ms after every trim (the delay matters: the WebView reapers post `destroy()` to the main
+    looper and `VelaApp` clears Coil after `dispatch` returns, so an inline purge would run before
+    the memory it is meant to reclaim was actually freed).
+    - Measured on the M5, 3 alternating A/B pairs, ASR-model-release scenario: with the purge
+      suppressed `scudo:primary` moved 60/32/28 KB in the 7 s after a severe trim, i.e. NOTHING;
+      with it on, 3704/3008/2792 KB. No overlap. A second 8-pair A/B over map/POI churn showed the
+      same shape, 3345 KB -> 6931 KB mean reclaimed (Mann-Whitney U=7, n=8/8, p<0.05).
+    - Do NOT expect this to reclaim the onnxruntime arena. It is worth a consistent ~3 MB, not tens.
+      The ASR model's ~111 MB lives in `scudo:secondary`, which is mmap-backed and comes back on
+      `free()` with no purge needed - measured 111 MB -> 7 MB in BOTH arms. The purge only moves
+      `scudo:primary`, which stays around 75 MB either way.
+    - `M_PURGE_ALL` is API 34+. On the Android 13 dev phone it returns 0 and the code falls back to
+      `M_PURGE` (API 28+). The logged `mode=` says which actually took (2, 1, or 0 for neither);
+      do not assume `M_PURGE_ALL` ran just because `all=true` was passed.
+  - **Backgrounding delivers `TRIM_MEMORY_UI_HIDDEN` (20), NOT `TRIM_MEMORY_BACKGROUND` (40).**
+    Measured on the M5: pressing HOME logs `dispatch level=20` and nothing more; 40 arrives only
+    later, once the process sinks in the LRU list under real pressure. `isSevere` starts at 40, so
+    it is deliberately FALSE at the single most common moment the app is handed. That is right for
+    releasing (do not thrash a model on every HOME press) and wrong for purging, which is why the
+    purge triggers from `TRIM_MEMORY_RUNNING_LOW` (10) up. Anything that should happen "when the
+    user leaves the app" must key off 20, not 40.
+  - **A/B a memory change on ONE binary or the arms differ in more than the change.** Two builds
+    also differ in background settling, and idle PSS swings +-60 MB run to run, so a cross-build
+    comparison cannot attribute a few MB to anything. `adb shell setprop debug.vela.nopurge true`
+    suppresses the purge at runtime, which makes the delta a paired within-run measurement. Verify
+    the gate really gates before trusting either arm: one arm must log `native purge suppressed`
+    and the other `native purge all=... mode=...`, or the A/B is measuring one thing twice.
+  - **The hidden WebViews are the single largest thing Vela costs, and app PSS CANNOT SEE IT.**
+    Android runs the WebView renderer OUT OF PROCESS. Measured on the M5 after one search:
+    `sandboxed_process0` at 305-347 MB PSS, plus `webview_service` 21 MB and `webview_apk` 37 MB,
+    none of it in the app's own `dumpsys meminfo`. Every issue-#83 number was app-PSS only, so the
+    largest item in the app was invisible to the whole exercise. **When measuring memory here,
+    always `adb shell ps -A | grep sandboxed_process` and total the WebView processes too.**
+    - The app-side half is `GL mtrack`, and it is huge: 26 MB with no WebView alive, 396-461 MB once
+      the two scraper WebViews exist. That is the offscreen layouts (`WV_WIDTH`x`WV_HEIGHT`, e.g.
+      1200x3200) allocating graphics buffers charged to OUR process. Chromium logs
+      `tile memory limits exceeded` at that size. Cutting the offscreen viewport is a real lead.
+  - **MEASURE THE `staging` VARIANT, NOT `debug`.** `staging` is `initWith(release)` - R8-minified,
+    resources shrunk, non-debuggable, installs side by side as `app.vela.staging` - so it is the
+    production memory profile without touching a real release install. Every number in issue #83 was
+    `standardDebug` and overstates the app substantially:
+
+    | state | standardDebug | standardStaging (production) |
+    |---|---|---|
+    | after a search (warm) | ~460 MB | **~279 MB** |
+    | place open | 410-508 MB | **335-392 MB** |
+    | after a severe trim | - | **140-146 MB** |
+    | `Code` bucket | 101 MB | **30-45 MB** |
+
+    The `Code` gap is extracted dex and JIT profiles that simply do not exist in a release build, so
+    roughly 55-70 MB of any debug reading is an artifact. Check a conclusion against `staging` before
+    spending effort on it.
+  - **`mallinfo` "free" is address space, NOT reclaimable resident memory. Do not chase it.** The
+    arena routinely reports something like 440 MB total against 41 MB live, which looks like ~400 MB
+    waiting to be reclaimed. It is not: scudo has already madvised those pages away, and
+    `scudo:primary` PSS at that same moment was only 67 MB. Measured directly by purging during
+    active use with no listener release (a `RUNNING_MODERATE` trim, which `isSevere` excludes):
+    `scudo:primary` moved 67.1 -> 64.5 MB, i.e. **2.6 MB**. A periodic idle purge is therefore not
+    worth building; the earlier framing of that gap as reclaimable was wrong.
+  - **What the `mallopt` purge is actually worth: ~10 MB, on production.** A/B on `staging`, 3 runs
+    per arm, comparing where `scudo:primary` SETTLES after a severe trim (the pre-trim value swings
+    147-382 MB run to run and is useless): purge on 52.4/53.1/54.1 MB, purge off 54.4/58.6/76.7 MB.
+    A single trim reclaims 133-328 MB on production, but nearly all of that is the registered
+    listeners releasing plus what the platform already does on trim - only ~10 MB is the purge. Do
+    not credit the purge with the whole trim delta; run the control.
+  - **Throw the scraped DOCUMENT away when the scrape ends; the viewport is not the lever.** After
+    a scrape the photo fetcher used to hold a fully rasterized Google Maps page until the 120 s reap,
+    i.e. through the whole time the user reads the place sheet. `blankAfterScrape()` navigates to
+    `about:blank` in `fetch()`'s `finally`. Measured at place-open + 75 s: **`GL mtrack` ~497 MB ->
+    64-70 MB and TOTAL PSS ~950 MB -> 410-508 MB**, photo counts unchanged.
+    - Resizing does NOT work, and this was measured before believing it: shrinking the view to 0x0
+      after a scrape reclaimed nothing at all (494/496/497 MB against a 497/498 MB control). Chromium
+      keeps the tiles it has rasterized for a live document regardless of view size. **Document
+      lifetime is the only lever with leverage here** - the 1200x3200 viewport is 3.84 Mpx = 15 MB at
+      4 B/px, yet GL mtrack was ~490 MB, so the number is a whole composited layer tree against a
+      tile budget, not one viewport buffer. Stop spending device time on geometry.
+  - **`about:blank` opens the next fetch's load gate early unless you guard for it.** Parking the
+    view at `about:blank` broke the NEXT scrape: its `onPageFinished` fires on the freshly installed
+    `webViewClient`, completes the `ready` gate before the real page commits, and the scraper injects
+    into an empty document. **Caught only by opening a SECOND place** - the same place scraped 33
+    photos as the first place opened and 0 as the second. `onPageFinished` now ignores `about:` URLs.
+    - Test the second place, every time. A one-place test cannot see any bug in WebView REUSE, and
+      re-tapping the SAME place is served from the LRU cache without scraping at all, so it cannot
+      see one either. Confirm from the log that two DIFFERENT featureIds actually scraped.
+  - **Do not LAY OUT a scraper WebView until it is actually scraping.** `WebPhotoFetcher` sized its
+    view inside `ensureWebView`, i.e. at construction, and `warm()` goes through `ensureWebView` - so
+    a speculative warm built a full 1200x3200 composited surface over `maps?hl=en`, a page with zero
+    scrapeable content, and held it for the entire 300 s warm window on a 480x640 phone. Sizing moved
+    into `sizeForScrape(wv)`, called immediately before `loadUrl` in `fetch()`. Matched A/B, same
+    harness, 3 runs per arm, search-then-browse with no place opened:
+    **`GL mtrack` 448/427/441 MB -> 77/71/72 MB (-365 MB) and TOTAL PSS 866/854/852 MB ->
+    485/460/459 MB (-390 MB)**, with the scrape byte-for-byte unaffected (28/28/28 photos on the
+    same place in both arms).
+    - This fetcher is the ONLY one that lays out during a warm. `WebPopularTimesFetcher.prewarm`,
+      `WebDirectionsFetcher` and `WebStopDeparturesFetcher` never call measure/layout at all, and
+      `WebReviewsFetcher` has no warm. That is why every GL number in this codebase tracks THIS view,
+      and why a reviews-side change looked like it helped when it could not have.
+    - The size itself is load-bearing at scrape time - the grids virtualize, so at 0x0 a category tab
+      renders about one tile and the scrape comes back nearly empty. Size BEFORE `loadUrl` so the
+      page's first layout is already at scrape geometry. Deferring the layout is safe precisely
+      because it leaves scrape-time geometry identical; SHRINKING it is not the same bet.
+    - Gate any viewport change on scrape COUNT, not memory. Both fetchers log
+      `scraped N photos/reviews for <featureId>` for exactly this. A change that halves memory and
+      quietly halves the gallery is a regression no memory metric shows.
+    - **A quality metric stuck at zero cannot fail, so it proves nothing.** A 720 px width was tried
+      and reverted: on the photo side it held (28 -> 28) but on the reviews side the scrape returns 0
+      for every place tried at 1200 AND at 720 - a pre-existing failure - so that arm was
+      unfalsifiable. Check the control can produce a non-zero result before trusting an A/B.
+    - `GL mtrack` at place-open is BIMODAL (~490 MB laid out and alive, ~71 MB not), so single
+      readings there mean nothing. Measure the warm window, repeat, and report the spread.
+  - **BOTH speculative warms have to be bounded or neither helps.** The renderer is SHARED by every
+    WebView in the process, so one un-reaped view keeps it alive for all of them. `WebPhotoFetcher`
+    had no idle reaper at all, and `WebPopularTimesFetcher.prewarm()` created a view and never
+    called `scheduleReap()` (only `fetch()` did). `MapViewModel` warms both on every search, so one
+    search pinned the renderer for the session. Device-verified the hard way: reaping only the photo
+    view left the renderer alive at ~200 MB because the popular-times view still held it. Fixing
+    both, with no trim involved, took the renderer to zero and app PSS 744 MB -> 351 MB.
+    - A speculative warm gets a LONGER reap window than a real fetch (`WARM_REAP_IDLE_MS` 300 s vs
+      `REAP_IDLE_MS` 120 s). The warm exists so the first place tap skips the cold start; reaping it
+      at 120 s would expire during an ordinary browse and waste the warm entirely. Bounded, not
+      short, is the goal - the bug was session-long, not "not aggressive enough".
+  - **A reap must drain `pending`, exactly like `rendererGone` does.** Destroying the view kills the
+    injected scraper, so nothing will ever complete those deferreds; a reap landing mid-fetch parks
+    the fetch in `deferred.await()` for the full `TOTAL_TIMEOUT_MS` (40 s) while it HOLDS the
+    fetcher's `Mutex`, stalling everything queued behind it. An empty result is the documented
+    best-effort failure; a 40 s hang is not.
+  - **Verifying a reap needs a LOG, not a process check.** `WebView.destroy()` does not kill the
+    renderer promptly - measured 220 MB still resident 8 s after a destroy and the process gone only
+    minutes later - and an OS trim can kill it for unrelated reasons, so "the process went away" does
+    not mean your timer fired. The first attempt to verify this was unfalsifiable for exactly that
+    reason: the renderer vanished at t+60 s and the logs showed `dispatch level=15`/`40`, i.e. a real
+    trim, not the reaper. Log the reap, then assert the log AND assert no severe trim fired.
+  - **Freeing a native model needs a LEASE, not an atomic counter checked outside the lock.**
+    `WhisperRecognizer` guards the recognizer with `leases`, mutated ONLY under `loadLock`, and
+    `release()` checks the count and frees inside that same lock. The first version of this checked
+    an `AtomicInteger` before taking the lock while `ensureRecognizer()` handed the pointer out on a
+    lock-free fast path, which is a check-then-act: the reaper reads 0, a mic tap increments and
+    takes the pointer, the reaper frees it under the running decode. `runCatching` around the decode
+    CANNOT save you - `OfflineRecognizer.release()` frees C++ memory and the result is a SIGSEGV in
+    `libsherpa-onnx-jni` that takes the process down. **An atomic counter does not make a
+    check-then-act atomic.** Take the lease and the pointer under one lock, or do not take either.
+  - **`release()` must not block the main thread, so it `tryLock`s.** It is called from
+    `onTrimMemory` on the main thread, and `loadLock` is held across the ~1 s native model load, so
+    a blocking acquire stalls the UI thread for that whole load just to reclaim memory the idle
+    reaper would reclaim anyway. Skipping is safe; the next trim or the reaper retries. `Remove
+    model` passes `wait = true` because there the user asked for it - and `deleteAsrEngine` runs
+    that whole sequence (wait + native free + the up-to-154 MB recursive delete) on `Dispatchers.IO`,
+    never the UI thread. Device-verified that this window is REAL and not theoretical: hammering
+    `am send-trim-memory <pid> RUNNING_CRITICAL` across startup logged `release skipped, model load
+    in progress` 5 times in one run.
+    - `RUNNING_CRITICAL` is the level to use for this - it is `isSevere` AND the OS accepts it on a
+      FOREGROUND process, so it exercises the load window without needing HOME first.
+  - **The lease protects EVERY path that frees the recognizer, including the engine-switch rebuild.**
+    `ensureRecognizerLocked`'s key-mismatch branch must not `release()` the superseded model while
+    `leases > 0` - a listen can still be decoding inside it (mic tap, then Settings "Use" on another
+    engine). It parks the old recognizer in `retired` instead, drained under `loadLock` once the
+    lease count returns to zero. Holding two models briefly is the price of not freeing one under a
+    running decode.
+  - **Taking a lease across a suspension point must be CANCELLATION-SAFE.** `withContext { acquire() }`
+    runs the block to completion and then throws `CancellationException` INSTEAD of returning the
+    value when the caller was cancelled mid-load - so a `finally` keyed off the returned reference
+    leaks the lease forever (every release path then declines for the rest of the process, and the
+    267 MB becomes unreclaimable). `listen()` sets a `leased` flag INSIDE the block via `.also {}`
+    and keys the `finally` off the flag, not the reference.
+  - **A trim-triggered WebView reap DECLINES while a fetch is in flight, except at CRITICAL.** All
+    five fetchers' `reapNow(force)` skip teardown when `pending` is non-empty and the trim is merely
+    severe - destroying the view kills the injected scraper and turns a live gallery/reviews/
+    directions fetch into an empty panel, and the fetch's own `finally` re-arms the reap moments
+    later anyway. A CRITICAL trim forces the teardown and then DRAINS `pending` (complete-empty), so
+    the stranded fetch fails fast instead of parking in `deferred.await()` for the full timeout
+    while holding the serializing mutex. All reap bookkeeping is main-thread-confined via `onMain`
+    in every fetcher - `reap` scheduling is a read-modify-write and @Volatile does not fix one.
+  - **The sherpa-onnx AAR is pinned at >= 1.13.4 because of 32-bit ARM.** Its bundled onnxruntime
+    (1.27.0) fixes an unaligned-read SIGBUS (`BUS_ADRALN`) that crashed every MODEL LOAD on
+    armeabi-v7a - TTS and ASR both, uncatchably, at startup (issue #95). Device-verified both ways
+    on an M5 forced to `--abi armeabi-v7a`: 1.13.3/ORT 1.24.3 SIGBUSes in `libonnxruntime.so` on
+    the loading thread; 1.13.4/ORT 1.27.0 loads and releases clean. The feature phones this fork
+    exists for have NO system speech engine - the downloaded models are their only voice - so "gate
+    voice off on 32-bit" is not an acceptable fallback and the runtime must keep working there.
+    Test any AAR bump on a 32-bit install before shipping it.
+  - **A quarantined model makes `warmUp()` a silent no-op.** The corrupt-model quarantine keys
+    (`asr_model_bad_<engineId>`, `piper_model_bad_<voiceId>` in `vela_settings`) are only ever
+    lifted by the installer paths' `clearQuarantine()`. Side-loading model files by hand leaves a
+    latched flag set, so the model never loads, `scudo:secondary` sits at ~11 MB instead of
+    ~111 MB, and a memory benchmark silently measures the model-absent case. Check `secondary` is
+    actually model-sized before believing any ASR/TTS memory number - and clear BOTH the bad flag
+    and the strike counter when resetting a device by hand.
+
+## Performance: what has been measured
+
+- **The slowness users feel is CONTENT LATENCY, not frames. Measure that axis first.**
+  Device-measured on staging: **tapping a place to a complete gallery is 28.8 s** (35 photos). The
+  scrapers are built around 40 s and 45 s timeouts with a 7 s page-load allowance, and the photo
+  scraper's own JS polls up to 58 ticks at 500 ms, so ~30 s is the designed shape, not a stall.
+  Frame time on the same device is 9.0 ms against a 16.7 ms budget - there is nothing to win there.
+  A user reporting "the whole app is a bit slow" is far more likely describing this than jank.
+  - So performance work on Vela should start with: how long until the user sees the thing they asked
+    for? Search results, ambient POI pins, the gallery, reviews. Not `gfxinfo`, not cold start.
+  - A concrete lead nobody has pulled: `GoogleMapsDataSource.nearbyPlaces` fans out 15 category
+    terms 4-at-a-time and finishes with `awaitAll().flatten()`, so **every ambient pin appears at
+    once after the slowest term**, roughly four network waves in. Streaming each term's results as
+    they land would put first pins on screen ~4x sooner for the same total work.
+  - **But it is NOT a drive-by edit, and here is the trap.** `nearbyPlaces` post-processes the whole
+    fan-out with the SLIM-FLAVOR HEAL: for the first ~3 s of a session Google serves per-place blocks
+    with the review count ABSENT, which zeroes `ambientProminence` and, in the code's own words,
+    "silently broke everything keyed on it: prominence ranking, dot sizing, label tiers - all flat".
+    The heal detects that flavour across the merged pool and refetches. Painting each term as it
+    lands would put pins on screen BEFORE the heal can run, i.e. exactly the flat-ranking bug that
+    was already fixed once. There is no `onPartial` on `MapDataSource.nearbyPlaces` today (photos and
+    reviews have one; ambient does not), so the interface, the ViewModel call site at
+    MapViewModel.kt:3659, the heal, `rankAmbientPlaces` and the take-N cap all have to be worked out
+    together. Collision priority is at least already stable across uploads (prominence, not list
+    index - upstream c35eea33), so repeated uploads will not reshuffle placement.
+- **The UI is NOT the bottleneck - measure before optimising it.** An atrace across cold start plus
+  a D-pad drive on the staging build: `Choreographer#doFrame` totals 3,860 ms over **430 frames =
+  9.0 ms per frame**, against a 16.7 ms budget at 60 Hz. measure/layout/draw is 3.5 ms/frame and
+  inflate is 16 ms in total. **There is no frame-budget problem on this device.** GC, at 2,165 ms,
+  is the largest remaining cost, which is why allocation work (see the `FlockCameras` index) is the
+  productive direction and composable restructuring is not.
+  - This measurement should have come FIRST. Two `MapScreen` extractions were attempted and reverted
+    before anyone checked whether the uncompiled composable was actually costing frames. It is not.
+    A method being uncompiled only matters if it runs hot, and at 9 ms/frame this one does not hurt.
+- **`MapScreen` is too big for ART to COMPILE, so the main screen runs interpreted.** On the
+  shipping build ART logs `Method exceeds compiler instruction limit: 19621 in void
+  i2.r1.f(i2.E3, z3.a, Z.p, int)`, which the R8 mapping resolves to
+  `MapScreenKt.MapScreen(MapViewModel, Function0, Composer, int)` (`MapScreenKt -> i2.r1`,
+  `MapScreen -> f`). ART's optimizing compiler skips methods over ~10,000 dex instructions, so the
+  composable that runs on every recomposition of the main screen is never compiled. Verify with:
+
+      adb logcat -d | grep -i "exceeds compiler instruction limit"
+
+  The body spans roughly lines 192-2172 of a 3,479-line file. It is the largest known code-size
+  anomaly, but per the frame measurement above it is **not** a demonstrated performance problem -
+  do not spend effort here without first showing it costs frames.
+  - The fix is to extract the big `if` blocks under the root `Box` into private composables. A
+    trial extraction of the largest (lines 1828-2048, the idle-map overlay block, 221 lines) was
+    done and reverted, and it establishes the recipe: the function needs a **`BoxScope` receiver**
+    (the block uses `Modifier.align`), and it captures **23** names - `chromeLift, context,
+    darkTheme, driveFollowing, followMe, layersOpen, metersPerPixel, parkedCarLabel,
+    parkingClearedMsg, parkingMovedMsg, parkingNoFixMsg, parkingSet, parkingTapAction, resultsShown,
+    searchOpen, show, showParkingHistory, showParkingMenu, softkeyBarShown, speedOverlayArmed,
+    state, vm`.
+  - Six of those are `var ... by remember { mutableStateOf(...) }` (`followMe`, `layersOpen`,
+    `metersPerPixel`, `showParkingHistory`, `showParkingMenu`, `speedOverlayArmed`) and the block
+    WRITES them. Pass the `MutableState<T>` and re-delegate at the top of the extracted function
+    (`var showParkingMenu by showParkingMenuState`) so the 221-line body stays byte-identical.
+    Passing them by value is a compile error, not a silent break - the compiler is the safety net
+    here, which is what makes this refactor tractable.
+  - Do it ONE block at a time, rebuilding and re-checking the logcat number after each, and stop
+    when the message disappears. Screenshot the map after each step.
+  - **EXTRACTION DOES NOT WORK. Two controlled experiments, both worse. Do not try a third.**
+    Extracting a block into a private composable consistently INCREASES MapScreen's instruction
+    count, and the effect is not explained by how many values the block captures:
+
+    | block extracted | lines | captures | lines/capture | MapScreen after |
+    |---|---|---|---|---|
+    | (baseline) | - | - | - | **19,621** |
+    | 1828-2048 idle overlays | 221 | 23 | 9.6 | 20,351 (+730) |
+    | 991-1104 dpad overlay | 114 | 9 | 12.7 | **21,638 (+2,017)** |
+
+    The second was chosen precisely because it had a far better lines-per-capture ratio, on the
+    theory that Compose's per-parameter `$changed` plumbing was the cost. It came out WORSE than the
+    first. Both compiled, installed and ran without crashing, so this is a code-size result, not a
+    correctness one; both were reverted. Whatever dominates the count, adding a composable call
+    layer costs more than the body it removes. **Shrinking MapScreen under the ~10,000 limit is not
+    reachable by pulling blocks out of it**, and anyone trying should have a different hypothesis
+    and measure it in one build before doing the work.
+  - The stale earlier advice below is kept only for the mechanics it records (BoxScope receiver,
+    passing `MutableState` and re-delegating with `by` so the body stays byte-identical). Those
+    techniques are correct; the strategy they serve is not.
+  - **A naive extraction makes it WORSE, and this was measured, not guessed.** The 221-line block
+    above was fully extracted into `BoxScope.MapIdleOverlays` with all 21 captures passed and the
+    six `MutableState`s re-delegated. It compiled, ran and did not crash - and MapScreen went
+    **19,621 -> 20,351 instructions**. Compose emits `$changed`/`$changed1` bitmask plumbing per
+    parameter at the call site, and for a capture set that size it costs more than the body removes.
+    The change was reverted.
+  - So the rule is: **extract blocks with FEW captures, not the biggest blocks.** Before extracting,
+    count the captures (comment out the block, compile, read the unresolved references - that is
+    the exact list, and it takes one build). A 100-line block taking 4 parameters will beat a
+    220-line block taking 21. Recomputing composable-local values inside the extracted function
+    (`LocalContext.current`, `stringResource`, `isAppInDarkTheme()`, `VelaSoftkeys.isActive()`)
+    rather than passing them also drops the count without changing behaviour.
+- **Startup is GC-bound, not compilation-bound. Do not reach for a baseline profile.** Forcing full
+  AOT (`cmd package compile -m speed -f`) made cold start WORSE - 828 ms against 775 ms - which is
+  an upper bound on anything a profile could buy. An atrace of a cold start instead attributes
+  seconds to GC (`CopyingPhase`, `NativeAlloc concurrent copying GC`, `MarkingPhase`), so allocation
+  count at startup is the thing worth cutting. That is what motivated the `FlockCameras` CSR index.
+- **Measuring startup: control the dexopt state or measure nothing.** `adb install -r` resets it, so
+  runs straight after an install are unprofiled and slower. Comparing a fresh-install arm against a
+  warmed baseline once "showed" that REMOVING work made startup slower. Cold start on this device
+  swings 739-1552 ms even matched, so prefer a lower-variance metric (atrace GC slices) for anything
+  smaller than a few hundred ms.
+- **`dumpsys gfxinfo` does not measure this app's map.** MapLibre renders through its own GL context,
+  so HWUI frame stats cover only the Compose chrome - a D-pad drive produced 60 frames at 0% jank
+  and a swipe drive 11 frames, neither of which could have detected a regression.
 
 ## Layout
 
@@ -1297,7 +1726,13 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     11 languages; URL = `…/tts-models/vits-piper-<id>.tar.bz2`). `PiperSynth.ensureLoaded` reloads when
     the selected voice changes; `PiperSynth.reloadVoice()` is the SINGLE switch trigger - it bumps the
     generation counter (aborting any in-flight utterance) then tears down + rebuilds on the same serial
-    worker, so `tts` is never freed mid-`generate()`. `MapViewModel.migrateFlatLayoutIfNeeded` (first
+    worker, so `tts` is never freed mid-`generate()`. The MEMORY-PRESSURE release deliberately does
+    NOT bump the generation (`release(interrupt = false)`): a trim must reclaim the model, not cut
+    off the nav prompt being spoken mid-word - the serial worker orders the free after the current
+    utterance either way. `ensureLoaded` carries the same TWO-STRIKE per-voice crash sentinel as the
+    ASR loads (`piper_load_strikes_<voiceId>`/`piper_model_bad_<voiceId>`): a voice whose native load
+    dies (SIGBUS/segfault - uncatchable) crash-looped the app at EVERY launch (issue #95, TCL Flip 2)
+    because `warmUp()` runs at startup and `catch (Throwable)` never saw the abort. `MapViewModel.migrateFlatLayoutIfNeeded` (first
     thing in `init`) relocates the old flat single-voice install in place (rename, copy-fallback,
     verify-gated, re-runnable) - never re-downloads.
   - **Voice search (speak a query into the search bar), two tiers.** `ui/VoiceSearch` (process-wide
@@ -1310,9 +1745,14 @@ state - upstream's own 13ac02e8 already made the layers panel a VelaMenu):
     D-pad-focusable `Dialog`, Done auto-focuses); wiring + the RECORD_AUDIO launcher + the
     download-offer are in `MapScreen`; the Settings -> Search per-engine picker is in `SettingsScreen`.
     Needs `RECORD_AUDIO` (manifest; asked at the mic tap).
-    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 / 118e7e8c /
-      137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`), `SENSE_VOICE`
-      (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Each is an OPTIONAL download to
+    - **PICKABLE ENGINES via `voice/AsrEngine` (an enum catalog; ported upstream 5d2a6636 /
+      118e7e8c / 137beea9).** Three: `WHISPER_TINY` (multilingual, ~58 MB, the `DEFAULT`),
+      `SENSE_VOICE` (en/zh/ja/ko/yue, ~154 MB), `MOONSHINE` (English-only, ~101 MB). Transcripts
+      pass through `SpeechText.cleanSearchTranscript`, which also lowercases ALL-CAPS output and
+      runs `spokenNumbersToDigits` - unit-tested inverse text normalization ("ONE TWENTY THREE
+      MAIN STREET" -> "123 main street") kept as insurance for any future word-form engine; the
+      current three write digits themselves and pass through unchanged. Each is an OPTIONAL
+      download to
       `filesDir/asr/<id>/`; `active()` is the picked engine (pref `asr_engine`), `forRecognition(lang)`
       falls back to Whisper when the pick can't do the app language. **Whisper stays the default and
       the ONLY thing onboarding / the map mic offer install** (`downloadAsrModel()` =
