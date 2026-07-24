@@ -110,3 +110,9 @@ sandboxed JS parse-logic with no app update (see SPEC section 5). Fix future bre
   the MTK flip-phone targets). Verification = the full golden matrix, both themes; the calibrated
   relationships to keep intact are the teal containers (stock defaults read purple) and the orange
   0xFFFF6D00 focus ring's contrast against them.
+
+- **Mirror the map-fonts glyph release.** MapFonts currently points at upstream's GitHub Pages
+  glyph host (probe-guarded, so failure degrades to Noto). Run scripts/build-map-fonts.sh, publish
+  a map-fonts release on THIS repo, serve it from this repo's Pages, and flip MAP_FONTS_URL.
+- **A DHU-based Android Auto harness phase.** AA is the one surface with no scripted gate; the
+  Desktop Head Unit emulator can drive and screenshot the car screens.

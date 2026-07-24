@@ -313,8 +313,7 @@
     <string name="mapscreen_permanently_closed">Закрито назавжди</string>
     <string name="mapscreen_section_saved">Збережені</string>
     <string name="mapscreen_section_recent">Нещодавні</string>
-    <string name="mapscreen_section_recent_searches">Нещодавні пошуки</string>
-    <string name="mapscreen_clear_recent_searches">Очистити нещодавні пошуки</string>
+    <string name="mapscreen_clear_recents">Очистити нещодавні</string>
     <string name="mapscreen_search_empty_hint">Шукайте місця, адреси та категорії.</string>
     <string name="mapscreen_set_shortcut_address">Задати адресу «%1$s»</string>
     <string name="mapscreen_edit_shortcut">Редагувати «%1$s»</string>
@@ -550,4 +549,30 @@
     <string name="voice_error_vad">Частина голосової моделі відсутня. Завантажте її знову в Налаштуваннях \u2192 Пошук.</string>
     <string name="voice_error_audio">Цей телефон не відкрив мікрофон для Vela. Закрийте інші додатки, що записують звук, і спробуйте ще раз.</string>
     <string name="voice_error_recording">Запис несподівано зупинився. Спробуйте ще раз.</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Пошук</string>
+    <string name="car_no_destinations">Ще немає збережених або нещодавніх пунктів призначення</string>
+    <string name="car_search_hint">Введіть, щоб знайти пункт призначення</string>
+    <string name="car_go">Їхати</string>
+    <string name="car_end">Завершити</string>
+    <string name="car_mute">Без звуку</string>
+    <string name="car_unmute">Увімкнути звук</string>
+    <string name="car_faster_route">Швидше −%1$d хв</string>
+    <string name="car_no_route">Немає маршруту, перевірте місцезнаходження</string>
+    <string name="car_voice_nothing">Мовлення не розпізнано</string>
+    <string name="car_stop_added">Зупинку додано</string>
+    <string name="car_categories">Категорії</string>
+    <string name="settings_drive_alerts">Сповіщення в дорозі</string>
+    <string name="settings_alert_cameras">Сповіщення про камери</string>
+    <string name="settings_alert_cameras_hint">Голосове попередження біля камери номерів. Лише Android Auto.</string>
+    <string name="settings_alert_speeding">Попередження про швидкість</string>
+    <string name="settings_alert_speeding_hint">Значок швидкості червоніє при перевищенні ліміту.</string>
+    <string name="car_camera_ahead">Попереду камера</string>
+    <string name="cat_parking">Парковка</string>
+    <string name="cat_charging">Зарядка EV</string>
+    <string name="car_stops">Зупинки</string>
+    <string name="car_no_stops">У цій поїздці немає зупинок</string>
+    <string name="car_stop_removed">Зупинку видалено</string>
+    <string name="car_stop_remove_hint">Торкніться, щоб видалити</string>
+    <string name="car_details">Деталі</string>
 </resources>

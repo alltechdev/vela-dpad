@@ -223,7 +223,8 @@ class WhisperRecognizer @Inject constructor(
         focusRequest = null
     }
 
-    private companion object {
+    // Internal (not private) so CarVoiceSearch can size its byte buffer off VAD_WINDOW.
+    internal companion object {
         // Grep target for a tester's logcat: every listen() failure logs under this tag with its
         // VoiceResult.Reason, so "it doesn't work" arrives already diagnosed (issue #81).
         const val TAG = "VELAASR"
@@ -238,6 +239,7 @@ class WhisperRecognizer @Inject constructor(
         const val SAMPLE_RATE = 16000
         const val VAD_WINDOW = 512            // Silero v4/v5 window at 16 kHz
         const val MAX_SECONDS = 15            // hard cap on one utterance
+        const val EMPTY_READ_SLEEP_MS = 10L   // zero-byte read backoff (car mic can be nonblocking)
         // Drop the loaded model after this quiet period (issue #83): long enough that a dictation
         // session never reaps between utterances, short enough that a session-long 267 MB hold
         // cannot happen. RAM-SCALED, not flat: a reload costs ~1 s of dead mic on the next tap,
@@ -432,6 +434,16 @@ class WhisperRecognizer @Inject constructor(
         return r
     }
 
+    /** A 16 kHz mono PCM16 feed that [listen] drains. The phone mic is the default; the Android
+     *  Auto search screen substitutes the car's mic (CarAudioRecord, which records at the same
+     *  16 kHz) through this, so the VAD + decode pipeline is identical on both. [read] returns the
+     *  number of shorts read (<= size); [start] may throw (surfaces as [VoiceResult.Reason.RECORDING]). */
+    interface PcmSource {
+        fun start()
+        fun read(buf: ShortArray, size: Int): Int
+        fun stop()
+    }
+
     /**
      * Record from the mic and return what was said, or null if nothing usable was heard (or the
      * model/permission isn't there). [onLevel] gets a 0..1 loudness for the listening animation,
@@ -450,6 +462,7 @@ class WhisperRecognizer @Inject constructor(
         onLevel: (Float) -> Unit,
         onListening: () -> Unit,
         cancelled: () -> Boolean,
+        source: PcmSource? = null,
     ): VoiceResult {
         // Acquire (and load) OFF the main thread: this can be a ~1 s native load, and callers reach
         // listen() from a UI coroutine. The lease is taken here rather than inside listenInner so
@@ -469,7 +482,7 @@ class WhisperRecognizer @Inject constructor(
                     Timber.tag(TAG).e("listen failed: MODEL (model absent or native load failed)")
                     return VoiceResult.Failed(VoiceResult.Reason.MODEL, "model absent or native load failed")
                 }
-            return listenInner(rec, onLevel, onListening, cancelled)
+            return listenInner(rec, onLevel, onListening, cancelled, source)
         } finally {
             if (leased) releaseLease()
             armIdleReap() // restart the quiet period from the END of this utterance
@@ -481,6 +494,7 @@ class WhisperRecognizer @Inject constructor(
         onLevel: (Float) -> Unit,
         onListening: () -> Unit,
         cancelled: () -> Boolean,
+        source: PcmSource? = null,
     ): VoiceResult = withContext(Dispatchers.Default) {
         fun fail(reason: VoiceResult.Reason, detail: String? = null): VoiceResult.Failed {
             Timber.tag(TAG).e("listen failed: $reason${detail?.let { " ($it)" } ?: ""}")
@@ -505,22 +519,32 @@ class WhisperRecognizer @Inject constructor(
             )
         }.getOrNull() ?: return@withContext fail(VoiceResult.Reason.VAD, "silero VAD would not construct")
 
-        val minBuf = AudioRecord.getMinBufferSize(
-            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-        )
-        val audio = runCatching {
-            AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                maxOf(minBuf, SAMPLE_RATE * 2),
+        val audio = source ?: run {
+            val minBuf = AudioRecord.getMinBufferSize(
+                SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
             )
-        }.getOrNull()
-        if (audio == null || audio.state != AudioRecord.STATE_INITIALIZED) {
-            val detail = if (audio == null) "constructor threw" else "state=${audio.state} minBuf=$minBuf"
-            audio?.release(); vad.release()
-            return@withContext fail(VoiceResult.Reason.AUDIO_INIT, detail)
+            val mic = runCatching {
+                AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    maxOf(minBuf, SAMPLE_RATE * 2),
+                )
+            }.getOrNull()
+            if (mic == null || mic.state != AudioRecord.STATE_INITIALIZED) {
+                val detail = if (mic == null) "constructor threw" else "state=${mic.state} minBuf=$minBuf"
+                mic?.release(); vad.release()
+                return@withContext fail(VoiceResult.Reason.AUDIO_INIT, detail)
+            }
+            object : PcmSource {
+                override fun start() = mic.startRecording()
+                override fun read(buf: ShortArray, size: Int): Int = mic.read(buf, 0, size)
+                override fun stop() {
+                    runCatching { mic.stop() }
+                    runCatching { mic.release() }
+                }
+            }
         }
 
         val buf = ShortArray(VAD_WINDOW)
@@ -528,18 +552,41 @@ class WhisperRecognizer @Inject constructor(
         var total = 0
         var sawSpeech = false
         var segment: FloatArray? = null
+        // VAD feed accumulator: Silero only accepts exact windows, and a pipe-backed car source
+        // routinely returns PARTIAL chunks - feeding only exactly-full reads starved the VAD
+        // (review round 2). Partials accumulate here and drain in whole windows.
+        val vadAcc = FloatArray(VAD_WINDOW)
+        var vadFill = 0
+        // Wall-clock deadline: the sample-count cap never trips on a source that yields zero
+        // bytes forever (car mic opens, never delivers) - focus was held indefinitely.
+        val deadlineMs = android.os.SystemClock.elapsedRealtime() + (MAX_SECONDS + 5) * 1000L
         try {
             requestAudioFocus() // pause any playing music/podcast while we listen
-            audio.startRecording()
+            audio.start()
             onListening()
-            while (!cancelled() && segment == null && total < SAMPLE_RATE * MAX_SECONDS) {
-                val n = audio.read(buf, 0, VAD_WINDOW)
-                if (n <= 0) continue
+            while (!cancelled() && segment == null && total < SAMPLE_RATE * MAX_SECONDS &&
+                android.os.SystemClock.elapsedRealtime() < deadlineMs
+            ) {
+                val n = audio.read(buf, VAD_WINDOW)
+                // n < 0 is TERMINAL (CarAudioRecord returns -1 forever once the host remote-closes
+                // the mic): continuing spun this loop at 100% CPU holding audio focus (review
+                // finding). n == 0 is just no-data-yet; breathe instead of hot-looping.
+                if (n < 0) {
+                    runCatching { vad.release() }
+                    return@withContext fail(VoiceResult.Reason.RECORDING, "source read returned $n")
+                }
+                if (n == 0) { Thread.sleep(EMPTY_READ_SLEEP_MS); continue }
                 val f = FloatArray(n) { buf[it] / 32768f }
                 onLevel(rms(f))
                 chunks.add(f)
                 total += n
-                if (n == VAD_WINDOW) vad.acceptWaveform(f)
+                var off = 0
+                while (off < n) {
+                    val take = minOf(VAD_WINDOW - vadFill, n - off)
+                    f.copyInto(vadAcc, vadFill, off, off + take)
+                    vadFill += take; off += take
+                    if (vadFill == VAD_WINDOW) { vad.acceptWaveform(vadAcc.copyOf()); vadFill = 0 }
+                }
                 if (vad.isSpeechDetected()) sawSpeech = true
                 // A finished speech segment (speech then a beat of silence) = the utterance.
                 if (!vad.empty()) {
@@ -555,7 +602,6 @@ class WhisperRecognizer @Inject constructor(
             // guarded so one failure can't skip the rest and leave playback paused forever.
             abandonAudioFocus() // let the music resume
             runCatching { audio.stop() }
-            runCatching { audio.release() }
         }
 
         // Prefer the VAD-trimmed segment (leading/trailing silence stripped -> cleaner transcript);

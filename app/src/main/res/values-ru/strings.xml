@@ -313,8 +313,7 @@
     <string name="mapscreen_permanently_closed">Закрыто навсегда</string>
     <string name="mapscreen_section_saved">Сохранённые</string>
     <string name="mapscreen_section_recent">Недавние</string>
-    <string name="mapscreen_section_recent_searches">Недавние запросы</string>
-    <string name="mapscreen_clear_recent_searches">Очистить недавние запросы</string>
+    <string name="mapscreen_clear_recents">Очистить недавние</string>
     <string name="mapscreen_search_empty_hint">Ищите места, адреса и категории.</string>
     <string name="mapscreen_set_shortcut_address">Задать адрес: %1$s</string>
     <string name="mapscreen_edit_shortcut">Изменить %1$s</string>
@@ -550,4 +549,30 @@
     <string name="voice_error_vad">Часть голосовой модели отсутствует. Скачайте её заново в Настройках \u2192 Поиск.</string>
     <string name="voice_error_audio">Этот телефон не открыл микрофон для Vela. Закройте другие приложения, записывающие звук, и попробуйте снова.</string>
     <string name="voice_error_recording">Запись неожиданно прервалась. Попробуйте снова.</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Поиск</string>
+    <string name="car_no_destinations">Пока нет сохранённых или недавних пунктов назначения</string>
+    <string name="car_search_hint">Введите текст для поиска пункта назначения</string>
+    <string name="car_go">Ехать</string>
+    <string name="car_end">Завершить</string>
+    <string name="car_mute">Без звука</string>
+    <string name="car_unmute">Включить звук</string>
+    <string name="car_faster_route">Быстрее −%1$d мин</string>
+    <string name="car_no_route">Маршрут недоступен, проверьте местоположение</string>
+    <string name="car_voice_nothing">Речь не распознана</string>
+    <string name="car_stop_added">Остановка добавлена</string>
+    <string name="car_categories">Категории</string>
+    <string name="settings_drive_alerts">Оповещения в пути</string>
+    <string name="settings_alert_cameras">Оповещения о камерах</string>
+    <string name="settings_alert_cameras_hint">Голосовое предупреждение возле камеры номеров. Только Android Auto.</string>
+    <string name="settings_alert_speeding">Предупреждение о скорости</string>
+    <string name="settings_alert_speeding_hint">Значок скорости краснеет при превышении лимита.</string>
+    <string name="car_camera_ahead">Впереди камера</string>
+    <string name="cat_parking">Парковка</string>
+    <string name="cat_charging">Зарядка ЭМ</string>
+    <string name="car_stops">Остановки</string>
+    <string name="car_no_stops">В этой поездке нет остановок</string>
+    <string name="car_stop_removed">Остановка удалена</string>
+    <string name="car_stop_remove_hint">Нажмите, чтобы удалить</string>
+    <string name="car_details">Подробности</string>
 </resources>

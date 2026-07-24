@@ -35,6 +35,7 @@
     <string name="settings_appearance_hint">Light/Dark applies to Vela only. It won\'t touch your phone\'s system theme.</string>
     <string name="settings_map_style">Map style</string>
     <string name="settings_map_style_hint">OpenFreeMap (the default) is keyless and detailed.</string>
+    <string name="settings_map_attribution" translatable="false">Map data © OpenStreetMap contributors · tiles OpenFreeMap / OpenMapTiles</string>
     <string name="settings_units">Units</string>
     <string name="settings_units_imperial">Imperial (miles, feet)</string>
     <string name="settings_units_metric">Metric (kilometers, meters)</string>
@@ -356,8 +357,7 @@
     <string name="mapscreen_permanently_closed">Permanently closed</string>
     <string name="mapscreen_section_saved">Saved</string>
     <string name="mapscreen_section_recent">Recent</string>
-    <string name="mapscreen_section_recent_searches">Recent searches</string>
-    <string name="mapscreen_clear_recent_searches">Clear recent searches</string>
+    <string name="mapscreen_clear_recents">Clear recents</string>
     <string name="mapscreen_search_empty_hint">Search for places, addresses and categories.</string>
     <string name="mapscreen_set_shortcut_address">Set %1$s address</string> <!-- format -->
     <string name="mapscreen_edit_shortcut">Edit %1$s</string> <!-- format -->
@@ -590,4 +590,30 @@
     <string name="street_view_move">Move here</string>
     <string name="street_view_dates">See other dates</string>
     <string name="street_view_fullscreen">Toggle full screen</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Search</string>
+    <string name="car_no_destinations">No saved or recent destinations yet</string>
+    <string name="car_search_hint">Type to search for a destination</string>
+    <string name="car_go">Go</string>
+    <string name="car_end">End</string>
+    <string name="car_mute">Mute</string>
+    <string name="car_unmute">Unmute</string>
+    <string name="car_faster_route">Faster −%1$d min</string>
+    <string name="car_no_route">No route available — check your location</string>
+    <string name="car_voice_nothing">Didn\'t catch that</string>
+    <string name="car_stop_added">Stop added</string>
+    <string name="car_categories">Categories</string>
+    <string name="settings_drive_alerts">Driving alerts</string>
+    <string name="settings_alert_cameras">Camera alerts</string>
+    <string name="settings_alert_cameras_hint">Spoken heads-up near a license-plate camera. Android Auto only.</string>
+    <string name="settings_alert_speeding">Speeding warning</string>
+    <string name="settings_alert_speeding_hint">The car speed badge turns red over the posted limit.</string>
+    <string name="car_camera_ahead">Camera ahead</string>
+    <string name="cat_parking">Parking</string>
+    <string name="cat_charging">EV charging</string>
+    <string name="car_stops">Stops</string>
+    <string name="car_no_stops">No stops on this trip</string>
+    <string name="car_stop_removed">Stop removed</string>
+    <string name="car_stop_remove_hint">Tap to remove</string>
+    <string name="car_details">Details</string>
 </resources>

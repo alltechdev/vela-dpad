@@ -26,6 +26,59 @@ needs. Media apps (music, podcasts) do **not** need it, which is why a sideloade
 music player shows up on Android Auto with no fuss while a nav app does not. See
 below.
 
+## What works in the car
+
+- **Browse map** with the styled Vela basemap, puck, camera follow, pan/zoom.
+  At night (the car's own day/night signal) the map switches to the real dark
+  palette - the same one the phone's dark theme uses - not a darkened filter.
+- **Search** (keyboard on the head unit) with results biased to your location;
+  tapping a result opens the route preview.
+- **Voice, honoring your engine preference** (Settings, Search): with Vela's
+  on-device model pinned (or Auto with it installed), the mic buttons record
+  through the car's microphone into on-device Whisper - and if the car mic
+  turns out to be silent (common on aftermarket units), retry once on the
+  phone's mic, still fully on-device. With the system engine pinned, the mic
+  lands you on the search surface whose in-field mic is the system recognizer
+  (the platform reserves direct voice-session starts for Hey Google / the
+  wheel button). Speech is never routed against the pin. Spoken commands -
+  "navigate home", "find my car", "mute", "end navigation" - act in place;
+  anything else loads results directly.
+- **Route preview** with live-traffic alternates, **turn-by-turn** with maneuver
+  icons + lane guidance, and instrument-cluster trip updates.
+- **Search along the route while driving**: the nav screen carries a search
+  action and the mic; results are corridor-filtered (the same filter the phone
+  uses) and tapping one adds it as a stop - the drive replans through it. A
+  **stop manager** on the nav map strip lists the remaining stops (tap to
+  remove; the drive replans). One-tap **category shortcuts** (Gas / Food /
+  Coffee / Groceries / Parking / EV charging) sit behind the grid action on
+  the landing screen and feed the same flow in-drive.
+- **Place details** from a search result's route preview (rating, address,
+  category, phone) - a pane the host expands fully while parked.
+- **Live traffic on the browse map** when the phone's traffic overlay is on -
+  the same keyless tiles, same subdued opacity.
+- **Voice commands**: the mic understands "navigate home", "take me to work",
+  "find my car", "mute" / "unmute", and "end navigation" (English); anything
+  else is a normal search with the leading verb stripped ("navigate to the
+  nearest gas station" searches the destination, not the whole sentence).
+- **Faster-route offers pop as a head-up alert** (Car API 5+) with Go/Done,
+  not just a strip button; the strip button remains for older hosts.
+- **Parking**: arriving shows a card with one-tap "Save parking spot" (shared
+  with the phone's Park feature), and a saved spot adds a "Find my car" row to
+  the landing screen. **Home/Work rows show live drive times.**
+- **Resume**: if navigation is already running when the car connects, the car
+  UI lands straight in guidance.
+- **Driving alerts** (Settings, Navigation, Driving alerts - both off by
+  default): a spoken heads-up approaching a mapped license-plate camera
+  (bundled DeFlock data, offline), and the speed badge turning red over the
+  posted limit.
+- **Assistant / `geo:` intents**: "navigate to X" style NAVIGATE intents open
+  the route preview directly. Coordinates (`geo:lat,lng`,
+  `geo:0,0?q=lat,lng(Label)`) go straight there; a **free-text** destination
+  (`geo:0,0?q=central park`) is geocoded through Vela's own search, biased to
+  your location, and lands in the preview for the top hit (a miss shows a
+  toast). Upstream leaves free-text destinations unhandled; the geocoding is a
+  fork addition.
+
 ## Why a sideloaded music app "just works" but a nav app does not
 
 They ride two completely different integrations:

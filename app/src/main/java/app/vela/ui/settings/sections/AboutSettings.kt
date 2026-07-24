@@ -135,6 +135,11 @@ internal fun AboutSettingsScreen(vm: MapViewModel, onBack: () -> Unit) {
             ) { Text(stringResource(R.string.settings_update_check_now)) }
         }
         updateStatus?.let { androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 4.dp)) { Hint(it) } }
+        // ODbL attribution home: the car map no longer stamps the credit onto every frame (user
+        // request), so About is where the OpenStreetMap notice permanently lives.
+        androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 4.dp, vertical = 6.dp)) {
+            Hint(stringResource(R.string.settings_map_attribution))
+        }
         }
         // Breathing room under the last control so the button doesn't sit right on the
         // gesture bar at the end of the scroll.

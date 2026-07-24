@@ -21,6 +21,27 @@ Status legend: [x] done · [~] partial / in progress · [ ] planned
 - [x] **Closing a far-away place keeps the camera there** - a programmatic jump >1 km from your fix drops free-drive follow like a manual pan, so closing the sheet no longer glides the map home; the locate button re-arms follow.
 - [x] **Compact nav banner on small screens** - under 500dp of screen height the maneuver banner shrinks (36dp glyph, smaller distance type, tighter padding) and every text line is capped, so a long arrive card can never bury the map (issue #41, F21 Pro).
 - [x] **Settings reorganized + nav UI refresh.** Sections in usage order (Appearance, Map, Place pages, Navigation, Voice, Offline, ...); vibrate-on-turns is one row of per-mode chips; the in-drive banner and bottom bar are soft-cornered floating cards.
+- [x] **Android Auto: full car-side navigation (2026-07-23, ported upstream ac487f78 +
+  follow-ups).** Search, route preview with alternates, and turn-by-turn with maneuver icons and
+  lane guidance on the head unit; the real styled Vela map drawn via MapSnapshotter with a
+  smoothed puck; assistant/geo: NAVIGATE intents; instrument-cluster trip updates. Roboto basemap
+  glyphs app-wide (MapFonts), and recents unified into one chronological timeline shared by phone
+  and car. Requires androidx.car.app:app-projected - the missing artifact that had kept Vela
+  invisible to Android Auto entirely. Two fork additions on top of the port: **in-car voice
+  search** - a mic action on the car search screen (Car API 5+ hosts) records from the car's own
+  microphone and transcribes with the same on-device Whisper pipeline as the phone mic, so speech
+  never leaves the device; and **free-text NAVIGATE geocoding** - "navigate to central park" from
+  the assistant resolves through Vela's own search (biased to your location) straight into the
+  route preview, where upstream leaves free-text destinations unhandled. A second fork batch
+  (2026-07-23) rounds out the drive: **search along route** from the nav screen (mic included) with
+  corridor-filtered results whose pick becomes a stop, one-tap **category shortcuts**
+  (Gas/Food/Coffee/Groceries), offline **voice commands** ("navigate home", "mute", "end
+  navigation" - unit-tested grammar, unmatched phrases fall through to search), faster-route
+  offers as **head-up alerts**, an **arrival card with one-tap parking save** + a "Find my car"
+  landing row (shared with the phone's Park feature), **live Home/Work drive times**, **resume
+  into guidance** when the car connects mid-drive, and optional **driving alerts** (spoken
+  license-plate-camera heads-up from the bundled DeFlock data; red speed badge over the limit -
+  Settings, Navigation, Driving alerts, both off by default).
 - [x] **Settings redesigned hub-and-spoke (2026-07-22).** The single extremely long page became a short hub of category rows (icon + title + one-line subtitle), each opening its own small sub-screen - on a keypad phone any section is a few DOWN presses + OK away instead of ~70 presses down one scroll. Every page shares one `SettingsScaffold` (Back auto-focus, the two focus bridges, the horizontal swallow); BACK peels spoke -> hub -> map and the hub re-focuses the row you came back from; the restricted flavor hides the Place pages row; the onboarding offline prompt deep-links into the Offline spoke. A voice download in flight shows its progress on the hub's Voice row. The spokes use a standard flat settings layout: accent section heads, hairline separators, every toggle's hint as a short line inside its row (33 verbose hint strings were cut to one line across all 15 locales), compact 44dp interactive sizing, and single-line-safe button rows (a squeezed label wraps as a whole pill, never as two-line button text). The hub rows carry thin outline borders and the title bar separates via the neutral elevated surface role. New app-wide true-black theme (Appearance -> Black; the AMOLED mode): the dark scheme on true-black surfaces; light mode moved off pure white onto soft teal-cast off-whites.
 - [x] **Arrive step names the destination.** The banner, step list and arrival card show the business name and address, falling back to address then coordinates.
 - [x] **Perf audit batch 2: upload churn off the render thread (upstream 07d3f315, applicable slices).** applyData's tail is identity-gated like its head (alternates, location dot, preview pin, browse gradient, me-layer properties, ensure* style probes all skip when nothing changed; every gate resets on style reload); route-mode visibility flips run once per transition; ambient POI uploads defer while a camera flight is in the air and flush at landing; the in-nav route split re-uploads only a 3 km leading window per tick with the far tail on a twin layer (also sharpens the traffic gradient near the puck); the speed-limit poll skips during flights and pinches; and the browse follow's cold engage from a far-out camera is one owned flight instead of a teleport (f95f0b96's fix, applicable now that the fork has the browse ticker). Upstream's walk-dot regen and result-pin bitmap cache patch machinery the fork does not have (image-dash walking dots, no result-pin rasterizer).

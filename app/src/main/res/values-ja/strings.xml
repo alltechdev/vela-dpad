@@ -524,8 +524,7 @@
     <string name="parking_history_delete">削除</string>
     <string name="place_current_traffic">現在の交通状況</string>
     <string name="mapscreen_filter_top_rated">4.0★</string>
-    <string name="mapscreen_section_recent_searches">最近の検索</string>
-    <string name="mapscreen_clear_recent_searches">最近の検索を消去</string>
+    <string name="mapscreen_clear_recents">履歴を消去</string>
     <string name="root_diag_title">Velaの改善に協力しますか？</string>
     <string name="root_diag_body">どちらも端末内に保存されます。エクスポートしない限り送信されません。設定でいつでも変更できます。</string>
     <string name="root_diag_share_title">診断情報を共有</string>
@@ -562,4 +561,30 @@
     <string name="voice_error_vad">音声モデルの一部が不足しています。設定 \u2192 検索 から再ダウンロードしてください。</string>
     <string name="voice_error_audio">この端末でマイクを開けませんでした。録音中の他のアプリを閉じて再試行してください。</string>
     <string name="voice_error_recording">録音が予期せず停止しました。もう一度お試しください。</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">検索</string>
+    <string name="car_no_destinations">保存済み・最近の目的地はまだありません</string>
+    <string name="car_search_hint">入力して目的地を検索</string>
+    <string name="car_go">開始</string>
+    <string name="car_end">終了</string>
+    <string name="car_mute">ミュート</string>
+    <string name="car_unmute">ミュート解除</string>
+    <string name="car_faster_route">より速い −%1$d分</string>
+    <string name="car_no_route">ルートがありません — 位置情報を確認してください</string>
+    <string name="car_voice_nothing">聞き取れませんでした</string>
+    <string name="car_stop_added">経由地を追加しました</string>
+    <string name="car_categories">カテゴリ</string>
+    <string name="settings_drive_alerts">運転アラート</string>
+    <string name="settings_alert_cameras">カメラ警告</string>
+    <string name="settings_alert_cameras_hint">ナンバープレートカメラ付近で音声通知。Android Autoのみ。</string>
+    <string name="settings_alert_speeding">速度超過警告</string>
+    <string name="settings_alert_speeding_hint">制限速度を超えると車の速度バッジが赤くなります。</string>
+    <string name="car_camera_ahead">この先にカメラ</string>
+    <string name="cat_parking">駐車場</string>
+    <string name="cat_charging">EV充電</string>
+    <string name="car_stops">経由地</string>
+    <string name="car_no_stops">経由地はありません</string>
+    <string name="car_stop_removed">経由地を削除しました</string>
+    <string name="car_stop_remove_hint">タップで削除</string>
+    <string name="car_details">詳細</string>
 </resources>

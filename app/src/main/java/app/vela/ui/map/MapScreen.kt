@@ -124,6 +124,8 @@ import app.vela.core.config.Notice
 import app.vela.core.model.distanceTo
 import app.vela.core.model.ManeuverType
 import app.vela.core.model.Place
+import app.vela.core.data.RecentPlace
+import app.vela.core.data.RecentQuery
 import app.vela.core.model.SavedPlace
 import app.vela.core.model.ShortcutKind
 import app.vela.ui.RatingStars
@@ -233,7 +235,10 @@ fun MapScreen(
         val variant = if (darkTheme) "streets-v2-dark" else "streets-v2"
         "https://api.maptiler.com/maps/$variant/style.json?key=${BuildConfig.MAPTILER_KEY}"
     } else {
-        state.styleUri
+        // Liberty is swapped for the cached Roboto-glyph patch when MapFonts has it
+        // ready (reactive - flips once the first refresh lands). Offline REGION
+        // DEFINITIONS deliberately keep state.styleUri (see MapFonts). Ported upstream.
+        app.vela.ui.map.MapFonts.effective(state.styleUri)
     }
     val context = LocalContext.current
 
@@ -2810,8 +2815,8 @@ private fun SearchEntryContent(
     suggestions: List<Place>,
     query: String,
     saved: List<SavedPlace>,
-    recents: List<String>,
-    recentPlaces: List<SavedPlace>,
+    recents: List<RecentQuery>,
+    recentPlaces: List<RecentPlace>,
     home: SavedPlace?,
     work: SavedPlace?,
     assigning: ShortcutKind?,
@@ -2837,9 +2842,10 @@ private fun SearchEntryContent(
     // the network suggestions and are deduped from them by name, each a plain SuggestionRow = one
     // D-pad focus stop. No network, so they appear before the Google fetch even returns.
     val q = query.trim()
-    val localQueries = if (q.length >= 2) recents.filter { it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true) }.take(3) else emptyList()
+    // Recents are typed entries since the upstream 381cfd49 timeline merge - match on the text.
+    val localQueries = if (q.length >= 2) recents.map { it.query }.filter { it.contains(q, ignoreCase = true) && !it.equals(q, ignoreCase = true) }.take(3) else emptyList()
     val localPlaces = if (q.length >= 2) {
-        (recentPlaces + saved).distinctBy { it.id }
+        (recentPlaces.map { it.place } + saved).distinctBy { it.id }
             .filter { it.name.contains(q, ignoreCase = true) }
             .filterNot { lp -> suggestions.any { it.name.equals(lp.name, ignoreCase = true) } } // network wins the dupe
             .take(3)
@@ -2926,34 +2932,40 @@ private fun SearchEntryContent(
                 Divider()
             }
         }
-        // Recently-opened places (pin icon) - one tap back to a place you just viewed.
-        if (recentPlaces.isNotEmpty()) {
+        // ONE chronological "Recent" list — Google mixes recently-viewed places and recent
+        // searches by time rather than bucketing them; the icon tells them apart (pin for a
+        // place you opened, clock for a query you typed). (Ported upstream 381cfd49.)
+        if (recentPlaces.isNotEmpty() || recents.isNotEmpty()) {
             SectionLabel(stringResource(R.string.mapscreen_section_recent))
-            recentPlaces.forEach { rp ->
-                SuggestionRow(
-                    icon = Icons.Default.Place,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    label = rp.name,
-                    onClick = { onPickRecentPlace(rp) },
-                )
+            val merged: List<Any> = (recentPlaces + recents).sortedByDescending { entry ->
+                when (entry) {
+                    is RecentPlace -> entry.at
+                    is RecentQuery -> entry.at
+                    else -> 0L
+                }
+            }
+            merged.forEach { entry ->
+                when (entry) {
+                    is RecentPlace -> SuggestionRow(
+                        icon = Icons.Default.Place,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = entry.place.name,
+                        onClick = { onPickRecentPlace(entry.place) },
+                    )
+                    is RecentQuery -> SuggestionRow(
+                        icon = Icons.Default.History,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = entry.query,
+                        onClick = { onPickRecent(entry.query) },
+                    )
+                }
                 Divider()
             }
-        }
-        if (recents.isNotEmpty()) {
-            SectionLabel(stringResource(R.string.mapscreen_section_recent_searches))
-            recents.forEach { q ->
-                SuggestionRow(
-                    icon = Icons.Default.History,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    label = q,
-                    onClick = { onPickRecent(q) },
-                )
-                Divider()
-            }
-            // The start padding moves to the ring box so the ring hugs the button, not the inset.
+            // The start padding moves to the ring box so the ring hugs the button, not the inset
+            // (fork D-pad ring kept through the upstream timeline merge).
             DpadRingBox(androidx.compose.material3.ButtonDefaults.textShape, Modifier.padding(start = 8.dp)) {
                 TextButton(onClick = onClearRecents) {
-                    Text(stringResource(R.string.mapscreen_clear_recent_searches))
+                    Text(stringResource(R.string.mapscreen_clear_recents))
                 }
             }
         }
@@ -3046,14 +3058,27 @@ private fun SavedRow(
     ) {
         Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.width(16.dp))
-        Text(place.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        // Explicit colours: the search page is a background()-Box, not a Surface, so
+        // LocalContentColor is unset and a colourless Text/Icon renders BLACK in dark
+        // mode (same trap ShortcutRow documents). Match the SuggestionRow siblings.
+        Text(
+            place.name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
         var menu by remember { mutableStateOf(false) }
         Box {
             IconButton(
                 modifier = Modifier.dpadHighlight(androidx.compose.foundation.shape.CircleShape),
                 onClick = { menu = true },
             ) {
-                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.mapscreen_saved_place_options))
+                // onSurfaceVariant tint: readable in dark mode (upstream 381cfd49); the fork ring stays.
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.mapscreen_saved_place_options),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             VelaMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 item(stringResource(R.string.mapscreen_set_as_home)) { menu = false; onPinAs(place, ShortcutKind.HOME) }

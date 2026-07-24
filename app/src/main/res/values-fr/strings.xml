@@ -311,8 +311,7 @@
     <string name="mapscreen_permanently_closed">Définitivement fermé</string>
     <string name="mapscreen_section_saved">Enregistrés</string>
     <string name="mapscreen_section_recent">Récents</string>
-    <string name="mapscreen_section_recent_searches">Recherches récentes</string>
-    <string name="mapscreen_clear_recent_searches">Effacer les recherches récentes</string>
+    <string name="mapscreen_clear_recents">Effacer les éléments récents</string>
     <string name="mapscreen_search_empty_hint">Recherchez des lieux, adresses et catégories.</string>
     <string name="mapscreen_set_shortcut_address">Définir l\'adresse %1$s</string>
     <string name="mapscreen_edit_shortcut">Modifier %1$s</string>
@@ -542,4 +541,30 @@
     <string name="voice_error_vad">Une partie du modèle vocal est manquante. Téléchargez-le à nouveau dans Paramètres \u2192 Recherche.</string>
     <string name="voice_error_audio">Ce téléphone n\'a pas ouvert son micro pour Vela. Fermez toute autre application qui enregistre du son et réessayez.</string>
     <string name="voice_error_recording">L\'enregistrement s\'est arrêté de manière inattendue. Réessayez.</string>
+    <!-- Android Auto (ported upstream ac487f78) -->
+    <string name="car_search">Rechercher</string>
+    <string name="car_no_destinations">Aucune destination enregistrée ou récente</string>
+    <string name="car_search_hint">Saisissez pour rechercher une destination</string>
+    <string name="car_go">Aller</string>
+    <string name="car_end">Terminer</string>
+    <string name="car_mute">Muet</string>
+    <string name="car_unmute">Réactiver</string>
+    <string name="car_faster_route">Plus rapide −%1$d min</string>
+    <string name="car_no_route">Aucun itinéraire, vérifiez votre position</string>
+    <string name="car_voice_nothing">Rien n\'a été entendu</string>
+    <string name="car_stop_added">Arrêt ajouté</string>
+    <string name="car_categories">Catégories</string>
+    <string name="settings_drive_alerts">Alertes de conduite</string>
+    <string name="settings_alert_cameras">Alertes caméras</string>
+    <string name="settings_alert_cameras_hint">Annonce vocale près d\'une caméra de plaques. Android Auto uniquement.</string>
+    <string name="settings_alert_speeding">Alerte de vitesse</string>
+    <string name="settings_alert_speeding_hint">Le badge de vitesse devient rouge au-dessus de la limite.</string>
+    <string name="car_camera_ahead">Caméra devant</string>
+    <string name="cat_parking">Parking</string>
+    <string name="cat_charging">Recharge VE</string>
+    <string name="car_stops">Arrêts</string>
+    <string name="car_no_stops">Aucun arrêt sur ce trajet</string>
+    <string name="car_stop_removed">Arrêt supprimé</string>
+    <string name="car_stop_remove_hint">Appuyez pour supprimer</string>
+    <string name="car_details">Détails</string>
 </resources>
