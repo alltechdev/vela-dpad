@@ -20,12 +20,20 @@ private const val VAD_FILE = "silero_vad.onnx"
  * Three engines, because they trade off differently and the user picks (ported from upstream
  * PimpinPumpkin/Vela 5d2a6636 + 118e7e8c sizes + 137beea9 language fallback):
  *  - [WHISPER_TINY] - the multilingual default. 99-language Whisper tiny (int8); covers every
- *    language Vela's UI supports (incl. Hebrew, Russian, Spanish). The safe all-rounder, and the
- *    smallest - so it stays the default and the ONLY thing the one-tap onboarding/map offer installs,
- *    which matters on the RAM/storage-constrained feature phones this fork targets.
+ *    language Vela's UI supports (incl. Hebrew, Russian, Spanish). The safe all-rounder and the
+ *    smallest download - so it stays the default and the ONLY thing the one-tap onboarding/map
+ *    offer installs. NOT the smallest loaded: ~214 MB PSS resident (measured, 32-bit M5) - but
+ *    the idle reaper makes that transient, not session-long.
  *  - [SENSE_VOICE] - FunAudioLLM SenseVoice. More accurate + faster than Whisper tiny, but only for
  *    English, Chinese, Cantonese, Japanese, Korean. Bigger (opt-in).
- *  - [MOONSHINE] - Useful Sensors Moonshine tiny. Lowest latency, ENGLISH ONLY. Bigger (opt-in).
+ *  - [MOONSHINE] - Useful Sensors Moonshine tiny. Lowest latency, ENGLISH ONLY. Bigger (opt-in),
+ *    and despite the small weights its four ORT sessions cost ~212 MB PSS loaded - no lighter
+ *    resident than Whisper (measured, 32-bit M5).
+ *
+ * Before adding a "low-memory" fourth engine, read the measurement notes in AGENTS.md: NeMo
+ * Conformer CTC small (46 MB file) ballooned to ~760 MB-1.2 GB resident through onnxruntime, and
+ * k2 Zipformer small was built, measured and then REMOVED - librispeech-domain models mishear the
+ * proper nouns a maps app lives on, and no amount of post-processing fixes that.
  *
  * Whisper stays the default so no language silently regresses; the other two are opt-in via the
  * voice-search engine picker in Settings. This holds only metadata + a cheap install check + the

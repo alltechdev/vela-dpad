@@ -54,6 +54,86 @@ class WebPhotoFetcher @Inject constructor(
     @Volatile private var webView: WebView? = null
     @Volatile private var warmed = false
 
+    /** Pending idle-reap callback. Only ever read or written on the main thread - see [onMain]. */
+    private var reap: Runnable? = null
+
+    init {
+        // A trim is the OS asking for memory NOW, far sooner than any idle timer (issue #83).
+        // Only a CRITICAL trim tears down mid-scrape; a merely-severe one declines while a fetch
+        // is in flight (see reapNow) so a moderate-pressure moment doesn't cost a whole gallery.
+        app.vela.ui.MemoryPressure.register { level ->
+            if (app.vela.ui.MemoryPressure.isSevere(level)) {
+                main.post { cancelReap(); reapNow(force = app.vela.ui.MemoryPressure.isCritical(level)) }
+            }
+        }
+    }
+
+    /**
+     * Run [block] on the main thread, inline when already there.
+     *
+     * All reap bookkeeping goes through here because [reap] is touched from two places on
+     * different threads - the trim listener (main) and [fetch]/[warm] (the caller's dispatcher).
+     * Making every mutation main-thread-only removes the race by construction; @Volatile would not,
+     * since scheduling is a read-modify-write. Running inline when already on main keeps the
+     * cancel-then-navigate ordering inside [fetch]'s `Dispatchers.Main` block intact.
+     */
+    private fun onMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block)
+    }
+
+    /**
+     * Free the WebView after a quiet period, like the other four fetchers (issue #182) - this one
+     * never had it, so a single search pinned a Chromium renderer for the WHOLE session and only
+     * renderer death or a trim could clear it. Measured on the M5: after a search the shared
+     * sandboxed renderer sat at 327 MB PSS, in a SEPARATE process, so it never showed up in the
+     * app's own PSS and every issue-#83 measurement missed it.
+     *
+     * [delayMs] differs by caller on purpose. A real fetch uses the siblings' [REAP_IDLE_MS]; a
+     * speculative [warm] uses the longer [WARM_REAP_IDLE_MS], because the warm exists precisely so
+     * a later place tap skips the cold start, and reaping it at 120 s would undo it for the ordinary
+     * search-then-browse-then-tap flow. Longer, but still bounded: the point is that it cannot be
+     * session-long.
+     */
+    private fun scheduleReap(delayMs: Long) = onMain {
+        reap?.let(main::removeCallbacks)
+        val r = Runnable { reap = null; reapNow() }
+        reap = r
+        main.postDelayed(r, delayMs)
+    }
+
+    private fun cancelReap() = onMain {
+        reap?.let(main::removeCallbacks)
+        reap = null
+    }
+
+    /** Destroy the WebView immediately. Main thread only (WebView requirement). The next
+     *  [warm]/fetch rebuilds it via `ensureWebView`, exactly as after a renderer death.
+     *
+     *  A NON-FORCED reap declines while a scrape is in flight ([pending] non-empty): destroying the
+     *  view mid-scrape turns a live gallery into 0 photos, and the fetch's finally re-arms the reap
+     *  moments later anyway. A forced reap (critical trim) proceeds and drains [pending] for the
+     *  same reason [rendererGone] does: the injected scraper dies with the view, so nothing will
+     *  ever complete those deferreds. Without the drain a teardown mid-fetch leaves the fetch
+     *  parked in `deferred.await()` for the full [TOTAL_TIMEOUT_MS] while it HOLDS [mutex],
+     *  stalling every queued gallery behind it. An empty result is the documented best-effort
+     *  failure mode; a 40 s hang is not. */
+    private fun reapNow(force: Boolean = false) {
+        if (!force && pending.isNotEmpty()) {
+            android.util.Log.i("WebPhotoFetcher", "reap declined, fetch in flight")
+            return
+        }
+        val wv = webView ?: return
+        webView = null
+        warmed = false
+        runCatching { wv.loadUrl("about:blank"); wv.destroy() }
+        val stranded = pending.keys.toList()
+        stranded.forEach { id -> pending.remove(id)?.complete("") }
+        // The renderer is shared and lives in ANOTHER process, so its cost is invisible in this
+        // app's PSS - without a log there is no way to tell an idle reap from an OS trim killing
+        // the renderer, which made the first attempt to verify this unfalsifiable.
+        android.util.Log.i("WebPhotoFetcher", "photo WebView reaped (stranded fetches: ${stranded.size})")
+    }
+
     // featureId → its scraped gallery. Re-tapping a place (or bouncing back from directions) then
     // shows photos INSTANTLY instead of re-running the ~20 s scrape. Access-order LRU, small cap.
     private val cache = object : LinkedHashMap<String, List<Photo>>(16, 0.75f, true) {
@@ -99,6 +179,10 @@ class WebPhotoFetcher @Inject constructor(
                     }
                 }
                 wv.loadUrl("https://www.google.com/maps?hl=en")
+                // Bound the speculative warm. Reached only when THIS call created the view (the
+                // re-check above returns early when a fetch already owns it, and that fetch arms its
+                // own reap in `finally`), so this never shortens a real fetch's window.
+                scheduleReap(WARM_REAP_IDLE_MS)
             }
         }
     }
@@ -125,6 +209,7 @@ class WebPhotoFetcher @Inject constructor(
         val cid = cidOf(featureId) ?: return emptyList()
         synchronized(cache) { cache[featureId] }?.let { return it } // instant on revisit - skip the scrape
         return mutex.withLock {
+            cancelReap() // a reap mid-scrape would destroy the view this fetch is about to drive
             val id = "p" + seq.incrementAndGet()
             val deferred = CompletableDeferred<String>()
             pending[id] = deferred
@@ -146,6 +231,13 @@ class WebPhotoFetcher @Inject constructor(
                                 return !(host == "google.com" || host.endsWith(".google.com"))
                             }
                             override fun onPageFinished(view: WebView?, url: String?) {
+                                // IGNORE about:blank. [blankAfterScrape] parks the view there after the
+                                // previous scrape, and that navigation can still be settling when this
+                                // client is installed - its onPageFinished then opens the load gate
+                                // early, the scraper injects into an empty document, and the fetch
+                                // returns 0 photos. Device-caught: the same place scraped 33 photos as
+                                // the first place opened and 0 as the second, until this guard.
+                                if (url == null || url.startsWith("about:")) return
                                 main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, SETTLE_MS)
                             }
                             override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
@@ -161,6 +253,9 @@ class WebPhotoFetcher @Inject constructor(
                         // DOM that yields an empty result (safe) instead of the previous place's photos
                         // being returned for THIS featureId (cross-place data).
                         wv.evaluateJavascript("try{document.documentElement.innerHTML=''}catch(e){}", null)
+                        // Size BEFORE navigating, so the ?cid= page's first layout is already at
+                        // scrape geometry and the virtualized grids materialize exactly as before.
+                        sizeForScrape(wv)
                         wv.loadUrl("https://www.google.com/maps?cid=$cid&hl=en&gl=us")
                         main.postDelayed({ if (!ready.isCompleted) ready.complete(Unit) }, MAX_LOAD_MS)
                         ready.await()
@@ -173,8 +268,13 @@ class WebPhotoFetcher @Inject constructor(
             } finally {
                 pending.remove(id)
                 partials.remove(id)
+                blankAfterScrape() // the scraped page is dead weight from here until the next scrape
+                scheduleReap(REAP_IDLE_MS) // start the quiet period from the END of the scrape
             }
             val out = raw?.let { parseLines(it) } ?: emptyList()
+            // Result count, so a change to the offscreen viewport (WV_WIDTH/WV_HEIGHT drive how much
+            // of the virtualized grid renders) can be A/B'd against scrape QUALITY, not just memory.
+            android.util.Log.i("WebPhotoFetcher", "scraped ${out.size} photos for $featureId")
             if (out.isNotEmpty()) synchronized(cache) { cache[featureId] = out } // cache only real results
             out
         }
@@ -207,15 +307,60 @@ class WebPhotoFetcher @Inject constructor(
         wv.settings.domStorageEnabled = true
         wv.settings.userAgentString = VelaConfig.USER_AGENT
         wv.addJavascriptInterface(Bridge(), "VelaBridge")
-        // Real offscreen viewport - the category grids are VIRTUALIZED (like the reviews list); at 0×0 a
-        // category tab renders only ~1 tile, so a tall viewport is what makes each category populate fully.
+        // NOT laid out here on purpose - see [sizeForScrape]. The WebView stays 0x0 until a real
+        // fetch needs the grids to materialize.
+        webView = wv
+        return wv
+    }
+
+    /**
+     * Give the WebView its real offscreen viewport, immediately before a scrape navigates.
+     *
+     * The size itself is load-bearing: the category grids are VIRTUALIZED (like the reviews list),
+     * so at 0x0 a category tab renders only about one tile and the scrape comes back nearly empty.
+     * That is why the viewport exists at all.
+     *
+     * But it only has to exist for a SCRAPE. This used to run in `ensureWebView`, i.e. at
+     * construction, and [warm] goes through `ensureWebView` - so a speculative warm created a full
+     * WV_WIDTH x WV_HEIGHT composited surface over `maps?hl=en`, a page with zero scrapeable content,
+     * and held it for the whole WARM_REAP_IDLE_MS window. Measured on the M5: `GL mtrack` is bimodal,
+     * ~490 MB with this view laid out and alive versus ~71 MB without, on a 480x640 phone screen.
+     * This fetcher is the only one that lays out during a warm at all (the other four either never
+     * call layout or have no warm), which is why every GL number tracked THIS view.
+     *
+     * Idempotent, and called before `loadUrl` so the `?cid=` page's FIRST layout is already at scrape
+     * geometry - that ordering is what keeps the scrape identical.
+     */
+    private fun sizeForScrape(wv: WebView) {
+        if (wv.width == WV_WIDTH && wv.height == WV_HEIGHT) return
         wv.measure(
             android.view.View.MeasureSpec.makeMeasureSpec(WV_WIDTH, android.view.View.MeasureSpec.EXACTLY),
             android.view.View.MeasureSpec.makeMeasureSpec(WV_HEIGHT, android.view.View.MeasureSpec.EXACTLY),
         )
         wv.layout(0, 0, WV_WIDTH, WV_HEIGHT)
-        webView = wv
-        return wv
+    }
+
+    /**
+     * Throw the scraped page away the moment the scrape returns, rather than carrying it until the
+     * reap 120 s later.
+     *
+     * The scrape is the only thing that needed the page and it is over - the result is already
+     * parsed out of the bridge payload. What follows is the user reading the place sheet, which is
+     * minutes of a fully rasterized Google Maps document serving nobody.
+     *
+     * It has to be a NAVIGATION, not a resize. Shrinking the view back to 0x0 was tried first and
+     * measured to reclaim nothing at all (GL mtrack 494/496/497 MB against a 497/498 MB control):
+     * Chromium keeps the tiles it has already rasterized for a live document regardless of the
+     * view's size. Discarding the document is what frees them.
+     *
+     * Costs nothing functionally: the next `fetch` blanks the DOM and navigates to its own `?cid=`
+     * page anyway, so this page was never going to be read again. The WebView itself stays alive, so
+     * the renderer, HTTP/2 sockets, cookies and JS cache that make the next place fast are all kept -
+     * which is exactly what destroying it early would have thrown away.
+     */
+    private fun blankAfterScrape() = onMain {
+        val wv = webView ?: return@onMain
+        runCatching { wv.loadUrl("about:blank") }
     }
 
     /** Self-polling DOM scraper: open the gallery, then VISIT EACH CATEGORY TAB (Menu / Food & drink /
@@ -292,7 +437,21 @@ class WebPhotoFetcher @Inject constructor(
         const val SETTLE_MS = 1_200L
         const val MAX_LOAD_MS = 7_000L
         // Offscreen viewport so the virtualized category grids render a full batch (not ~1 tile).
+        //
+        // Applied by [sizeForScrape] immediately before a scrape navigates, NOT at construction.
+        //
+        // These are deliberately UNCHANGED from stock. Shrinking the width to 720 was tried and did
+        // hold the photo count on the one place it was A/B'd (28 -> 28), but scrape geometry governs
+        // how much of a virtualized grid materializes, and one place is not enough evidence to risk a
+        // quieter gallery in a locale or layout nobody sampled. Deferring the layout wins the same
+        // memory back without changing anything the scraper sees, so the size stays stock.
         const val WV_WIDTH = 1200
         const val WV_HEIGHT = 3200
+        // Destroy the idle WebView after this quiet period, same value as the other four fetchers.
+        const val REAP_IDLE_MS = 120_000L
+        // The speculative warm gets a longer leash: it is spent so the first place tap is instant,
+        // and 120 s would expire during an ordinary browse and waste the warm entirely. Still
+        // bounded, which is the whole point - before this the warm was held for the session.
+        const val WARM_REAP_IDLE_MS = 300_000L
     }
 }

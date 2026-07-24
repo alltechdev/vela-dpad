@@ -68,6 +68,12 @@ android {
         // unaffected - it is host-side only.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 
+        // libvelamem: the mallopt() purge shim (app/src/main/cpp). Built only for the two ABIs the
+        // ndk filter above ships.
+        externalNativeBuild {
+            cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        }
+
         // MapTiler key injected from the CI secret (-PmaptilerKey); empty for
         // local builds, in which case the app falls back to the keyless
         // OpenFreeMap basemap. Never stored in the repo.
@@ -212,6 +218,16 @@ android {
         }
     }
 
+    // The app's only native code: the mallopt() purge shim. Pinned NDK/CMake versions so a
+    // developer with a different NDK installed gets the same libvelamem.so as CI.
+    ndkVersion = "27.0.12077973"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -269,11 +285,13 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":yapchik")) // vendored softkey engine (LGPL-3.0) - keypad/D-pad softkeys
 
-    // sherpa-onnx: in-process neural TTS runtime (runs the downloaded Kokoro model). Vendored AAR
-    // (no official Maven artifact; the JitPack coordinate doesn't resolve). Lives in :app because a
-    // library module can't consume a local .aar - KokoroSynth sits in :app and bridges into :core's
-    // VoiceGuide via an interface. Native .so are arm64-only in the package (see packaging{}).
-    implementation(files("libs/sherpa-onnx-1.13.3.aar"))
+    // sherpa-onnx: in-process neural TTS + ASR runtime. Vendored AAR (no official Maven artifact;
+    // the JitPack coordinate doesn't resolve). Lives in :app because a library module can't consume
+    // a local .aar. 1.13.4 is a LOAD-BEARING upgrade, not routine: its bundled onnxruntime (1.27.0,
+    // up from 1.24.3) fixes the armv7 unaligned-read SIGBUS that crashed every model LOAD on 32-bit
+    // ARM phones (issue #95; device-verified both broken-before and fixed-after on an M5 forced to
+    // `--abi armeabi-v7a`). Do not downgrade past it while the fork ships v7a.
+    implementation(files("libs/sherpa-onnx-1.13.4.aar"))
     // Extracts the Kokoro model's .tar.bz2 at download time (Android has no built-in bzip2/tar).
     implementation("org.apache.commons:commons-compress:1.27.1")
 

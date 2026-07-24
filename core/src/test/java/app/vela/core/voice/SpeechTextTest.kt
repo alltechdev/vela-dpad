@@ -204,4 +204,55 @@ class SpeechTextTest {
         assertEquals("St. Paul", clean("St. Paul"))
         assertEquals("J.C. Penney", clean("J.C. Penney."))
     }
+
+    // ---- inverse text normalization (spoken numbers -> digits; Zipformer emits word form) ----
+
+    @Test fun `all-caps librispeech output is lowercased, mixed case is not`() {
+        assertEquals("coffee shops near me", clean("COFFEE SHOPS NEAR ME"))
+        assertEquals("Coffee near St. Paul", clean("Coffee near St. Paul"))
+    }
+
+    @Test fun `spoken address numbers become digits by juxtaposition`() {
+        assertEquals("123 main street", clean("ONE TWENTY THREE MAIN STREET"))
+        assertEquals("1234 elm avenue", clean("twelve thirty four elm avenue"))
+        assertEquals("105 broad street", clean("one oh five broad street"))
+        assertEquals("90 west road", clean("ninety west road"))
+        assertEquals("6000 south street", clean("six thousand south street"))
+    }
+
+    @Test fun `place-value groups combine before juxtaposition`() {
+        assertEquals("300 park avenue", clean("three hundred park avenue"))
+        assertEquals("125 court", clean("one hundred twenty five court"))
+        assertEquals("5200 ridge line", clean("five thousand two hundred ridge line"))
+        assertEquals("23", clean("twenty-three"))
+    }
+
+    @Test fun `numbered streets keep their ordinal suffix`() {
+        assertEquals("125th street", clean("ONE HUNDRED TWENTY FIFTH STREET"))
+        assertEquals("42nd street", clean("forty second street"))
+        assertEquals("13th avenue", clean("thirteenth avenue"))
+        assertEquals("21st street", clean("twenty first street"))
+    }
+
+    @Test fun `lone ordinal words stay words`() {
+        // "second opinion clinic" must not become "2nd opinion clinic"; bare ordinals are common
+        // non-numeric English. ("first avenue" also geocodes fine as written.)
+        assertEquals("second opinion clinic", clean("second opinion clinic"))
+        assertEquals("first avenue", clean("first avenue"))
+    }
+
+    @Test fun `oh is a zero only inside a number run`() {
+        assertEquals("oh coffee", clean("oh coffee"))
+        assertEquals("102 main", clean("one oh two main"))
+    }
+
+    @Test fun `digits from Whisper pass through unchanged`() {
+        assertEquals("123 Main Street", clean("123 Main Street."))
+        assertEquals("42nd Street", clean("42nd Street"))
+    }
+
+    @Test fun `non-English number words are untouched`() {
+        assertEquals("uno dos tres calle mayor", clean("uno dos tres calle mayor"))
+        assertEquals("einhundert dreiundzwanzig", clean("einhundert dreiundzwanzig"))
+    }
 }
